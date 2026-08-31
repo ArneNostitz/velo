@@ -8,6 +8,8 @@ import type { DbAttachment } from "@/services/db/attachments";
 import { MailMinus } from "lucide-react";
 import { AuthBadge } from "./AuthBadge";
 import { AuthWarningBanner } from "./AuthWarningBanner";
+import { PhishingBanner } from "./PhishingBanner";
+import type { MessageScanResult } from "@/utils/phishingDetector";
 
 interface MessageItemProps {
   message: DbMessage;
@@ -25,7 +27,9 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
   const [expanded, setExpanded] = useState(isLast);
   const [attachments, setAttachments] = useState<DbAttachment[]>([]);
   const [authBannerDismissed, setAuthBannerDismissed] = useState(false);
+  const [scanResult, setScanResult] = useState<MessageScanResult | null>(null);
   const attachmentsLoadedRef = useRef(false);
+  const scanStartedRef = useRef(false);
 
   const loadAttachments = async () => {
     if (attachmentsLoadedRef.current) return;
@@ -59,6 +63,47 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
     if (willExpand) {
       loadAttachments();
     }
+  };
+
+  // Scan links for phishing indicators once the message body is shown.
+  // Returns null when the feature is disabled or the sender is allowlisted.
+  useEffect(() => {
+    if (!expanded || scanStartedRef.current) return;
+    scanStartedRef.current = true;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { scanMessageLinks } = await import("@/services/phishing/phishingScanner");
+        const result = await scanMessageLinks(
+          accountId ?? message.account_id,
+          message.id,
+          message.body_html,
+          message.from_address,
+        );
+        if (!cancelled) setScanResult(result);
+      } catch (err) {
+        // Non-critical — the message still renders, just without link warnings
+        console.error("Phishing scan failed:", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleTrustSender = async () => {
+    const accId = accountId ?? message.account_id;
+    if (message.from_address) {
+      try {
+        const { addToPhishingAllowlist } = await import("@/services/db/phishingAllowlist");
+        await addToPhishingAllowlist(accId, message.from_address);
+      } catch (err) {
+        console.error("Failed to allowlist sender:", err);
+      }
+    }
+    setScanResult(null);
   };
 
   // Scan HTML body for cid: references — these images are already rendered inline
@@ -123,6 +168,10 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
             />
           )}
 
+          {scanResult?.showBanner && (
+            <PhishingBanner scanResult={scanResult} onTrustSender={handleTrustSender} />
+          )}
+
           {message.list_unsubscribe && (
             <UnsubscribeLink
               header={message.list_unsubscribe}
@@ -144,6 +193,7 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
               senderAllowlisted={senderAllowlisted}
               messageId={message.id}
               inlineAttachments={attachments.filter((a) => a.content_id)}
+              scanResult={scanResult}
             />
           ) : (
             <div className="py-8 text-center text-text-tertiary text-sm">Loading...</div>

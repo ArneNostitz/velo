@@ -1,10 +1,12 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, waitFor, screen } from "@testing-library/react";
+import { act } from "react";
 import { EmailRenderer } from "./EmailRenderer";
 import type { DbAttachment } from "@/services/db/attachments";
+import type { MessageScanResult } from "@/utils/phishingDetector";
 
 // Mock dependencies
 vi.mock("@tauri-apps/plugin-opener", () => ({
-  openUrl: vi.fn(),
+  openUrl: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/utils/sanitize", () => ({
@@ -51,6 +53,43 @@ function makeAttachment(overrides: Partial<DbAttachment> = {}): DbAttachment {
     local_path: null,
     ...overrides,
   };
+}
+
+
+function makeScanResult(
+  url: string,
+  riskScore: number,
+  overrides: Partial<MessageScanResult> = {},
+): MessageScanResult {
+  return {
+    messageId: "msg-1",
+    links: [
+      {
+        url,
+        displayText: "Click here",
+        riskScore,
+        riskLevel: riskScore >= 60 ? "high" : riskScore >= 40 ? "medium" : riskScore >= 20 ? "low" : "safe",
+        triggeredRules: riskScore
+          ? [{ ruleId: "test-rule", name: "Test Rule", score: riskScore, detail: "why it is suspicious" }]
+          : [],
+      },
+    ],
+    maxRiskScore: riskScore,
+    suspiciousLinkCount: riskScore >= 20 ? 1 : 0,
+    showBanner: riskScore >= 40,
+    scannedAt: Date.now(),
+    ...overrides,
+  };
+}
+
+/** Click the first anchor inside the rendered iframe document. */
+function clickIframeLink(container: HTMLElement): void {
+  const iframe = container.querySelector("iframe") as HTMLIFrameElement;
+  const doc = iframe.contentDocument!;
+  const anchor = doc.querySelector("a")!;
+  act(() => {
+    anchor.dispatchEvent(new doc.defaultView!.MouseEvent("click", { bubbles: true }));
+  });
 }
 
 describe("EmailRenderer", () => {
@@ -189,5 +228,103 @@ describe("EmailRenderer", () => {
     );
 
     expect(mockFetchAttachment).not.toHaveBeenCalled();
+  });
+
+  describe("phishing link confirmation", () => {
+    const html = '<a href="https://paypal-security.com/verify">Click here</a>';
+
+    it("opens a safe link directly without a confirmation dialog", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      const { container } = render(
+        <EmailRenderer html={html} text={null} scanResult={makeScanResult("https://paypal-security.com/verify", 0)} />,
+      );
+
+      clickIframeLink(container);
+
+      expect(openUrl).toHaveBeenCalledWith("https://paypal-security.com/verify");
+      expect(screen.queryByText(/Suspicious Link|High Risk Link/)).toBeNull();
+    });
+
+    it("shows the confirmation dialog instead of opening a flagged link", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      const { container } = render(
+        <EmailRenderer html={html} text={null} scanResult={makeScanResult("https://paypal-security.com/verify", 50)} />,
+      );
+
+      clickIframeLink(container);
+
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(screen.getByText("Suspicious Link")).toBeTruthy();
+      // The real destination is shown to the user before anything opens
+      expect(screen.getByText("https://paypal-security.com/verify")).toBeTruthy();
+      expect(screen.getByText("Test Rule")).toBeTruthy();
+    });
+
+    it("labels a high-risk link differently", async () => {
+      const { container } = render(
+        <EmailRenderer html={html} text={null} scanResult={makeScanResult("https://paypal-security.com/verify", 70)} />,
+      );
+
+      clickIframeLink(container);
+
+      expect(screen.getByText("High Risk Link")).toBeTruthy();
+    });
+
+    it("opens the link after the user confirms", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      const { container } = render(
+        <EmailRenderer html={html} text={null} scanResult={makeScanResult("https://paypal-security.com/verify", 50)} />,
+      );
+
+      clickIframeLink(container);
+      act(() => {
+        screen.getByText("Open Anyway").click();
+      });
+
+      await waitFor(() => {
+        expect(openUrl).toHaveBeenCalledWith("https://paypal-security.com/verify");
+      });
+    });
+
+    it("does not open the link when the user goes back", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      const { container } = render(
+        <EmailRenderer html={html} text={null} scanResult={makeScanResult("https://paypal-security.com/verify", 50)} />,
+      );
+
+      clickIframeLink(container);
+      act(() => {
+        screen.getByText("Go Back").click();
+      });
+
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(screen.queryByText("Suspicious Link")).toBeNull();
+    });
+
+    it("matches a flagged link even when the href is normalised by the browser", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      // Scan recorded the raw href without a trailing slash; anchor.href adds one
+      const { container } = render(
+        <EmailRenderer
+          html='<a href="https://evil.example">Click here</a>'
+          text={null}
+          scanResult={makeScanResult("https://evil.example", 50)}
+        />,
+      );
+
+      clickIframeLink(container);
+
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(screen.getByText("Suspicious Link")).toBeTruthy();
+    });
+
+    it("opens links normally when scanning is disabled (no scan result)", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      const { container } = render(<EmailRenderer html={html} text={null} scanResult={null} />);
+
+      clickIframeLink(container);
+
+      expect(openUrl).toHaveBeenCalledWith("https://paypal-security.com/verify");
+    });
   });
 });
