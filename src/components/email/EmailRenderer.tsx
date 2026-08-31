@@ -5,7 +5,45 @@ import { stripRemoteImages, hasBlockedImages } from "@/utils/imageBlocker";
 import { addToAllowlist } from "@/services/db/imageAllowlist";
 import { escapeHtml, sanitizeHtml } from "@/utils/sanitize";
 import { useUIStore } from "@/stores/uiStore";
+import { LinkConfirmDialog } from "./LinkConfirmDialog";
+import type { LinkAnalysis, MessageScanResult } from "@/utils/phishingDetector";
 import type { DbAttachment } from "@/services/db/attachments";
+
+/**
+ * Minimum risk score that forces a confirmation dialog before a link opens.
+ * 20 is the boundary between "safe" and "low" in phishingDetector.getRiskLevel.
+ */
+const CONFIRM_THRESHOLD = 20;
+
+/**
+ * Match a clicked anchor against the pre-computed scan results.
+ *
+ * scanLinksInHtml records the raw `href` attribute, while `anchor.href` is the
+ * browser-resolved (and normalised) form, so try the raw attribute first and
+ * fall back to comparing normalised URLs.
+ */
+function findAnalysis(
+  scanResult: MessageScanResult | null,
+  rawHref: string,
+  resolvedHref: string,
+): LinkAnalysis | null {
+  if (!scanResult) return null;
+
+  const direct = scanResult.links.find((l) => l.url === rawHref);
+  if (direct) return direct;
+
+  const normalise = (u: string): string | null => {
+    try {
+      return new URL(u).href;
+    } catch {
+      return null;
+    }
+  };
+  const target = normalise(resolvedHref) ?? normalise(rawHref);
+  if (!target) return null;
+
+  return scanResult.links.find((l) => normalise(l.url) === target) ?? null;
+}
 
 interface EmailRendererProps {
   html: string | null;
@@ -16,6 +54,8 @@ interface EmailRendererProps {
   senderAllowlisted?: boolean;
   messageId?: string | null;
   inlineAttachments?: DbAttachment[];
+  /** Result of the phishing link scan for this message, if scanning is enabled. */
+  scanResult?: MessageScanResult | null;
 }
 
 export function EmailRenderer({
@@ -27,12 +67,21 @@ export function EmailRenderer({
   senderAllowlisted = false,
   messageId,
   inlineAttachments,
+  scanResult,
 }: EmailRendererProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
   const rafRef = useRef<number>(0);
   const [overrideShow, setOverrideShow] = useState(false);
   const [cidMap, setCidMap] = useState<Map<string, string>>(new Map());
+  const [pendingLink, setPendingLink] = useState<LinkAnalysis | null>(null);
+
+  // Held in a ref so a scan arriving after render does not force the iframe
+  // document to be rewritten (which would reset scroll position and images).
+  const scanResultRef = useRef<MessageScanResult | null>(scanResult ?? null);
+  useEffect(() => {
+    scanResultRef.current = scanResult ?? null;
+  }, [scanResult]);
 
   const theme = useUIStore((s) => s.theme);
   const isDark = theme === "dark"
@@ -180,12 +229,22 @@ export function EmailRenderer({
     resizeObserver.observe(doc.body);
     observerRef.current = resizeObserver;
 
-    // Open links in external browser via Tauri opener
+    // Open links in external browser via Tauri opener. Links the phishing
+    // scanner flagged as anything above "safe" go through a confirmation
+    // dialog first, which shows the real destination before anything opens.
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const anchor = target.closest("a");
       if (anchor?.href) {
         e.preventDefault();
+
+        const rawHref = anchor.getAttribute("href")?.trim() ?? anchor.href;
+        const analysis = findAnalysis(scanResultRef.current, rawHref, anchor.href);
+        if (analysis && analysis.riskScore >= CONFIRM_THRESHOLD) {
+          setPendingLink(analysis);
+          return;
+        }
+
         openUrl(anchor.href).catch((err) => {
           console.error("Failed to open link:", err);
         });
@@ -203,6 +262,15 @@ export function EmailRenderer({
   const handleLoadImages = useCallback(() => {
     setOverrideShow(true);
   }, []);
+
+  const handleConfirmLink = useCallback(() => {
+    const url = pendingLink?.url;
+    setPendingLink(null);
+    if (!url) return;
+    openUrl(url).catch((err) => {
+      console.error("Failed to open link:", err);
+    });
+  }, [pendingLink]);
 
   const handleAlwaysLoad = useCallback(async () => {
     if (accountId && senderAddress) {
@@ -242,6 +310,13 @@ export function EmailRenderer({
         style={{ overflow: "hidden" }}
         title="Email content"
       />
+      {pendingLink && (
+        <LinkConfirmDialog
+          linkAnalysis={pendingLink}
+          onCancel={() => setPendingLink(null)}
+          onConfirm={handleConfirmLink}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { getDb } from "../db/connection";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { fetch } from "@tauri-apps/plugin-http";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentUnixTimestamp } from "@/utils/timestamp";
 import { normalizeEmail } from "@/utils/emailUtils";
 
@@ -57,15 +57,14 @@ export async function executeUnsubscribe(
   let method = "browser";
   let success = false;
 
-  // Method 1: RFC 8058 one-click HTTP POST
+  // Method 1: RFC 8058 one-click HTTP POST.
+  // Performed in Rust (`unsubscribe_one_click`) rather than through the HTTP
+  // plugin, so the frontend no longer needs a wildcard http:// capability.
+  // The command sends a fixed body and returns only whether it was accepted —
+  // the response body never reaches the webview.
   if (parsed.hasOneClick && parsed.httpUrl) {
     try {
-      const response = await fetch(parsed.httpUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new TextEncoder().encode("List-Unsubscribe=One-Click"),
-      });
-      success = response.ok || response.status === 200 || response.status === 202;
+      success = await invoke<boolean>("unsubscribe_one_click", { url: parsed.httpUrl });
       method = "http_post";
     } catch (err) {
       console.error("One-click unsubscribe failed, trying fallback:", err);

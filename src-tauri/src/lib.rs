@@ -8,6 +8,8 @@ use tauri_plugin_autostart::MacosLauncher;
 
 mod commands;
 mod imap;
+mod keychain;
+mod net;
 mod oauth;
 mod smtp;
 
@@ -90,6 +92,11 @@ pub fn run() {
             oauth::start_oauth_server,
             oauth::oauth_exchange_token,
             oauth::oauth_refresh_token,
+            keychain::keychain_get_key,
+            keychain::keychain_set_key,
+            keychain::keychain_delete_key,
+            keychain::keychain_available,
+            net::unsubscribe_one_click,
             set_tray_tooltip,
             close_splashscreen,
             open_devtools,
