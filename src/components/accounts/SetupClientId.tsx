@@ -1,16 +1,24 @@
 import { useState } from "react";
+import { ExternalLink } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { setSetting, setSecureSetting } from "@/services/db/settings";
 import { Modal } from "@/components/ui/Modal";
+
+const CREDENTIALS_URL = "https://console.cloud.google.com/apis/credentials";
+const REDIRECT_URI = "http://127.0.0.1:17248";
 
 interface SetupClientIdProps {
   onComplete: () => void;
   onCancel: () => void;
+  /** Stacking context — raise it when opened from another overlay */
+  zIndex?: string;
 }
 
-export function SetupClientId({ onComplete, onCancel }: SetupClientIdProps) {
+export function SetupClientId({ onComplete, onCancel, zIndex }: SetupClientIdProps) {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const handleSave = async () => {
     const trimmedId = clientId.trim();
@@ -27,26 +35,51 @@ export function SetupClientId({ onComplete, onCancel }: SetupClientIdProps) {
     }
   };
 
+  const handleCopyRedirect = async () => {
+    try {
+      await navigator.clipboard.writeText(REDIRECT_URI);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard unavailable — the URI is visible on screen anyway
+    }
+  };
+
   return (
-    <Modal isOpen={true} onClose={onCancel} title="Google API Setup" width="w-full max-w-lg">
+    <Modal
+      isOpen={true}
+      onClose={onCancel}
+      title="Google API Setup"
+      width="w-full max-w-lg"
+      zIndex={zIndex}
+    >
       <div className="p-4">
         <p className="text-text-secondary text-sm mb-4">
-          To connect Gmail accounts, you need a Google Cloud OAuth Client ID.
+          Gmail sign-in uses your own Google Cloud OAuth credentials. This is a
+          one-time setup — every Google account you add afterwards is a single click.
         </p>
 
+        <button
+          onClick={() => openUrl(CREDENTIALS_URL)}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 mb-4 text-sm bg-bg-secondary border border-border-primary rounded-lg text-text-primary hover:bg-bg-hover hover:border-accent transition-colors"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          Open Google Cloud credentials
+        </button>
+
         <ol className="text-text-secondary text-sm mb-4 space-y-1 list-decimal list-inside">
-          <li>
-            Go to the{" "}
-            <span className="text-accent">Google Cloud Console</span>
-          </li>
           <li>Create a project (or use an existing one)</li>
           <li>Enable the Gmail API</li>
-          <li>
-            Create OAuth 2.0 credentials (Web application type)
-          </li>
-          <li>
-            Add <code className="bg-bg-tertiary px-1 rounded text-xs">http://127.0.0.1:17248</code>{" "}
-            as an authorized redirect URI
+          <li>Create OAuth 2.0 credentials (Web application type)</li>
+          <li className="flex flex-wrap items-center gap-1">
+            <span>Add this authorized redirect URI:</span>
+            <button
+              onClick={handleCopyRedirect}
+              title="Copy to clipboard"
+              className="bg-bg-tertiary px-1.5 py-0.5 rounded text-xs font-mono text-text-primary hover:text-accent transition-colors"
+            >
+              {copied ? "Copied!" : REDIRECT_URI}
+            </button>
           </li>
           <li>Copy the Client ID and Client Secret below</li>
         </ol>

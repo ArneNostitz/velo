@@ -3,8 +3,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock dependencies needed for the hook to mount and dispatch events.
 // The hook reads store state and calls navigate/emailActions — only mock
 // what's needed for the three event-dispatch tests below.
+const uiState = {
+  inboxViewMode: "unified",
+  settingsOpen: false,
+  toggleSidebar: vi.fn(),
+  toggleSettings: vi.fn(() => {
+    uiState.settingsOpen = !uiState.settingsOpen;
+  }),
+};
 vi.mock("@/stores/uiStore", () => ({
-  useUIStore: { getState: () => ({ inboxViewMode: "unified", toggleSidebar: vi.fn() }) },
+  useUIStore: { getState: () => uiState },
 }));
 vi.mock("@/stores/threadStore", () => ({
   useThreadStore: {
@@ -33,6 +41,7 @@ vi.mock("@/stores/shortcutStore", () => ({
         "app.askInbox": "i",
         "app.commandPalette": "/",
         "app.toggleSidebar": "Ctrl+Shift+E",
+        "app.settings": "Ctrl+,",
         "app.help": "?",
       },
     }),
@@ -75,6 +84,7 @@ import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 describe("useKeyboardShortcuts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    uiState.settingsOpen = false;
   });
 
   it("dispatches velo-toggle-ask-inbox when 'i' is pressed", () => {
@@ -120,5 +130,54 @@ describe("useKeyboardShortcuts", () => {
     expect(listener).toHaveBeenCalledTimes(1);
 
     window.removeEventListener("velo-toggle-shortcuts-help", listener);
+  });
+
+  it("toggles the settings dialog on Ctrl+,", () => {
+    renderHook(() => useKeyboardShortcuts());
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: ",", ctrlKey: true, bubbles: true }),
+    );
+
+    expect(uiState.toggleSettings).toHaveBeenCalledTimes(1);
+    expect(uiState.settingsOpen).toBe(true);
+  });
+
+  it("toggles the settings dialog on Cmd+, (meta key)", () => {
+    renderHook(() => useKeyboardShortcuts());
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: ",", metaKey: true, bubbles: true }),
+    );
+
+    expect(uiState.toggleSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the settings dialog when the binding is pressed again", () => {
+    uiState.settingsOpen = true;
+    renderHook(() => useKeyboardShortcuts());
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: ",", metaKey: true, bubbles: true }),
+    );
+
+    expect(uiState.toggleSettings).toHaveBeenCalledTimes(1);
+    expect(uiState.settingsOpen).toBe(false);
+  });
+
+  it("suppresses mail shortcuts while the settings dialog is open", () => {
+    uiState.settingsOpen = true;
+    renderHook(() => useKeyboardShortcuts());
+
+    const listener = vi.fn();
+    window.addEventListener("velo-toggle-ask-inbox", listener);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "i", bubbles: true }),
+    );
+
+    expect(listener).not.toHaveBeenCalled();
+
+    window.removeEventListener("velo-toggle-ask-inbox", listener);
   });
 });

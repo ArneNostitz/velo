@@ -16,7 +16,6 @@ import { getSetting } from "./services/db/settings";
 import {
   startBackgroundSync,
   stopBackgroundSync,
-  syncAccount,
   triggerSync,
   onSyncStatus,
 } from "./services/gmail/syncManager";
@@ -58,6 +57,8 @@ import {
   stopUpdateChecker,
 } from "./services/updateManager";
 import { fetchSendAsAliases } from "./services/gmail/sendAs";
+import { refreshAfterAccountAdded } from "./services/accounts/accountLifecycle";
+import { SettingsDialog } from "./components/settings/SettingsDialog";
 import { getGmailClient } from "./services/gmail/tokenManager";
 import { invoke } from "@tauri-apps/api/core";
 import { DndProvider } from "./components/dnd/DndProvider";
@@ -491,38 +492,7 @@ export default function App() {
 
   const handleAddAccountSuccess = useCallback(async () => {
     setShowAddAccount(false);
-    const dbAccounts = await getAllAccounts();
-    const mapped = dbAccounts.map((a) => ({
-      id: a.id,
-      email: a.email,
-      displayName: a.display_name,
-      avatarUrl: a.avatar_url,
-      isActive: a.is_active === 1,
-      provider: a.provider,
-    }));
-    useAccountStore.getState().setAccounts(mapped);
-
-    // Re-initialize clients for the new account
-    await initializeClients();
-
-    const newest = mapped[mapped.length - 1];
-    if (newest) {
-      // Sync the new account immediately — before restarting the background
-      // timer so it doesn't queue behind delta syncs for existing accounts.
-      syncAccount(newest.id);
-
-      // Fetch send-as aliases in the background (non-blocking, skip CalDAV-only accounts)
-      if (newest.provider !== "caldav") {
-        getGmailClient(newest.id)
-          .then((client) => fetchSendAsAliases(client, newest.id))
-          .catch((err) => console.warn(`Failed to fetch send-as aliases for new account:`, err));
-      }
-    }
-
-    // Restart background sync for all accounts, but skip the immediate run
-    // since we already triggered the new account's sync above.
-    const activeIds = mapped.filter((a) => a.isActive).map((a) => a.id);
-    startBackgroundSync(activeIds, true);
+    await refreshAfterAccountAdded();
   }, []);
 
   if (!initialized) {
@@ -580,6 +550,8 @@ export default function App() {
           onSuccess={handleAddAccountSuccess}
         />
       )}
+
+      <SettingsDialog />
 
       <ErrorBoundary name="Composer">
         <Composer />

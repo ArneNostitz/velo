@@ -7,7 +7,7 @@ import { useAccountStore } from "@/stores/accountStore";
 import { getGmailClient } from "@/services/gmail/tokenManager";
 import { getTemplatesForAccount, type DbTemplate } from "@/services/db/templates";
 import { useActiveLabel } from "@/hooks/useRouteNavigation";
-import { navigateToLabel, navigateBack, getSelectedThreadId } from "@/router/navigate";
+import { navigateToLabel, navigateToSettings, navigateBack, getSelectedThreadId } from "@/router/navigate";
 
 interface Command {
   id: string;
@@ -89,6 +89,9 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     { id: "ask-ai", label: "Ask AI about your inbox", category: "AI", action: () => { onClose(); window.dispatchEvent(new Event("velo-toggle-ask-inbox")); } },
 
     // Settings
+    { id: "open-settings", label: "Open Settings", shortcut: "Ctrl+,", category: "Settings", action: () => { onClose(); navigateToSettings(); } },
+    { id: "open-settings-accounts", label: "Open Settings: Accounts", category: "Settings", action: () => { onClose(); navigateToSettings("accounts"); } },
+    { id: "add-account", label: "Add Email Account", category: "Settings", action: () => { onClose(); useUIStore.getState().requestAddAccount(); } },
     { id: "toggle-sidebar", label: "Toggle Sidebar", shortcut: "Ctrl+Shift+E", category: "Settings", action: () => { toggleSidebar(); onClose(); } },
     { id: "theme-light", label: "Switch to Light Theme", category: "Settings", action: () => { setTheme("light"); onClose(); } },
     { id: "theme-dark", label: "Switch to Dark Theme", category: "Settings", action: () => { setTheme("dark"); onClose(); } },

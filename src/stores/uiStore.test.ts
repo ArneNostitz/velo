@@ -18,6 +18,8 @@ describe("uiStore", () => {
       fontScale: "default",
       colorTheme: "indigo",
       inboxViewMode: "unified",
+      settingsOpen: false,
+      settingsTab: "general",
     });
   });
 
@@ -210,6 +212,56 @@ describe("uiStore", () => {
     useUIStore.getState().setReduceMotion(false);
     expect(setSetting).toHaveBeenCalledWith("reduce_motion", "false");
     expect(useUIStore.getState().reduceMotion).toBe(false);
+  });
+
+  describe("settings dialog", () => {
+    it("should be closed on the general tab by default", () => {
+      expect(useUIStore.getState().settingsOpen).toBe(false);
+      expect(useUIStore.getState().settingsTab).toBe("general");
+    });
+
+    it("openSettings should open on the requested tab", () => {
+      useUIStore.getState().openSettings("accounts");
+      expect(useUIStore.getState().settingsOpen).toBe(true);
+      expect(useUIStore.getState().settingsTab).toBe("accounts");
+    });
+
+    it("openSettings should keep the current tab when none is given", () => {
+      useUIStore.setState({ settingsTab: "ai" });
+      useUIStore.getState().openSettings();
+      expect(useUIStore.getState().settingsOpen).toBe(true);
+      expect(useUIStore.getState().settingsTab).toBe("ai");
+    });
+
+    it("openSettings should ignore an unknown tab", () => {
+      useUIStore.setState({ settingsTab: "people" });
+      useUIStore.getState().openSettings("nonsense");
+      expect(useUIStore.getState().settingsOpen).toBe(true);
+      expect(useUIStore.getState().settingsTab).toBe("people");
+    });
+
+    it("closeSettings should close without changing the tab", () => {
+      useUIStore.setState({ settingsOpen: true, settingsTab: "shortcuts" });
+      useUIStore.getState().closeSettings();
+      expect(useUIStore.getState().settingsOpen).toBe(false);
+      expect(useUIStore.getState().settingsTab).toBe("shortcuts");
+    });
+
+    it("toggleSettings should open when closed and close when open", () => {
+      useUIStore.getState().toggleSettings("accounts");
+      expect(useUIStore.getState().settingsOpen).toBe(true);
+      expect(useUIStore.getState().settingsTab).toBe("accounts");
+
+      useUIStore.getState().toggleSettings("general");
+      expect(useUIStore.getState().settingsOpen).toBe(false);
+      // Closing must not silently switch the tab under the user
+      expect(useUIStore.getState().settingsTab).toBe("accounts");
+    });
+
+    it("setSettingsTab should switch tabs", () => {
+      useUIStore.getState().setSettingsTab("mail-rules");
+      expect(useUIStore.getState().settingsTab).toBe("mail-rules");
+    });
   });
 
 });

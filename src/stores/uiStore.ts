@@ -10,6 +10,32 @@ export type DefaultReplyMode = "reply" | "replyAll";
 export type MarkAsReadBehavior = "instant" | "2s" | "manual";
 export type FontScale = "small" | "default" | "large" | "xlarge";
 export type InboxViewMode = "unified" | "split";
+export type SettingsTab =
+  | "general"
+  | "notifications"
+  | "composing"
+  | "mail-rules"
+  | "people"
+  | "accounts"
+  | "shortcuts"
+  | "ai"
+  | "about";
+
+export const SETTINGS_TABS: SettingsTab[] = [
+  "general",
+  "notifications",
+  "composing",
+  "mail-rules",
+  "people",
+  "accounts",
+  "shortcuts",
+  "ai",
+  "about",
+];
+
+export function isSettingsTab(value: string | undefined): value is SettingsTab {
+  return !!value && (SETTINGS_TABS as string[]).includes(value);
+}
 
 export interface SidebarNavItem {
   id: string;
@@ -36,6 +62,10 @@ interface UIState {
   isOnline: boolean;
   pendingOpsCount: number;
   isSyncingFolder: string | null;
+  settingsOpen: boolean;
+  settingsTab: SettingsTab;
+  /** Set when something asked for the add-account flow; SettingsPage consumes it */
+  settingsAddAccountPending: boolean;
   setTheme: (theme: Theme) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -59,6 +89,12 @@ interface UIState {
   setOnline: (online: boolean) => void;
   setPendingOpsCount: (count: number) => void;
   setSyncingFolder: (folder: string | null) => void;
+  openSettings: (tab?: string) => void;
+  closeSettings: () => void;
+  toggleSettings: (tab?: string) => void;
+  setSettingsTab: (tab: SettingsTab) => void;
+  requestAddAccount: () => void;
+  clearAddAccountRequest: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -81,6 +117,9 @@ export const useUIStore = create<UIState>((set) => ({
   isOnline: true,
   pendingOpsCount: 0,
   isSyncingFolder: null,
+  settingsOpen: false,
+  settingsTab: "general",
+  settingsAddAccountPending: false,
 
   setTheme: (theme) => set({ theme }),
   toggleSidebar: () =>
@@ -156,4 +195,18 @@ export const useUIStore = create<UIState>((set) => ({
   setOnline: (isOnline) => set({ isOnline }),
   setPendingOpsCount: (pendingOpsCount) => set({ pendingOpsCount }),
   setSyncingFolder: (isSyncingFolder) => set({ isSyncingFolder }),
+  openSettings: (tab) =>
+    set(isSettingsTab(tab) ? { settingsOpen: true, settingsTab: tab } : { settingsOpen: true }),
+  closeSettings: () => set({ settingsOpen: false }),
+  toggleSettings: (tab) =>
+    set((state) => {
+      if (state.settingsOpen) return { settingsOpen: false };
+      return isSettingsTab(tab)
+        ? { settingsOpen: true, settingsTab: tab }
+        : { settingsOpen: true };
+    }),
+  setSettingsTab: (settingsTab) => set({ settingsTab }),
+  requestAddAccount: () =>
+    set({ settingsOpen: true, settingsTab: "accounts", settingsAddAccountPending: true }),
+  clearAddAccountRequest: () => set({ settingsAddAccountPending: false }),
 }));

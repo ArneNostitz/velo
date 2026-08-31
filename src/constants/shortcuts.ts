@@ -48,6 +48,7 @@ export const SHORTCUTS: ShortcutCategory[] = [
   ]},
   { category: "App", items: [
     { id: "app.commandPalette", keys: "/", desc: "Command palette" },
+    { id: "app.settings", keys: "Ctrl+,", desc: "Open settings" },
     { id: "app.toggleSidebar", keys: "Ctrl+Shift+E", desc: "Toggle sidebar" },
     { id: "app.send", keys: "Ctrl+Enter", desc: "Send email" },
     { id: "app.askInbox", keys: "i", desc: "Ask AI about your inbox" },

@@ -9,7 +9,7 @@ interface ModalProps {
   children: ReactNode;
   width?: string;
   /** Custom z-index class (default: "z-50") */
-  zIndex?: string;
+  zIndex?: string | undefined;
   /** Additional classes on the panel container */
   panelClassName?: string;
   /** Replace the default header entirely */
@@ -22,10 +22,11 @@ export function Modal({
   title,
   children,
   width = "w-72",
-  zIndex = "z-50",
+  zIndex: zIndexProp,
   panelClassName,
   renderHeader,
 }: ModalProps) {
+  const zIndex = zIndexProp ?? "z-50";
   const nodeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,7 +40,7 @@ export function Modal({
 
   return createPortal(
     <CSSTransition in={isOpen} timeout={150} classNames="modal" unmountOnExit nodeRef={nodeRef}>
-      <div ref={nodeRef} className={`fixed inset-0 ${zIndex} flex items-center justify-center`} onContextMenu={(e) => e.stopPropagation()}>
+      <div ref={nodeRef} data-modal-overlay className={`fixed inset-0 ${zIndex} flex items-center justify-center`} onContextMenu={(e) => e.stopPropagation()}>
         <div className="absolute inset-0 bg-black/20 glass-backdrop" onClick={onClose} />
         <div
           className={`relative bg-bg-primary border border-border-primary rounded-lg glass-modal ${width}${panelClassName ? ` ${panelClassName}` : ""}`}

@@ -7,6 +7,9 @@ vi.mock("@/services/db/settings", () => ({
   setSecureSetting: vi.fn().mockResolvedValue(undefined),
 }));
 
+const openUrl = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
+
 describe("SetupClientId", () => {
   it("disables Save button when both fields are empty", () => {
     render(<SetupClientId onComplete={() => {}} onCancel={() => {}} />);
@@ -66,5 +69,18 @@ describe("SetupClientId", () => {
     render(<SetupClientId onComplete={() => {}} onCancel={onCancel} />);
     fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("opens the Google Cloud credentials page in the browser", () => {
+    render(<SetupClientId onComplete={() => {}} onCancel={() => {}} />);
+    fireEvent.click(screen.getByText("Open Google Cloud credentials"));
+    expect(openUrl).toHaveBeenCalledWith(
+      "https://console.cloud.google.com/apis/credentials",
+    );
+  });
+
+  it("shows the redirect URI the user has to authorize", () => {
+    render(<SetupClientId onComplete={() => {}} onCancel={() => {}} />);
+    expect(screen.getByText("http://127.0.0.1:17248")).toBeInTheDocument();
   });
 });

@@ -117,9 +117,9 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         title: "Add your email account",
         summary: "Connect a Gmail or IMAP/SMTP account to start using the app.",
         description:
-          "Click the account switcher at the top of the sidebar to add an account. For Gmail, follow the OAuth sign-in flow using your own Google Cloud credentials. For other providers (Outlook, Yahoo, iCloud, Fastmail, etc.), choose 'Add IMAP Account' and enter your email and password — server settings are auto-discovered for popular providers. You can add multiple accounts of any type and switch between them instantly. Each account syncs independently with its own inbox, labels, and settings.",
+          "Open Settings > Accounts and click 'Add account' (the account switcher at the top of the sidebar does the same thing). 'Continue with Google' opens your browser for the Gmail OAuth sign-in and adds the account when you come back. For other providers, pick a tile — Outlook, iCloud, Yahoo, Fastmail, Proton, GMX, Zoho, AOL — and the IMAP wizard opens with that provider's servers and auth method already filled in. Anything else goes through 'Other mail account (IMAP/SMTP)', where servers are auto-discovered from your address where possible. You can add multiple accounts of any type and switch between them instantly. Each account syncs independently with its own inbox, labels, and settings.",
         tips: [
-          { text: "The account switcher is always visible at the top of the sidebar." },
+          { text: "Open settings from anywhere", shortcut: "Ctrl+," },
           { text: "Gmail accounts use OAuth; IMAP accounts use password or app-password." },
           { text: "Each account has its own labels, filters, and sync state." },
           { text: "Remove or re-authorize accounts in Settings > Accounts." },
@@ -487,6 +487,7 @@ export const HELP_CATEGORIES: HelpCategory[] = [
           { text: "Actions: e (archive), s (star), # (trash), r (reply)" },
           { text: "Two-key: g then i (Inbox), g then s (Starred), g then t (Sent)" },
           { text: "Ask Inbox (AI)", shortcut: "i" },
+          { text: "Open settings", shortcut: "Ctrl+," },
           { text: "Sync current folder", shortcut: "F5" },
           { text: "Customize all shortcuts in Settings > Shortcuts." },
           { text: "Shortcuts are disabled in text inputs to prevent conflicts." },

@@ -7,9 +7,9 @@ import {
 import App from "@/App";
 import { MailLayout } from "@/components/layout/MailLayout";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { useUIStore } from "@/stores/uiStore";
 
 // Lazy-load heavy pages — these include many sub-components and service imports
-const SettingsPage = lazy(() => import("@/components/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const HelpPage = lazy(() => import("@/components/help/HelpPage").then((m) => ({ default: m.HelpPage })));
 const CalendarPage = lazy(() => import("@/components/calendar/CalendarPage").then((m) => ({ default: m.CalendarPage })));
 const TasksPage = lazy(() => import("@/components/tasks/TasksPage").then((m) => ({ default: m.TasksPage })));
@@ -54,16 +54,6 @@ function MailPage() {
   return (
     <ErrorBoundary name="MailLayout">
       <MailLayout />
-    </ErrorBoundary>
-  );
-}
-
-function SettingsTabPage() {
-  return (
-    <ErrorBoundary name="SettingsPage">
-      <Suspense fallback={<div className="flex-1 flex items-center justify-center text-text-tertiary text-sm">Loading settings...</div>}>
-        <SettingsPage />
-      </Suspense>
     </ErrorBoundary>
   );
 }
@@ -130,20 +120,26 @@ export const smartFolderThreadRoute = createRoute({
   path: "thread/$threadId",
 });
 
-// ---------- /settings (redirect to /settings/general) ----------
+// ---------- /settings (+ /settings/$tab) ----------
+// Settings renders as a dialog over the mail UI rather than as its own page.
+// These routes only exist so external deep links keep working: they open the
+// dialog on the requested tab and hand the user back to the inbox behind it.
 const settingsIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "settings",
   beforeLoad: () => {
-    throw redirect({ to: "/settings/$tab", params: { tab: "general" } });
+    useUIStore.getState().openSettings("general");
+    throw redirect({ to: "/mail/$label", params: { label: "inbox" } });
   },
 });
 
-// ---------- /settings/$tab ----------
 export const settingsTabRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "settings/$tab",
-  component: SettingsTabPage,
+  beforeLoad: ({ params }) => {
+    useUIStore.getState().openSettings(params.tab);
+    throw redirect({ to: "/mail/$label", params: { label: "inbox" } });
+  },
 });
 
 // ---------- /attachments ----------

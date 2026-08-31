@@ -103,6 +103,17 @@ export function useKeyboardShortcuts() {
       const keyMap = useShortcutStore.getState().keyMap;
       const { singleKey, twoKeySequences, ctrlCombos } = getCachedReverseMap(keyMap);
 
+      // While the settings dialog is open, only its own toggle binding runs —
+      // mail shortcuts (j/k/e/#/...) must not fire behind the overlay.
+      if (useUIStore.getState().settingsOpen) {
+        const settingsBinding = keyMap["app.settings"] ?? "Ctrl+,";
+        if (matchesKey(settingsBinding, e)) {
+          e.preventDefault();
+          useUIStore.getState().toggleSettings();
+        }
+        return;
+      }
+
       // Ctrl/Cmd shortcuts work everywhere
       if (e.ctrlKey || e.metaKey) {
         for (const [actionId, binding] of ctrlCombos) {
@@ -261,6 +272,9 @@ async function executeAction(actionId: string): Promise<void> {
       if (useUIStore.getState().inboxViewMode === "split") {
         navigateToLabel("inbox", { category: "Newsletters" });
       }
+      break;
+    case "app.settings":
+      useUIStore.getState().toggleSettings();
       break;
     case "nav.goTasks":
       navigateToLabel("tasks");

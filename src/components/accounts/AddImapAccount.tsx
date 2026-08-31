@@ -24,10 +24,22 @@ import {
 import { getOAuthProvider } from "@/services/oauth/providers";
 import { startProviderOAuthFlow } from "@/services/oauth/oauthFlow";
 
+/** A provider chosen up front in the account picker (e.g. iCloud, Fastmail). */
+export interface ImapPreset {
+  id: string;
+  name: string;
+  /** Representative domain used to look up the well-known server settings */
+  domain: string;
+}
+
 interface AddImapAccountProps {
   onClose: () => void;
   onSuccess: () => void;
   onBack: () => void;
+  /** Pre-fill servers and auth mode for a provider the user already picked */
+  preset?: ImapPreset | null;
+  /** Stacking context — raise it when opened from another overlay */
+  zIndex?: string;
 }
 
 type Step = "basic" | "imap" | "smtp" | "test";
@@ -115,22 +127,51 @@ function mapSecurity(security: string): string {
   return security;
 }
 
+/**
+ * Build the starting form state for a pre-picked provider, so the wizard opens
+ * with the right servers instead of empty host fields.
+ */
+function formStateForPreset(preset: ImapPreset | null | undefined): FormState {
+  if (!preset) return initialFormState;
+  const result = discoverSettings(`user@${preset.domain}`);
+  if (!result) return initialFormState;
+  return {
+    ...initialFormState,
+    imapHost: result.settings.imapHost,
+    imapPort: result.settings.imapPort,
+    imapSecurity: result.settings.imapSecurity,
+    smtpHost: result.settings.smtpHost,
+    smtpPort: result.settings.smtpPort,
+    smtpSecurity: result.settings.smtpSecurity,
+    acceptInvalidCerts: result.acceptInvalidCerts ?? false,
+    authMode: result.authMethods[0] === "oauth2" ? "oauth2" : "password",
+    oauthProvider: result.oauthProviderId ?? null,
+  };
+}
+
 export function AddImapAccount({
   onClose,
   onSuccess,
   onBack,
+  preset,
+  zIndex,
 }: AddImapAccountProps) {
+  const presetDiscovery = preset ? discoverSettings(`user@${preset.domain}`) : null;
   const [currentStep, setCurrentStep] = useState<Step>("basic");
-  const [form, setForm] = useState<FormState>(initialFormState);
+  const [form, setForm] = useState<FormState>(() => formStateForPreset(preset));
   const [imapTest, setImapTest] = useState<TestStatus>({ state: "idle" });
   const [smtpTest, setSmtpTest] = useState<TestStatus>({ state: "idle" });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [discoveryApplied, setDiscoveryApplied] = useState(false);
+  const [discoveryApplied, setDiscoveryApplied] = useState(!!presetDiscovery);
   const [oauthConnecting, setOauthConnecting] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
-  const [detectedAuthMethods, setDetectedAuthMethods] = useState<AuthMode[]>(["password"]);
-  const [detectedOAuthProviderId, setDetectedOAuthProviderId] = useState<string | null>(null);
+  const [detectedAuthMethods, setDetectedAuthMethods] = useState<AuthMode[]>(
+    presetDiscovery?.authMethods ?? ["password"],
+  );
+  const [detectedOAuthProviderId, setDetectedOAuthProviderId] = useState<string | null>(
+    presetDiscovery?.oauthProviderId ?? null,
+  );
 
   const addAccount = useAccountStore((s) => s.addAccount);
 
@@ -901,8 +942,9 @@ export function AddImapAccount({
     <Modal
       isOpen={true}
       onClose={onClose}
-      title="Add IMAP/SMTP Account"
+      title={preset ? `Set up ${preset.name}` : "Add IMAP/SMTP Account"}
       width="w-full max-w-lg"
+      zIndex={zIndex}
     >
       <div className="p-4" onKeyDown={handleKeyDown}>
         {renderStepIndicator()}

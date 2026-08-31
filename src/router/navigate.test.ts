@@ -24,6 +24,7 @@ import {
   getActiveLabel,
   getSelectedThreadId,
 } from "./navigate";
+import { useUIStore } from "@/stores/uiStore";
 
 describe("navigate", () => {
   beforeEach(() => {
@@ -51,12 +52,12 @@ describe("navigate", () => {
       });
     });
 
-    it("should navigate to settings", () => {
+    it("should open the settings dialog instead of routing", () => {
+      useUIStore.setState({ settingsOpen: false, settingsTab: "ai" });
       navigateToLabel("settings");
-      expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/settings/$tab",
-        params: { tab: "general" },
-      });
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(useUIStore.getState().settingsOpen).toBe(true);
+      expect(useUIStore.getState().settingsTab).toBe("general");
     });
 
     it("should navigate to calendar", () => {
@@ -168,20 +169,30 @@ describe("navigate", () => {
   });
 
   describe("navigateToSettings", () => {
-    it("should navigate to settings with default tab", () => {
+    it("should open the dialog on the default tab", () => {
+      useUIStore.setState({ settingsOpen: false, settingsTab: "ai" });
       navigateToSettings();
-      expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/settings/$tab",
-        params: { tab: "general" },
-      });
+      expect(useUIStore.getState().settingsOpen).toBe(true);
+      expect(useUIStore.getState().settingsTab).toBe("general");
     });
 
-    it("should navigate to settings with specific tab", () => {
+    it("should open the dialog on a specific tab", () => {
+      useUIStore.setState({ settingsOpen: false, settingsTab: "general" });
       navigateToSettings("ai");
-      expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/settings/$tab",
-        params: { tab: "ai" },
-      });
+      expect(useUIStore.getState().settingsOpen).toBe(true);
+      expect(useUIStore.getState().settingsTab).toBe("ai");
+    });
+
+    it("should leave the current location untouched", () => {
+      navigateToSettings("accounts");
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it("should ignore an unknown tab and keep the current one", () => {
+      useUIStore.setState({ settingsOpen: false, settingsTab: "people" });
+      navigateToSettings("not-a-tab");
+      expect(useUIStore.getState().settingsOpen).toBe(true);
+      expect(useUIStore.getState().settingsTab).toBe("people");
     });
   });
 

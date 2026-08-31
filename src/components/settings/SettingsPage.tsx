@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams } from "@tanstack/react-router";
-import { useUIStore } from "@/stores/uiStore";
-import { navigateToLabel, navigateToSettings } from "@/router/navigate";
+import { useUIStore, type SettingsTab } from "@/stores/uiStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { getSetting, setSetting, getSecureSetting, setSecureSetting } from "@/services/db/settings";
 import { PROVIDER_MODELS } from "@/services/ai/types";
@@ -14,7 +12,8 @@ import {
   DEFAULT_SHORTCUT,
 } from "@/services/globalShortcut";
 import {
-  ArrowLeft,
+  X,
+  Plus,
   RefreshCw,
   Settings,
   PenLine,
@@ -60,8 +59,8 @@ import type { SidebarNavItem } from "@/stores/uiStore";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import appIcon from "@/assets/icon.png";
-
-type SettingsTab = "general" | "notifications" | "composing" | "mail-rules" | "people" | "accounts" | "shortcuts" | "ai" | "about";
+import { AddAccount } from "@/components/accounts/AddAccount";
+import { refreshAfterAccountAdded } from "@/services/accounts/accountLifecycle";
 
 const tabs: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "General", icon: Settings },
@@ -98,9 +97,20 @@ export function SettingsPage() {
   const setReduceMotion = useUIStore((s) => s.setReduceMotion);
   const accounts = useAccountStore((s) => s.accounts);
   const removeAccountFromStore = useAccountStore((s) => s.removeAccount);
-  const { tab } = useParams({ strict: false }) as { tab?: string };
-  const activeTab = (tab && tabs.some((t) => t.id === tab) ? tab : "general") as SettingsTab;
-  const setActiveTab = (t: SettingsTab) => navigateToSettings(t);
+  const activeTab = useUIStore((s) => s.settingsTab);
+  const setActiveTab = useUIStore((s) => s.setSettingsTab);
+  const closeSettings = useUIStore((s) => s.closeSettings);
+  const keyMap = useShortcutStore((s) => s.keyMap);
+  const addAccountPending = useUIStore((s) => s.settingsAddAccountPending);
+  const clearAddAccountRequest = useUIStore((s) => s.clearAddAccountRequest);
+  const [showAddAccount, setShowAddAccount] = useState(false);
+
+  // Something outside settings (command palette, sidebar) asked to add an account
+  useEffect(() => {
+    if (!addAccountPending) return;
+    setShowAddAccount(true);
+    clearAddAccountRequest();
+  }, [addAccountPending, clearAddAccountRequest]);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [undoSendDelay, setUndoSendDelay] = useState("5");
   const [clientId, setClientId] = useState("");
@@ -356,23 +366,27 @@ export function SettingsPage() {
   const activeTabDef = tabs.find((t) => t.id === activeTab);
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-bg-primary/50">
+    <div className="flex flex-col h-full min-w-0 overflow-hidden bg-bg-primary/50">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 border-b border-border-primary shrink-0 bg-bg-primary/60 backdrop-blur-sm">
-        <button
-          onClick={() => navigateToLabel("inbox")}
-          className="p-1.5 -ml-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
-          title="Back to Inbox"
-        >
-          <ArrowLeft size={18} />
-        </button>
         <h1 className="text-base font-semibold text-text-primary">Settings</h1>
+        <kbd className="text-[0.625rem] text-text-tertiary bg-bg-tertiary px-1.5 py-0.5 rounded font-mono">
+          {keyMap["app.settings"] ?? "Ctrl+,"}
+        </kbd>
+        <button
+          onClick={closeSettings}
+          className="ml-auto p-1.5 -mr-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+          title="Close settings (Esc)"
+          aria-label="Close settings"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       {/* Body: sidebar nav + content */}
       <div className="flex flex-1 min-h-0">
         {/* Vertical tab sidebar */}
-        <nav className="w-48 border-r border-border-primary py-2 overflow-y-auto shrink-0 bg-bg-primary/30">
+        <nav className="w-44 border-r border-border-primary py-2 overflow-y-auto shrink-0 bg-bg-primary/30">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -395,7 +409,7 @@ export function SettingsPage() {
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl px-8 py-6">
+          <div className="max-w-2xl px-7 py-6">
             {/* Tab title */}
             {activeTabDef && (
               <div className="mb-6">
@@ -846,11 +860,32 @@ export function SettingsPage() {
 
               {activeTab === "accounts" && (
                 <>
-                  <Section title="Mail Accounts">
+                  <Section
+                    title="Mail Accounts"
+                    action={
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon={<Plus size={14} />}
+                        onClick={() => setShowAddAccount(true)}
+                      >
+                        Add account
+                      </Button>
+                    }
+                  >
                     {accounts.filter((a) => a.provider !== "caldav").length === 0 ? (
-                      <p className="text-sm text-text-tertiary">
-                        No mail accounts connected
-                      </p>
+                      <button
+                        onClick={() => setShowAddAccount(true)}
+                        className="w-full flex flex-col items-center gap-2 px-4 py-8 rounded-lg border border-dashed border-border-primary text-center hover:border-accent hover:bg-bg-hover transition-colors"
+                      >
+                        <Mail className="w-6 h-6 text-text-tertiary" />
+                        <span className="text-sm font-medium text-text-primary">
+                          Connect your first mailbox
+                        </span>
+                        <span className="text-xs text-text-tertiary">
+                          Sign in with Google, or set up any IMAP/SMTP provider
+                        </span>
+                      </button>
                     ) : (
                       <div className="space-y-2">
                         {accounts.filter((a) => a.provider !== "caldav").map((account) => {
@@ -1401,6 +1436,17 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {showAddAccount && (
+        <AddAccount
+          zIndex="z-[60]"
+          onClose={() => setShowAddAccount(false)}
+          onSuccess={async () => {
+            setShowAddAccount(false);
+            await refreshAfterAccountAdded();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -2142,15 +2188,21 @@ function SidebarNavEditor() {
 function Section({
   title,
   children,
+  action,
 }: {
   title: string;
   children: React.ReactNode;
+  /** Optional control rendered on the right of the section heading */
+  action?: React.ReactNode;
 }) {
   return (
     <div>
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-3">
-        {title}
-      </h3>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          {title}
+        </h3>
+        {action}
+      </div>
       <div className="space-y-3">{children}</div>
     </div>
   );

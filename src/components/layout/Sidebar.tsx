@@ -210,6 +210,7 @@ export function Sidebar({ collapsed, onAddAccount }: SidebarProps) {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const sidebarNavConfig = useUIStore((s) => s.sidebarNavConfig);
   const taskIncompleteCount = useTaskStore((s) => s.incompleteCount);
+  const settingsOpen = useUIStore((s) => s.settingsOpen);
   const inboxViewMode = useUIStore((s) => s.inboxViewMode);
   const setInboxViewMode = useUIStore((s) => s.setInboxViewMode);
   const activeCategory = useActiveCategory();
@@ -608,11 +609,11 @@ export function Sidebar({ collapsed, onAddAccount }: SidebarProps) {
           className={`flex items-center text-sm rounded-md transition-colors ${
             collapsed ? "p-2 justify-center" : "gap-3 flex-1 px-3 py-2 text-left"
           } ${
-            activeLabel === "settings"
+            settingsOpen
               ? "bg-accent/10 text-accent font-medium"
               : "text-sidebar-text hover:bg-sidebar-hover"
           }`}
-          title="Settings"
+          title="Settings (Ctrl+,)"
         >
           <Settings size={18} className="shrink-0" />
           {!collapsed && <span>Settings</span>}

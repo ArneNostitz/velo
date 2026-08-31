@@ -55,6 +55,7 @@ Tauri v2 desktop app: Rust backend + React 19 frontend communicating via Tauri I
    - `followup/` — `followupManager.ts` checks for follow-up reminders (threads with no reply after user-set delay).
    - `bundles/` — `bundleManager.ts` manages newsletter bundling with delivery schedules.
    - `notifications/` — `notificationManager.ts` provides OS notifications via tauri-plugin-notification with VIP sender filtering.
+   - `accounts/` — `accountLifecycle.ts` (`refreshAfterAccountAdded()`) reloads accounts, re-initializes provider clients, syncs the new account, and restarts background sync. Shared by every add-account entry point.
    - `contacts/` — `gravatar.ts` fetches Gravatar profile images for contacts.
    - `attachments/` — `cacheManager.ts` handles local attachment caching with size limits. `preCacheManager.ts` background pre-caches recent small attachments (<5MB, 7 days) every 15 minutes.
    - `unsubscribe/` — `unsubscribeManager.ts` handles one-click unsubscribe (RFC 8058 List-Unsubscribe-Post and mailto: fallback).
@@ -73,7 +74,7 @@ Tauri v2 desktop app: Rust backend + React 19 frontend communicating via Tauri I
 - `email/` — ThreadView, ThreadCard, MessageItem, EmailRenderer, ActionBar, AttachmentList, SnoozeDialog, ContactSidebar, FollowUpDialog, InlineAttachmentPreview, InlineReply, SmartReplySuggestions, ThreadSummary, AuthBadge, AuthWarningBanner, PhishingBanner, LinkConfirmDialog, CategoryTabs, MoveToFolderDialog
 - `composer/` — Composer (TipTap v3 rich text editor), AddressInput, EditorToolbar, AttachmentPicker, ScheduleSendDialog, SignatureSelector, TemplatePicker, UndoSendToast, AiAssistPanel, FromSelector
 - `search/` — CommandPalette, SearchBar, ShortcutsHelp, AskInbox
-- `settings/` — SettingsPage, FilterEditor, LabelEditor, SignatureEditor, TemplateEditor, ContactEditor, SubscriptionManager, QuickStepEditor, SmartFolderEditor
+- `settings/` — SettingsDialog (modal shell, opens on `Ctrl/Cmd+,`), SettingsPage, FilterEditor, LabelEditor, SignatureEditor, TemplateEditor, ContactEditor, SubscriptionManager, QuickStepEditor, SmartFolderEditor
 - `accounts/` — AddAccount, AddImapAccount, AccountSwitcher, SetupClientId
 - `calendar/` — CalendarPage, CalendarReauthBanner, CalendarToolbar, DayView, WeekView, MonthView, EventCard, EventCreateModal
 - `attachments/` — AttachmentLibrary, AttachmentGridItem, AttachmentListItem
@@ -131,6 +132,7 @@ Custom window events: `velo-sync-done`, `velo-toggle-command-palette`, `velo-tog
 | `/` or `Ctrl+K` | Command palette / search |
 | `?` | Shortcuts help |
 | `Escape` | Close composer → clear multi-select → deselect thread (hierarchical) |
+| `Ctrl+,` | Open/close settings |
 | `Ctrl+Shift+E` | Toggle sidebar |
 | `Ctrl+Enter` | Send email (in composer) |
 | `Ctrl+A` | Select all threads |
@@ -167,7 +169,7 @@ Tailwind CSS v4 — uses `@import "tailwindcss"`, `@theme {}` for custom propert
 
 Vitest + jsdom. Setup file: `src/test/setup.ts` (imports `@testing-library/jest-dom/vitest`). Config: `globals: true` (no imports needed for `describe`, `it`, `expect`). Tests are colocated with source files (e.g., `uiStore.test.ts` next to `uiStore.ts`). Zustand test pattern: `useStore.setState()` in beforeEach, assert via `.getState()`.
 
-132 test files across stores (8), services (70), utils (14), components (32), constants (3), router (1), hooks (2), and config (1).
+134 test files across stores (8), services (70), utils (14), components (33), constants (3), router (1), hooks (2), and config (1).
 
 ## Database
 
@@ -214,6 +216,7 @@ Key tables (37 total): `accounts` (with `provider` "gmail_api"|"imap", IMAP/SMTP
 - **Auth display**: SPF/DKIM/DMARC parsed from `Authentication-Results` header. Aggregate verdict: pass/fail/warning/unknown. Stored in `messages.auth_results` column
 - **Mute threads**: Sets `is_muted` flag, auto-archives. Muted threads suppressed from notifications during delta sync
 - **Send-as aliases**: Fetched from Gmail `/settings/sendAs` API on account init (Gmail only). `FromSelector` shown in composer when account has multiple aliases
+- **Settings dialog**: Settings is a modal overlay (`SettingsDialog`) driven by `uiStore.settingsOpen`/`settingsTab`, not a route — `Ctrl/Cmd+,` toggles it from anywhere and the mail view stays mounted behind it. `/settings/$tab` still resolves for external deep links: it opens the dialog on that tab and redirects to the inbox. Use `navigateToSettings(tab)` to open it; never route to `/settings` from inside the app
 - **Smart folders**: Saved search queries with dynamic tokens (`__LAST_7_DAYS__`, `__LAST_30_DAYS__`, `__TODAY__`). Managed via `smartFolderStore`
 - **Quick steps**: Custom action chains with 18 action types. Executor in `services/quickSteps/executor.ts`
 - **Split inbox**: Category tabs (Primary/Updates/Promotions/Social/Newsletters) with backfill service for existing threads

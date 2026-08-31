@@ -1,4 +1,5 @@
 import { router } from "./index";
+import { useUIStore } from "@/stores/uiStore";
 
 /** Known system labels that map to /mail/$label */
 const SYSTEM_LABELS = new Set([
@@ -14,7 +15,8 @@ export function navigateToLabel(
   opts?: { category?: string; threadId?: string },
 ): void {
   if (label === "settings") {
-    router.navigate({ to: "/settings/$tab", params: { tab: "general" } });
+    // Settings is a dialog, not a route — open it over the current view.
+    useUIStore.getState().toggleSettings("general");
     return;
   }
 
@@ -136,10 +138,13 @@ export function navigateToThread(threadId: string): void {
 }
 
 /**
- * Navigate to settings with an optional tab.
+ * Open the settings dialog on an optional tab.
+ *
+ * Settings is an overlay rather than a route, so this leaves the current
+ * location untouched — the user returns to the same mail view on close.
  */
 export function navigateToSettings(tab = "general"): void {
-  router.navigate({ to: "/settings/$tab", params: { tab } });
+  useUIStore.getState().openSettings(tab);
 }
 
 /**

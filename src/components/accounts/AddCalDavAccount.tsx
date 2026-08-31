@@ -14,6 +14,8 @@ import { useAccountStore } from "@/stores/accountStore";
 import { discoverCalDavSettings, testCalDavConnection } from "@/services/calendar/autoDiscovery";
 
 interface AddCalDavAccountProps {
+  /** Stacking context — raise it when opened from another overlay */
+  zIndex?: string;
   onClose: () => void;
   onSuccess: () => void;
   onBack: () => void;
@@ -21,7 +23,7 @@ interface AddCalDavAccountProps {
 
 type Step = "basic" | "server" | "test" | "done";
 
-export function AddCalDavAccount({ onClose, onSuccess, onBack }: AddCalDavAccountProps) {
+export function AddCalDavAccount({ onClose, onSuccess, onBack, zIndex }: AddCalDavAccountProps) {
   const addAccount = useAccountStore((s) => s.addAccount);
   const [step, setStep] = useState<Step>("basic");
 
@@ -96,7 +98,7 @@ export function AddCalDavAccount({ onClose, onSuccess, onBack }: AddCalDavAccoun
   }, [email, displayName, caldavUrl, username, password, addAccount]);
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="Add CalDAV Calendar" width="w-full max-w-md">
+    <Modal isOpen={true} onClose={onClose} title="Add CalDAV Calendar" width="w-full max-w-md" zIndex={zIndex}>
       <div className="p-4">
         {step === "basic" && (
           <div className="space-y-4">
