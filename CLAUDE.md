@@ -190,7 +190,7 @@ Key tables (37 total): `accounts` (with `provider` "gmail_api"|"imap", IMAP/SMTP
 - **IMAP security mapping**: UI shows "SSL/TLS", "STARTTLS", "None" but config stores "ssl", "starttls", "none"
 - **IMAP UIDVALIDITY**: If UIDVALIDITY changes on a folder, all cached UIDs are invalid — triggers full resync of that folder
 - **IMAP folders vs labels**: IMAP has no native labels; folders are mapped to Gmail-style labels via `folderMapper.ts` using special-use flags and well-known name matching
-- **IMAP passwords**: Encrypted with AES-256-GCM in SQLite (same crypto as OAuth tokens)
+- **IMAP passwords**: Encrypted with AES-256-GCM in SQLite (same crypto as OAuth tokens). The key is held in the OS credential store via the `keychain_*` commands (`src-tauri/src/keychain.rs`); `src/utils/crypto.ts` migrates any pre-existing `velo.key` file into it on first launch and falls back to the file only when no credential store is reachable.
 - **IMAP username**: Optional `imap_username` column on accounts — when set, used as login username for IMAP/SMTP instead of email. Falls back to email when null
 - **IMAP auto-discovery**: Pre-configured for Outlook/Hotmail, Yahoo, iCloud, AOL, Zoho, FastMail, GMX; other providers require manual server entry
 - **Provider abstraction**: All sync/send operations go through `EmailProvider` interface — use `getEmailProvider(account)` from `providerFactory.ts`, never call Gmail or IMAP APIs directly from components

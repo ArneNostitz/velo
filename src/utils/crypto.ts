@@ -1,10 +1,28 @@
 /**
- * Application-level AES-GCM encryption using a device-derived key.
- * Key is randomly generated on first launch and stored in a separate file
- * via Tauri's filesystem in the app data directory.
+ * Application-level AES-GCM encryption for credentials at rest.
+ *
+ * The key lives in the OS credential store (macOS Keychain, Windows Credential
+ * Manager, Linux Secret Service) via the `keychain_*` Tauri commands.
+ *
+ * Earlier versions wrote the key in cleartext to `velo.key` alongside the
+ * database it protects, which meant anything able to read `velo.db` could also
+ * read the key. On first launch after upgrading, an existing `velo.key` is
+ * migrated into the credential store and the file is deleted.
+ *
+ * If no credential store is reachable (e.g. headless Linux with no Secret
+ * Service provider), the legacy file is used as a fallback so the app keeps
+ * working — degraded, but never locked out of its own data.
  */
 
-import { exists, readTextFile, writeTextFile, mkdir, BaseDirectory } from "@tauri-apps/plugin-fs";
+import {
+  exists,
+  readTextFile,
+  writeTextFile,
+  mkdir,
+  remove,
+  BaseDirectory,
+} from "@tauri-apps/plugin-fs";
+import { invoke } from "@tauri-apps/api/core";
 
 const KEY_FILE_NAME = "velo.key";
 const ALGORITHM = "AES-GCM";
@@ -13,6 +31,13 @@ const IV_LENGTH = 12;
 const FS_OPTIONS = { baseDir: BaseDirectory.AppData };
 
 let cachedKey: CryptoKey | null = null;
+
+/** True when the key had to be kept on disk because no OS keychain was usable. */
+let usingInsecureFallback = false;
+
+export function isUsingInsecureKeyFallback(): boolean {
+  return usingInsecureFallback;
+}
 
 function base64Encode(bytes: Uint8Array): string {
   let binary = "";
@@ -46,23 +71,99 @@ function asBufferSource(arr: Uint8Array): BufferSource {
   return arr as unknown as BufferSource;
 }
 
+async function keychainGet(): Promise<string | null> {
+  return (await invoke<string | null>("keychain_get_key")) ?? null;
+}
+
+async function keychainSet(key: string): Promise<void> {
+  await invoke("keychain_set_key", { key });
+}
+
+/** Read the legacy plaintext key file, or null if it isn't there. */
+async function readLegacyKeyFile(): Promise<string | null> {
+  try {
+    if (!(await exists(KEY_FILE_NAME, FS_OPTIONS))) return null;
+    const contents = (await readTextFile(KEY_FILE_NAME, FS_OPTIONS)).trim();
+    return contents || null;
+  } catch {
+    return null;
+  }
+}
+
+async function deleteLegacyKeyFile(): Promise<void> {
+  try {
+    await remove(KEY_FILE_NAME, FS_OPTIONS);
+  } catch (err) {
+    // Non-fatal: the key is already safe in the keychain, the stale file is
+    // just noise. Surface it so it can be removed by hand if needed.
+    console.warn("Could not delete legacy velo.key after migration:", err);
+  }
+}
+
+async function writeFallbackKeyFile(rawKeyB64: string): Promise<void> {
+  await ensureAppDataDir();
+  await writeTextFile(KEY_FILE_NAME, rawKeyB64, FS_OPTIONS);
+  usingInsecureFallback = true;
+  console.warn(
+    "No OS credential store available — the encryption key is stored on disk " +
+      "in the app data directory. Anyone able to read the database can also read the key.",
+  );
+}
+
+/**
+ * Resolve the raw base64 key, in priority order:
+ *   1. OS credential store
+ *   2. legacy velo.key on disk  → migrated into the store, then deleted
+ *   3. freshly generated        → written to the store (or to disk if unavailable)
+ */
+async function resolveRawKey(): Promise<string> {
+  // 1. Already in the keychain
+  try {
+    const stored = await keychainGet();
+    if (stored) return stored;
+  } catch (err) {
+    console.warn("Keychain unavailable, falling back to file-based key:", err);
+    const legacy = await readLegacyKeyFile();
+    if (legacy) {
+      usingInsecureFallback = true;
+      return legacy;
+    }
+    const generated = base64Encode(crypto.getRandomValues(new Uint8Array(KEY_LENGTH / 8)));
+    await writeFallbackKeyFile(generated);
+    return generated;
+  }
+
+  // 2. Migrate an existing plaintext key file
+  const legacy = await readLegacyKeyFile();
+  if (legacy) {
+    try {
+      await keychainSet(legacy);
+      await deleteLegacyKeyFile();
+      console.info("Migrated encryption key from velo.key into the OS credential store.");
+    } catch (err) {
+      console.warn("Could not migrate key into the keychain, leaving it on disk:", err);
+      usingInsecureFallback = true;
+    }
+    return legacy;
+  }
+
+  // 3. First launch — generate and store
+  const generated = base64Encode(crypto.getRandomValues(new Uint8Array(KEY_LENGTH / 8)));
+  try {
+    await keychainSet(generated);
+  } catch (err) {
+    console.warn("Could not store new key in the keychain:", err);
+    await writeFallbackKeyFile(generated);
+  }
+  return generated;
+}
+
 async function getOrCreateKey(): Promise<CryptoKey> {
   if (cachedKey) return cachedKey;
 
-  let rawKeyB64: string;
-  if (await exists(KEY_FILE_NAME, FS_OPTIONS)) {
-    rawKeyB64 = (await readTextFile(KEY_FILE_NAME, FS_OPTIONS)).trim();
-  } else {
-    // Generate a new random key
-    const rawKey = new Uint8Array(KEY_LENGTH / 8);
-    crypto.getRandomValues(rawKey);
-    rawKeyB64 = base64Encode(rawKey);
-
-    await ensureAppDataDir();
-    await writeTextFile(KEY_FILE_NAME, rawKeyB64, FS_OPTIONS);
-  }
-
+  const rawKeyB64 = await resolveRawKey();
   const rawKey = base64Decode(rawKeyB64);
+
   cachedKey = await crypto.subtle.importKey(
     "raw",
     asBufferSource(rawKey),
