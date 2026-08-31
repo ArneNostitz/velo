@@ -521,7 +521,7 @@ export function SettingsPage() {
                     </SettingRow>
                     <ToggleRow
                       label="Reduce motion"
-                      description="Disable animated background effects (fixes flickering on some GPUs)"
+                      description="Disable UI animations and transitions"
                       checked={reduceMotion}
                       onToggle={() => setReduceMotion(!reduceMotion)}
                     />

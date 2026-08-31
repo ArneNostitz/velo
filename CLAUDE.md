@@ -161,7 +161,7 @@ Tailwind CSS v4 — uses `@import "tailwindcss"`, `@theme {}` for custom propert
 
 **Color themes**: 8 accent color presets (Indigo, Rose, Emerald, Amber, Sky, Violet, Orange, Slate) defined in `src/constants/themes.ts`. Each has light & dark variants. Applied via CSS custom properties, independent of light/dark mode.
 
-**Background**: Animated gradient blobs (5 blobs with radial gradients, keyframe animations). Light mode uses blue→purple→pink→orange→cyan gradient; dark mode uses darker blues/purples.
+**Background**: Flat window surface via `--color-app-bg` (`#f5f5f4` light, `#0f172a` dark). The `bg-*` tokens are translucent and composite over it. A `.reduce-motion` class on `<html>` (from the Reduce motion setting) disables animations and transitions app-wide, mirroring `prefers-reduced-motion`.
 
 **Icons**: `lucide-react` icon library.
 
