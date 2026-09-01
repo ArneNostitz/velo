@@ -82,6 +82,7 @@ export async function initNotifications(): Promise<void> {
           to: ctx.fromAddress ? [ctx.fromAddress] : [],
           subject: ctx.subject ? `Re: ${ctx.subject}` : "",
           threadId: ctx.threadId,
+          accountId: ctx.accountId,
         });
       } else if (actionId === "archive" && ctx?.threadId && ctx?.accountId) {
         try {

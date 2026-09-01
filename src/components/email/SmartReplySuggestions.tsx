@@ -76,8 +76,9 @@ export function SmartReplySuggestions({ threadId, accountId, messages, noReply }
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
       originalRecipients: recipientHeadersFromMessages(messages),
+      accountId,
     });
-  }, [messages, openComposer]);
+  }, [messages, accountId, openComposer]);
 
   if (!available || messages.length === 0 || noReply) return null;
 

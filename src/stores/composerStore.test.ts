@@ -84,6 +84,44 @@ describe("composerStore", () => {
     expect(state.fromEmail).toBeNull();
   });
 
+  it("carries the mailbox that holds the thread", () => {
+    useComposerStore.getState().openComposer({
+      mode: "reply",
+      accountId: "acc-thread",
+      threadId: "thread-1",
+    });
+    expect(useComposerStore.getState().accountId).toBe("acc-thread");
+  });
+
+  it("drops thread and draft state when the sending mailbox changes", () => {
+    useComposerStore.getState().openComposer({
+      mode: "reply",
+      accountId: "acc-1",
+      threadId: "thread-1",
+      inReplyToMessageId: "msg-1",
+      draftId: "draft-1",
+    });
+    useComposerStore.getState().setAccountId("acc-2");
+    const state = useComposerStore.getState();
+    expect(state.accountId).toBe("acc-2");
+    expect(state.threadId).toBeNull();
+    expect(state.draftId).toBeNull();
+    expect(state.inReplyToMessageId).toBeNull();
+  });
+
+  it("keeps thread state when the mailbox is unchanged", () => {
+    useComposerStore.getState().openComposer({
+      mode: "reply",
+      accountId: "acc-1",
+      threadId: "thread-1",
+      draftId: "draft-1",
+    });
+    useComposerStore.getState().setAccountId("acc-1");
+    const state = useComposerStore.getState();
+    expect(state.threadId).toBe("thread-1");
+    expect(state.draftId).toBe("draft-1");
+  });
+
   it("opens with cc shows cc/bcc fields", () => {
     useComposerStore.getState().openComposer({
       mode: "replyAll",

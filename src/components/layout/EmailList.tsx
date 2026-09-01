@@ -226,7 +226,9 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
         bodyHtml: draftMsg.body_html ?? draftMsg.body_text ?? "",
         threadId: thread.id,
         draftId,
-        // Reopen the draft under the identity it was written from
+        // Reopen the draft in the mailbox that holds it, under the identity it
+        // was written from
+        accountId: threadAccountId,
         fromEmail: draftMsg.from_address,
       });
     } catch (err) {
