@@ -68,7 +68,10 @@ export async function startProviderOAuthFlow(
   crypto.getRandomValues(stateArray);
   const oauthState = base64UrlEncode(stateArray);
 
-  const redirectUri = `http://localhost:${OAUTH_CALLBACK_PORT}`;
+  // Must match both the callback server's bind address and the redirect URI the
+  // setup instructions tell users to register (http://127.0.0.1:17248). Using
+  // `localhost` here sent the browser to ::1 on macOS, where nothing listens.
+  const redirectUri = `http://127.0.0.1:${OAUTH_CALLBACK_PORT}`;
 
   const params: Record<string, string> = {
     client_id: clientId,

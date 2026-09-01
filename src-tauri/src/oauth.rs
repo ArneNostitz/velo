@@ -1,114 +1,238 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Notify;
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct OAuthResult {
     pub code: String,
     pub state: String,
 }
 
-/// Binds to a localhost port for OAuth callback. Tries the given port first,
-/// falls back to nearby ports if taken.
-#[tauri::command]
-pub async fn start_oauth_server(port: u16, state: String) -> Result<OAuthResult, String> {
-    // Try the requested port, then a few alternatives
-    let mut listener = None;
-    for p in [port, port + 1, port + 2, port + 3] {
-        match TcpListener::bind(format!("127.0.0.1:{}", p)).await {
-            Ok(l) => {
-                listener = Some(l);
-                break;
+/// Providers are told to redirect to a fixed port, so the deadline has to cover
+/// a full interactive sign-in: account picker, password, 2FA, consent screen.
+const OAUTH_DEADLINE_SECS: u64 = 600;
+/// A previous flow holds the port until it is cancelled; give it time to let go.
+const BIND_ATTEMPTS: u32 = 20;
+const BIND_RETRY_MS: u64 = 100;
+const MAX_REQUEST_BYTES: usize = 16 * 1024;
+
+/// Signals an in-flight callback server to release the port so a new sign-in
+/// can bind it. Without this an abandoned attempt keeps the port for its whole
+/// deadline, and the next attempt would have nowhere to listen.
+fn cancel_signal() -> &'static Arc<Notify> {
+    static CANCEL: OnceLock<Arc<Notify>> = OnceLock::new();
+    CANCEL.get_or_init(|| Arc::new(Notify::new()))
+}
+
+fn page(title: &str, message: &str) -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head><title>Velo</title><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #e2e8f0;">
+<div style="text-align: center; max-width: 30rem; padding: 0 1.5rem;">
+<h1 style="margin-bottom: 8px;">{title}</h1>
+<p style="opacity: 0.7;">{message}</p>
+</div>
+</body>
+</html>"#
+    )
+}
+
+async fn respond(stream: &mut TcpStream, status: &str, body: &str) {
+    let response = format!(
+        "HTTP/1.1 {}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{}",
+        status,
+        body.len(),
+        body
+    );
+    let _ = stream.write_all(response.as_bytes()).await;
+    let _ = stream.flush().await;
+}
+
+/// Read until the end of the HTTP headers. A single read can return a partial
+/// request, which would drop the redirect on the floor.
+async fn read_request(stream: &mut TcpStream) -> Result<String, String> {
+    let mut data = Vec::new();
+    let mut chunk = [0u8; 2048];
+    loop {
+        let n = stream
+            .read(&mut chunk)
+            .await
+            .map_err(|e| format!("Failed to read: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        data.extend_from_slice(&chunk[..n]);
+        if data.windows(4).any(|w| w == b"\r\n\r\n") || data.len() >= MAX_REQUEST_BYTES {
+            break;
+        }
+    }
+    Ok(String::from_utf8_lossy(&data).into_owned())
+}
+
+/// Accept from an optional listener, or pend forever when there isn't one.
+async fn accept_maybe(listener: &Option<TcpListener>) -> std::io::Result<(TcpStream, SocketAddr)> {
+    match listener {
+        Some(l) => l.accept().await,
+        None => std::future::pending().await,
+    }
+}
+
+/// Bind the loopback address on the exact port named by the redirect URI.
+///
+/// Both stacks are bound: the Gmail flow redirects to `127.0.0.1`, but a
+/// provider registration may still say `localhost`, which resolves to `::1`
+/// first on macOS.
+async fn bind_loopback(port: u16) -> Result<(TcpListener, Option<TcpListener>), String> {
+    // Tell any earlier flow still holding the port to stand down.
+    cancel_signal().notify_waiters();
+
+    let mut last_err = String::new();
+    for attempt in 0..BIND_ATTEMPTS {
+        match TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await {
+            Ok(v4) => {
+                let v6 = TcpListener::bind((Ipv6Addr::LOCALHOST, port)).await.ok();
+                if v6.is_none() {
+                    log::warn!("OAuth callback server could not bind [::1]:{port}; localhost redirects over IPv6 will not arrive");
+                }
+                return Ok((v4, v6));
             }
-            Err(_) => continue,
+            Err(e) => {
+                last_err = e.to_string();
+                if attempt + 1 < BIND_ATTEMPTS {
+                    tokio::time::sleep(Duration::from_millis(BIND_RETRY_MS)).await;
+                }
+            }
         }
     }
 
-    let listener = listener.ok_or("Failed to bind to any port")?;
-    let actual_port = listener
-        .local_addr()
-        .map_err(|e| format!("Failed to get addr: {}", e))?
-        .port();
-
-    log::info!("OAuth callback server listening on port {}", actual_port);
-
-    // Wait for exactly one connection (the redirect from Google) with 5-minute timeout
-    let (mut stream, _) = tokio::time::timeout(
-        Duration::from_secs(300),
-        listener.accept(),
-    )
-    .await
-    .map_err(|_| "OAuth timed out — please try again".to_string())?
-    .map_err(|e| format!("Failed to accept: {}", e))?;
-
-    // Read the HTTP request
-    let mut buf = vec![0u8; 4096];
-    let n = stream
-        .read(&mut buf)
-        .await
-        .map_err(|e| format!("Failed to read: {}", e))?;
-    let request = String::from_utf8_lossy(&buf[..n]);
-
-    // Extract query string from GET request line
-    let (code, returned_state) = parse_auth_code_and_state(&request)?;
-
-    // Validate state parameter (CSRF protection)
-    if returned_state != state {
-        return Err("OAuth state mismatch — possible CSRF attack".to_string());
-    }
-
-    // Send a success response to the browser
-    let html = r#"<!DOCTYPE html>
-<html>
-<head><title>Velo</title></head>
-<body style="font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #e2e8f0;">
-<div style="text-align: center;">
-<h1 style="margin-bottom: 8px;">Account Connected!</h1>
-<p style="opacity: 0.7;">You can close this tab and return to Velo.</p>
-</div>
-</body>
-</html>"#;
-
-    let response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n{}",
-        html.len(),
-        html
-    );
-
-    let _ = stream.write_all(response.as_bytes()).await;
-    let _ = stream.flush().await;
-
-    drop(listener);
-
-    Ok(OAuthResult { code, state: returned_state })
+    Err(format!(
+        "Could not listen on 127.0.0.1:{port} for the sign-in redirect ({last_err}). Close whatever is using that port and try again."
+    ))
 }
 
-fn parse_auth_code_and_state(request: &str) -> Result<(String, String), String> {
-    let first_line = request.lines().next().ok_or("Empty request")?;
+/// Run the loopback callback server for one OAuth sign-in.
+///
+/// Listens on the exact port the redirect URI names — falling back to a nearby
+/// port would leave the browser knocking on a port nobody is listening on,
+/// which surfaces as "the page could not be opened" after a successful login.
+///
+/// Keeps accepting until a request actually carries the callback. Browsers open
+/// speculative connections and ask for /favicon.ico, and treating the first
+/// connection as the redirect meant a stray request could close the server
+/// before the real one arrived.
+#[tauri::command]
+pub async fn start_oauth_server(port: u16, state: String) -> Result<OAuthResult, String> {
+    let (v4, v6) = bind_loopback(port).await?;
 
-    let path = first_line
-        .split_whitespace()
-        .nth(1)
-        .ok_or("No path in request")?;
+    log::info!(
+        "OAuth callback server listening on 127.0.0.1:{port}{}",
+        if v6.is_some() { " and [::1]" } else { "" }
+    );
 
-    if path.contains("error=") {
-        let params = parse_query_string(path);
-        let error = params.get("error").cloned().unwrap_or_default();
-        return Err(format!("OAuth error: {}", error));
+    let cancel = cancel_signal().clone();
+    let cancelled = cancel.notified();
+    tokio::pin!(cancelled);
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(OAUTH_DEADLINE_SECS);
+
+    loop {
+        let accepted = tokio::select! {
+            r = v4.accept() => r,
+            r = accept_maybe(&v6) => r,
+            _ = &mut cancelled => {
+                return Err("Sign-in was replaced by a newer attempt.".to_string());
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                return Err("Sign-in timed out — please try again.".to_string());
+            }
+        };
+
+        let (mut stream, _) = accepted.map_err(|e| format!("Failed to accept: {}", e))?;
+
+        let request = match read_request(&mut stream).await {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("OAuth callback read failed: {e}");
+                continue;
+            }
+        };
+
+        match parse_callback(&request) {
+            Callback::Success { code, state: returned_state } => {
+                if returned_state != state {
+                    respond(
+                        &mut stream,
+                        "400 Bad Request",
+                        &page(
+                            "Sign-in could not be verified",
+                            "The response did not match this sign-in attempt. Close this tab and try again from Velo.",
+                        ),
+                    )
+                    .await;
+                    return Err("OAuth state mismatch — possible CSRF attack".to_string());
+                }
+
+                respond(
+                    &mut stream,
+                    "200 OK",
+                    &page("Account connected", "You can close this tab and return to Velo."),
+                )
+                .await;
+
+                return Ok(OAuthResult { code, state: returned_state });
+            }
+            Callback::Error(message) => {
+                respond(
+                    &mut stream,
+                    "400 Bad Request",
+                    &page("Sign-in failed", &format!("{message}. Close this tab and try again from Velo.")),
+                )
+                .await;
+                return Err(format!("OAuth error: {message}"));
+            }
+            // Preconnects, favicon probes, anything that is not the redirect.
+            Callback::NotTheCallback => {
+                respond(&mut stream, "404 Not Found", &page("Waiting for sign-in", "Velo is still waiting for the provider to redirect here.")).await;
+                continue;
+            }
+        }
     }
+}
+
+enum Callback {
+    Success { code: String, state: String },
+    Error(String),
+    NotTheCallback,
+}
+
+fn parse_callback(request: &str) -> Callback {
+    let Some(first_line) = request.lines().next() else {
+        return Callback::NotTheCallback;
+    };
+    let Some(path) = first_line.split_whitespace().nth(1) else {
+        return Callback::NotTheCallback;
+    };
 
     let params = parse_query_string(path);
-    let code = params
-        .get("code")
-        .cloned()
-        .ok_or_else(|| "No auth code in redirect".to_string())?;
-    let state = params
-        .get("state")
-        .cloned()
-        .ok_or_else(|| "No state in redirect".to_string())?;
-    Ok((code, state))
+
+    if let Some(error) = params.get("error") {
+        return Callback::Error(error.clone());
+    }
+
+    match (params.get("code"), params.get("state")) {
+        (Some(code), Some(state)) => Callback::Success {
+            code: code.clone(),
+            state: state.clone(),
+        },
+        _ => Callback::NotTheCallback,
+    }
 }
 
 fn parse_query_string(path: &str) -> HashMap<String, String> {
@@ -253,4 +377,147 @@ pub async fn oauth_refresh_token(
         .json::<TokenExchangeResult>()
         .await
         .map_err(|e| format!("Failed to parse token response: {}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn callback_of(path: &str) -> Callback {
+        parse_callback(&format!(
+            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:17248\r\n\r\n"
+        ))
+    }
+
+    #[test]
+    fn parses_code_and_state_from_the_redirect() {
+        match callback_of("/?code=abc123&state=xyz789&scope=mail") {
+            Callback::Success { code, state } => {
+                assert_eq!(code, "abc123");
+                assert_eq!(state, "xyz789");
+            }
+            _ => panic!("expected the callback to be recognised"),
+        }
+    }
+
+    #[test]
+    fn url_decodes_the_code() {
+        match callback_of("/?code=4%2F0Ab_c-d&state=s1") {
+            Callback::Success { code, .. } => assert_eq!(code, "4/0Ab_c-d"),
+            _ => panic!("expected success"),
+        }
+    }
+
+    #[test]
+    fn reports_provider_errors() {
+        match callback_of("/?error=access_denied&state=s1") {
+            Callback::Error(message) => assert_eq!(message, "access_denied"),
+            _ => panic!("expected an error callback"),
+        }
+    }
+
+    #[test]
+    fn ignores_requests_that_are_not_the_redirect() {
+        // Browsers probe the port before and alongside the real redirect;
+        // treating these as the callback used to kill the server.
+        assert!(matches!(callback_of("/favicon.ico"), Callback::NotTheCallback));
+        assert!(matches!(callback_of("/"), Callback::NotTheCallback));
+        assert!(matches!(callback_of("/?state=s1"), Callback::NotTheCallback));
+        assert!(matches!(parse_callback(""), Callback::NotTheCallback));
+    }
+
+    async fn get(addr: &str, path: &str) -> String {
+        let mut stream = TcpStream::connect(addr).await.expect("connect");
+        stream
+            .write_all(format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\n\r\n").as_bytes())
+            .await
+            .expect("write");
+        let mut body = String::new();
+        let mut chunk = [0u8; 1024];
+        loop {
+            match stream.read(&mut chunk).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => body.push_str(&String::from_utf8_lossy(&chunk[..n])),
+            }
+        }
+        body
+    }
+
+    /// Pick a port unlikely to collide with a real Velo instance or another test.
+    fn test_port(offset: u16) -> u16 {
+        18300 + offset
+    }
+
+    /// Cancellation is process-wide by design — the app only ever runs one
+    /// sign-in at a time — so the server tests must not overlap either.
+    fn serial() -> &'static tokio::sync::Mutex<()> {
+        static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+    }
+
+    #[tokio::test]
+    async fn survives_a_stray_request_before_the_redirect() {
+        let _guard = serial().lock().await;
+        let port = test_port(1);
+        let server = tokio::spawn(start_oauth_server(port, "the-state".to_string()));
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let addr = format!("127.0.0.1:{port}");
+        let stray = get(&addr, "/favicon.ico").await;
+        assert!(stray.starts_with("HTTP/1.1 404"), "stray got: {stray}");
+
+        let ok = get(&addr, "/?code=the-code&state=the-state").await;
+        assert!(ok.starts_with("HTTP/1.1 200"), "callback got: {ok}");
+
+        let result = server.await.expect("server task").expect("callback");
+        assert_eq!(result.code, "the-code");
+        assert_eq!(result.state, "the-state");
+    }
+
+    #[tokio::test]
+    async fn accepts_the_redirect_over_ipv6_localhost() {
+        let _guard = serial().lock().await;
+        let port = test_port(2);
+        let server = tokio::spawn(start_oauth_server(port, "s".to_string()));
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let body = get(&format!("[::1]:{port}"), "/?code=v6-code&state=s").await;
+        assert!(body.starts_with("HTTP/1.1 200"), "got: {body}");
+
+        let result = server.await.expect("server task").expect("callback");
+        assert_eq!(result.code, "v6-code");
+    }
+
+    #[tokio::test]
+    async fn rejects_a_mismatched_state() {
+        let _guard = serial().lock().await;
+        let port = test_port(3);
+        let server = tokio::spawn(start_oauth_server(port, "expected".to_string()));
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let body = get(&format!("127.0.0.1:{port}"), "/?code=c&state=attacker").await;
+        assert!(body.starts_with("HTTP/1.1 400"), "got: {body}");
+
+        let err = server.await.expect("server task").expect_err("must reject");
+        assert!(err.contains("state mismatch"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn a_new_flow_takes_the_port_from_an_abandoned_one() {
+        let _guard = serial().lock().await;
+        let port = test_port(4);
+        let abandoned = tokio::spawn(start_oauth_server(port, "old".to_string()));
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Without cancellation the abandoned attempt would hold the port for its
+        // whole deadline and this bind would fail.
+        let fresh = tokio::spawn(start_oauth_server(port, "new".to_string()));
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        assert!(abandoned.await.expect("task").is_err(), "old flow should give up the port");
+
+        let body = get(&format!("127.0.0.1:{port}"), "/?code=c2&state=new").await;
+        assert!(body.starts_with("HTTP/1.1 200"), "got: {body}");
+        assert_eq!(fresh.await.expect("task").expect("callback").code, "c2");
+    }
 }
