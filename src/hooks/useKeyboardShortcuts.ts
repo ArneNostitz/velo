@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useUIStore } from "@/stores/uiStore";
 import { useThreadStore } from "@/stores/threadStore";
 import { useComposerStore } from "@/stores/composerStore";
-import { useAccountStore } from "@/stores/accountStore";
+import { useAccountStore, listedAccountIds } from "@/stores/accountStore";
 import { useShortcutStore } from "@/stores/shortcutStore";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 import { navigateToLabel, navigateToThread, navigateBack, getActiveLabel, getSelectedThreadId } from "@/router/navigate";
@@ -213,7 +213,15 @@ async function executeAction(actionId: string): Promise<void> {
   const threads = useThreadStore.getState().threads;
   const selectedId = getSelectedThreadId();
   const currentIdx = threads.findIndex((t) => t.id === selectedId);
-  const activeAccountId = useAccountStore.getState().activeAccountId;
+  // In the unified list the selected thread may belong to a different mailbox
+  // than the sidebar's — act on the thread's own account.
+  const activeAccountId =
+    threads.find((t) => t.id === selectedId)?.accountId ??
+    useAccountStore.getState().activeAccountId;
+  // A multi-selection in the unified list can span mailboxes, so each thread
+  // has to be acted on through its own account.
+  const accountFor = (threadId: string): string | null =>
+    threads.find((t) => t.id === threadId)?.accountId ?? activeAccountId;
 
   switch (actionId) {
     case "nav.next": {
@@ -317,7 +325,8 @@ async function executeAction(actionId: string): Promise<void> {
       if (multiIds.size > 0 && activeAccountId) {
         const ids = [...multiIds];
         for (const id of ids) {
-          await archiveThread(activeAccountId, id, []);
+          const acc = accountFor(id);
+          if (acc) await archiveThread(acc, id, []);
         }
       } else if (selectedId && activeAccountId) {
         await archiveThread(activeAccountId, selectedId, []);
@@ -332,19 +341,21 @@ async function executeAction(actionId: string): Promise<void> {
       if (multiDeleteIds.size > 0 && activeAccountId) {
         const ids = [...multiDeleteIds];
         for (const id of ids) {
+          const acc = accountFor(id);
+          if (!acc) continue;
           if (isTrashView) {
-            await permanentDeleteThread(activeAccountId, id, []);
-            await deleteThreadFromDb(activeAccountId, id);
+            await permanentDeleteThread(acc, id, []);
+            await deleteThreadFromDb(acc, id);
           } else if (isDraftsView) {
             try {
-              const client = await getGmailClient(activeAccountId);
-              await deleteDraftsForThread(client, activeAccountId, id);
+              const client = await getGmailClient(acc);
+              await deleteDraftsForThread(client, acc, id);
               useThreadStore.getState().removeThread(id);
             } catch (err) {
               console.error("Draft delete failed:", err);
             }
           } else {
-            await trashThread(activeAccountId, id, []);
+            await trashThread(acc, id, []);
           }
         }
       } else if (selectedId && activeAccountId) {
@@ -380,7 +391,8 @@ async function executeAction(actionId: string): Promise<void> {
       if (multiSpamIds.size > 0 && activeAccountId) {
         const ids = [...multiSpamIds];
         for (const id of ids) {
-          await spamThread(activeAccountId, id, [], !isSpamView);
+          const acc = accountFor(id);
+          if (acc) await spamThread(acc, id, [], !isSpamView);
         }
       } else if (selectedId && activeAccountId) {
         await spamThread(activeAccountId, selectedId, [], !isSpamView);
@@ -438,13 +450,15 @@ async function executeAction(actionId: string): Promise<void> {
       if (multiMuteIds.size > 0 && activeAccountId) {
         const ids = [...multiMuteIds];
         for (const id of ids) {
+          const acc = accountFor(id);
+          if (!acc) continue;
           const t = threads.find((thread) => thread.id === id);
           if (t?.isMuted) {
-            await unmuteThreadDb(activeAccountId, id);
+            await unmuteThreadDb(acc, id);
             useThreadStore.getState().updateThread(id, { isMuted: false });
           } else {
-            await muteThreadDb(activeAccountId, id);
-            await archiveThread(activeAccountId, id, []);
+            await muteThreadDb(acc, id);
+            await archiveThread(acc, id, []);
           }
         }
       } else if (selectedId && activeAccountId) {
@@ -488,10 +502,13 @@ async function executeAction(actionId: string): Promise<void> {
       window.dispatchEvent(new Event("velo-toggle-shortcuts-help"));
       break;
     case "app.syncFolder": {
-      if (activeAccountId) {
+      // The unified list shows every mailbox, so refresh all of them
+      const state = useAccountStore.getState();
+      const syncIds = listedAccountIds(state);
+      if (syncIds.length > 0) {
         const currentLabel = getActiveLabel();
         useUIStore.getState().setSyncingFolder(currentLabel);
-        triggerSync([activeAccountId]);
+        triggerSync(syncIds);
       }
       break;
     }

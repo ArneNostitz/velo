@@ -5,11 +5,11 @@ import { CategoryTabs } from "../email/CategoryTabs";
 import { SearchBar } from "../search/SearchBar";
 import { EmailListSkeleton } from "../ui/Skeleton";
 import { useThreadStore, type Thread } from "@/stores/threadStore";
-import { useAccountStore } from "@/stores/accountStore";
+import { useAccountStore, listedAccountIds } from "@/stores/accountStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useActiveLabel, useSelectedThreadId, useActiveCategory } from "@/hooks/useRouteNavigation";
 import { navigateToThread, navigateToLabel } from "@/router/navigate";
-import { getThreadsForAccount, getThreadsForCategory, getThreadLabelIds, deleteThread as deleteThreadFromDb } from "@/services/db/threads";
+import { getThreadsForAccounts, getThreadsForCategoryAcrossAccounts, getThreadLabelIds, deleteThread as deleteThreadFromDb } from "@/services/db/threads";
 import { getCategoriesForThreads, getCategoryUnreadCounts } from "@/services/db/threadCategories";
 import { getActiveFollowUpThreadIds } from "@/services/db/followUpReminders";
 import { getBundleRules, getHeldThreadIds, getBundleSummaries, type DbBundleRule } from "@/services/db/bundleRules";
@@ -55,6 +55,14 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   const clearMultiSelect = useThreadStore((s) => s.clearMultiSelect);
   const selectAll = useThreadStore((s) => s.selectAll);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const accounts = useAccountStore((s) => s.accounts);
+  const unifiedInbox = useAccountStore((s) => s.unifiedInbox);
+  // Which mailboxes this list draws from — every active one when unified.
+  const accountIds = useMemo(
+    () => listedAccountIds({ accounts, activeAccountId, unifiedInbox }),
+    [accounts, activeAccountId, unifiedInbox],
+  );
+  const accountScopeKey = accountIds.join(",");
   const activeLabel = useActiveLabel();
   const readFilter = useUIStore((s) => s.readFilter);
   const setReadFilter = useUIStore((s) => s.setReadFilter);
@@ -99,9 +107,11 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   }, [openMenu]);
 
   const handleDraftClick = useCallback(async (thread: Thread) => {
-    if (!activeAccountId) return;
+    // In the unified list each thread belongs to its own mailbox
+    const threadAccountId = thread.accountId || activeAccountId;
+    if (!threadAccountId) return;
     try {
-      const messages = await getMessagesForThread(activeAccountId, thread.id);
+      const messages = await getMessagesForThread(threadAccountId, thread.id);
       // Get the last message (the draft)
       const draftMsg = messages[messages.length - 1];
       if (!draftMsg) return;
@@ -109,7 +119,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       // Look up the Gmail draft ID so auto-save can update the existing draft
       let draftId: string | null = null;
       try {
-        const client = await getGmailClient(activeAccountId);
+        const client = await getGmailClient(threadAccountId);
         const drafts = await client.listDrafts();
         const match = drafts.find((d) => d.message.id === draftMsg.id);
         if (match) draftId = match.id;
@@ -232,7 +242,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     });
   }, [filteredThreads, activeLabel, activeCategory, categoryMap, bundledCategorySet, heldThreadIds]);
 
-  const mapDbThreads = useCallback(async (dbThreads: Awaited<ReturnType<typeof getThreadsForAccount>>): Promise<Thread[]> => {
+  const mapDbThreads = useCallback(async (dbThreads: Awaited<ReturnType<typeof getThreadsForAccounts>>): Promise<Thread[]> => {
     return Promise.all(
       dbThreads.map(async (t) => {
         const labelIds = await getThreadLabelIds(t.account_id, t.id);
@@ -259,7 +269,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   const clearSearch = useThreadStore((s) => s.clearSearch);
 
   const loadThreads = useCallback(async () => {
-    if (!activeAccountId) {
+    if (accountIds.length === 0) {
       setThreads([]);
       return;
     }
@@ -268,8 +278,9 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     setLoading(true);
     setHasMore(true);
     try {
-      // Smart folder query path
-      if (isSmartFolder && activeSmartFolder) {
+      // Smart folder query path — smart folders are saved per account, so this
+      // view stays scoped to the active one even in the unified list.
+      if (isSmartFolder && activeSmartFolder && activeAccountId) {
         const { sql, params } = getSmartFolderSearchQuery(
           activeSmartFolder.query,
           activeAccountId,
@@ -284,11 +295,16 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
         let dbThreads;
         // Server-side category filtering for inbox
         if (activeLabel === "inbox" && activeCategory !== "All") {
-          dbThreads = await getThreadsForCategory(activeAccountId, activeCategory, PAGE_SIZE, 0);
+          dbThreads = await getThreadsForCategoryAcrossAccounts(
+            accountIds,
+            activeCategory,
+            PAGE_SIZE,
+            0,
+          );
         } else {
           const gmailLabelId = LABEL_MAP[activeLabel] ?? activeLabel;
-          dbThreads = await getThreadsForAccount(
-            activeAccountId,
+          dbThreads = await getThreadsForAccounts(
+            accountIds,
             gmailLabelId || undefined,
             PAGE_SIZE,
             0,
@@ -304,21 +320,26 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     } finally {
       setLoading(false);
     }
-  }, [activeAccountId, activeLabel, activeCategory, isSmartFolder, activeSmartFolder, setThreads, setLoading, mapDbThreads, clearSearch]);
+  }, [activeAccountId, accountScopeKey, activeLabel, activeCategory, isSmartFolder, activeSmartFolder, setThreads, setLoading, mapDbThreads, clearSearch]);
 
   const loadMore = useCallback(async () => {
-    if (!activeAccountId || loadingMore || !hasMore) return;
+    if (accountIds.length === 0 || loadingMore || !hasMore) return;
 
     setLoadingMore(true);
     try {
       const offset = threads.length;
       let dbThreads;
       if (activeLabel === "inbox" && activeCategory !== "All") {
-        dbThreads = await getThreadsForCategory(activeAccountId, activeCategory, PAGE_SIZE, offset);
+        dbThreads = await getThreadsForCategoryAcrossAccounts(
+          accountIds,
+          activeCategory,
+          PAGE_SIZE,
+          offset,
+        );
       } else {
         const gmailLabelId = LABEL_MAP[activeLabel] ?? activeLabel;
-        dbThreads = await getThreadsForAccount(
-          activeAccountId,
+        dbThreads = await getThreadsForAccounts(
+          accountIds,
           gmailLabelId || undefined,
           PAGE_SIZE,
           offset,
@@ -335,7 +356,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     } finally {
       setLoadingMore(false);
     }
-  }, [activeAccountId, activeLabel, activeCategory, threads, loadingMore, hasMore, setThreads, mapDbThreads]);
+  }, [accountScopeKey, activeLabel, activeCategory, threads, loadingMore, hasMore, setThreads, mapDbThreads]);
 
   useEffect(() => {
     loadThreads();
@@ -464,7 +485,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       window.removeEventListener("velo-sync-done", handler);
       if (timer) clearTimeout(timer);
     };
-  }, [loadThreads, activeAccountId, activeLabel]);
+  }, [loadThreads, accountScopeKey, activeLabel]);
 
   // A long initial sync stores threads as it goes; surface them while it runs
   // rather than leaving the list empty. Skipped during a search, since reloading

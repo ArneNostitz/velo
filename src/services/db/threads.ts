@@ -85,6 +85,98 @@ export async function getThreadsForCategory(
   );
 }
 
+/**
+ * Build the placeholder list for an `IN (...)` clause, e.g. `$1, $2, $3`.
+ * Returns the placeholders and the index the next parameter should use.
+ */
+function inClause(count: number, startIndex = 1): { placeholders: string; nextIndex: number } {
+  const placeholders = Array.from({ length: count }, (_, i) => `$${startIndex + i}`).join(", ");
+  return { placeholders, nextIndex: startIndex + count };
+}
+
+/**
+ * Threads across several accounts, newest first — the unified inbox.
+ *
+ * Ordering is global rather than per-account, so a single list interleaves
+ * every mailbox by date. Pass one account ID for the single-account view.
+ */
+export async function getThreadsForAccounts(
+  accountIds: string[],
+  labelId?: string,
+  limit = 50,
+  offset = 0,
+): Promise<DbThread[]> {
+  if (accountIds.length === 0) return [];
+  const db = await getDb();
+  const { placeholders, nextIndex } = inClause(accountIds.length);
+
+  if (labelId) {
+    return db.select<DbThread[]>(
+      `SELECT t.*, m.from_name, m.from_address FROM threads t
+       INNER JOIN thread_labels tl ON tl.account_id = t.account_id AND tl.thread_id = t.id
+       LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
+         AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
+       WHERE t.account_id IN (${placeholders}) AND tl.label_id = $${nextIndex}
+       GROUP BY t.account_id, t.id
+       ORDER BY t.is_pinned DESC, t.last_message_at DESC
+       LIMIT $${nextIndex + 1} OFFSET $${nextIndex + 2}`,
+      [...accountIds, labelId, limit, offset],
+    );
+  }
+
+  return db.select<DbThread[]>(
+    `SELECT t.*, m.from_name, m.from_address FROM threads t
+     LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
+       AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
+     WHERE t.account_id IN (${placeholders})
+     ORDER BY t.is_pinned DESC, t.last_message_at DESC
+     LIMIT $${nextIndex} OFFSET $${nextIndex + 1}`,
+    [...accountIds, limit, offset],
+  );
+}
+
+/** Category-filtered inbox threads across several accounts. */
+export async function getThreadsForCategoryAcrossAccounts(
+  accountIds: string[],
+  category: string,
+  limit = 50,
+  offset = 0,
+): Promise<DbThread[]> {
+  if (accountIds.length === 0) return [];
+  const db = await getDb();
+  const { placeholders, nextIndex } = inClause(accountIds.length);
+
+  if (category === "Primary") {
+    // Primary includes threads with NULL category (uncategorized)
+    return db.select<DbThread[]>(
+      `SELECT t.*, m.from_name, m.from_address FROM threads t
+       INNER JOIN thread_labels tl ON tl.account_id = t.account_id AND tl.thread_id = t.id
+       LEFT JOIN thread_categories tc ON tc.account_id = t.account_id AND tc.thread_id = t.id
+       LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
+         AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
+       WHERE t.account_id IN (${placeholders}) AND tl.label_id = 'INBOX'
+         AND (tc.category IS NULL OR tc.category = 'Primary')
+       GROUP BY t.account_id, t.id
+       ORDER BY t.is_pinned DESC, t.last_message_at DESC
+       LIMIT $${nextIndex} OFFSET $${nextIndex + 1}`,
+      [...accountIds, limit, offset],
+    );
+  }
+
+  return db.select<DbThread[]>(
+    `SELECT t.*, m.from_name, m.from_address FROM threads t
+     INNER JOIN thread_labels tl ON tl.account_id = t.account_id AND tl.thread_id = t.id
+     INNER JOIN thread_categories tc ON tc.account_id = t.account_id AND tc.thread_id = t.id
+     LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
+       AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
+     WHERE t.account_id IN (${placeholders}) AND tl.label_id = 'INBOX' AND tc.category = $${nextIndex}
+     GROUP BY t.account_id, t.id
+     ORDER BY t.is_pinned DESC, t.last_message_at DESC
+     LIMIT $${nextIndex + 1} OFFSET $${nextIndex + 2}`,
+    [...accountIds, category, limit, offset],
+  );
+}
+
 export async function upsertThread(thread: {
   id: string;
   accountId: string;

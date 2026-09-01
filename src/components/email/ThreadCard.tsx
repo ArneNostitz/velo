@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { Thread } from "@/stores/threadStore";
+import { useAccountStore } from "@/stores/accountStore";
 import { useThreadStore } from "@/stores/threadStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useActiveLabel } from "@/hooks/useRouteNavigation";
@@ -31,6 +32,12 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
   const toggleThreadSelection = useThreadStore((s) => s.toggleThreadSelection);
   const selectThreadRange = useThreadStore((s) => s.selectThreadRange);
   const activeLabel = useActiveLabel();
+  // Only in the unified list is it ambiguous which mailbox a thread came from
+  const unifiedInbox = useAccountStore((s) => s.unifiedInbox);
+  const accounts = useAccountStore((s) => s.accounts);
+  const threadAccount = unifiedInbox
+    ? accounts.find((a) => a.id === thread.accountId)
+    : undefined;
   const emailDensity = useUIStore((s) => s.emailDensity);
   const isSpam = thread.labelIds.includes("SPAM");
 
@@ -116,6 +123,14 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
             >
               {thread.fromName ?? thread.fromAddress ?? "Unknown"}
             </span>
+            {threadAccount && (
+              <span
+                className="text-[0.625rem] px-1.5 py-0.5 rounded-full bg-bg-tertiary text-text-tertiary whitespace-nowrap shrink-0 max-w-[8rem] truncate"
+                title={threadAccount.email}
+              >
+                {threadAccount.email}
+              </span>
+            )}
             <span className="text-xs text-text-tertiary whitespace-nowrap shrink-0">
               {formatRelativeDate(thread.lastMessageAt)}
             </span>

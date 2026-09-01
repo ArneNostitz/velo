@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
-import { useAccountStore, type Account } from "@/stores/accountStore";
-import { ChevronDown, Check, Plus, UserPlus, Calendar } from "lucide-react";
+import { useAccountStore, mailAccounts, type Account } from "@/stores/accountStore";
+import { ChevronDown, Check, Plus, UserPlus, Calendar, Layers } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 
 interface AccountSwitcherProps {
@@ -12,13 +12,21 @@ export function AccountSwitcher({
   collapsed,
   onAddAccount,
 }: AccountSwitcherProps) {
-  const { accounts, activeAccountId, setActiveAccount } = useAccountStore();
+  const { accounts, activeAccountId, unifiedInbox, setActiveAccount, setUnifiedInbox } =
+    useAccountStore();
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useClickOutside(dropdownRef, () => setOpen(false));
 
   const activeAccount = accounts.find((a) => a.id === activeAccountId);
+  // Unified only makes sense with more than one mailbox to unify
+  const canUnify = mailAccounts(accounts).length > 1;
+
+  const handleUnified = useCallback(() => {
+    setUnifiedInbox(true);
+    setOpen(false);
+  }, [setUnifiedInbox]);
 
   const handleSwitch = useCallback(
     (id: string) => {
@@ -61,15 +69,19 @@ export function AccountSwitcher({
           collapsed ? "justify-center" : "gap-2.5"
         } ${open ? "bg-sidebar-hover" : ""}`}
       >
-        <ActiveAvatar account={activeAccount} />
-        {!collapsed && activeAccount && (
+        {unifiedInbox ? <UnifiedAvatar /> : <ActiveAvatar account={activeAccount} />}
+        {!collapsed && (unifiedInbox || activeAccount) && (
           <>
             <div className="flex-1 min-w-0 text-left">
               <div className="text-sm font-medium text-sidebar-text truncate leading-tight">
-                {activeAccount.displayName || activeAccount.email.split("@")[0]}
+                {unifiedInbox
+                  ? "All Inboxes"
+                  : activeAccount!.displayName || activeAccount!.email.split("@")[0]}
               </div>
               <div className="text-xs text-sidebar-text/50 truncate leading-tight">
-                {activeAccount.email}
+                {unifiedInbox
+                  ? `${mailAccounts(accounts).length} accounts`
+                  : activeAccount!.email}
               </div>
             </div>
             <ChevronDown
@@ -89,13 +101,43 @@ export function AccountSwitcher({
             collapsed ? "left-full ml-1 top-0 w-64" : "left-2 right-2"
           }`}
         >
+          {canUnify && (
+            <>
+              <button
+                onClick={handleUnified}
+                className={`flex items-center gap-2.5 w-full px-3 py-2 text-left transition-colors ${
+                  unifiedInbox
+                    ? "bg-accent/8 text-accent"
+                    : "text-text-primary hover:bg-bg-hover"
+                }`}
+              >
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                    unifiedInbox ? "bg-accent text-white" : "bg-bg-tertiary text-text-secondary"
+                  }`}
+                >
+                  <Layers size={14} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate leading-tight">
+                    All Inboxes
+                  </div>
+                  <div className="text-xs text-text-secondary truncate leading-tight">
+                    Every account in one list
+                  </div>
+                </div>
+                {unifiedInbox && <Check size={14} className="shrink-0 text-accent" />}
+              </button>
+              <div className="border-t border-border-primary my-1" />
+            </>
+          )}
           {accounts.length > 1 && (
             <div className="px-3 py-1.5 text-[0.625rem] font-medium text-text-tertiary uppercase tracking-wider">
               Accounts
             </div>
           )}
           {accounts.map((account) => {
-            const isActive = account.id === activeAccountId;
+            const isActive = !unifiedInbox && account.id === activeAccountId;
             return (
               <button
                 key={account.id}
@@ -136,6 +178,15 @@ export function AccountSwitcher({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Trigger avatar for the unified view */
+function UnifiedAvatar() {
+  return (
+    <div className="w-8 h-8 rounded-full bg-accent/15 text-accent flex items-center justify-center shrink-0">
+      <Layers size={16} />
     </div>
   );
 }

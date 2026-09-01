@@ -58,7 +58,11 @@ async function handlePopOut(thread: Thread) {
 }
 
 export function ThreadView({ thread }: ThreadViewProps) {
-  const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const fallbackAccountId = useAccountStore((s) => s.activeAccountId);
+  // The unified list can open a thread from any mailbox, so every read and
+  // action here has to follow the thread's own account rather than the one
+  // selected in the sidebar.
+  const threadAccountId = thread.accountId || fallbackAccountId;
   const contactSidebarVisible = useUIStore((s) => s.contactSidebarVisible);
   const toggleContactSidebar = useUIStore((s) => s.toggleContactSidebar);
   const taskSidebarVisible = useUIStore((s) => s.taskSidebarVisible);
@@ -78,17 +82,17 @@ export function ThreadView({ thread }: ThreadViewProps) {
 
   // Load messages
   useEffect(() => {
-    if (!activeAccountId) return;
+    if (!threadAccountId) return;
     setLoading(true);
-    getMessagesForThread(activeAccountId, thread.id)
+    getMessagesForThread(threadAccountId, thread.id)
       .then(setMessages)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeAccountId, thread.id]);
+  }, [threadAccountId, thread.id]);
 
   // Check per-sender allowlist (single batch query instead of N queries)
   useEffect(() => {
-    if (!activeAccountId || messages.length === 0) return;
+    if (!threadAccountId || messages.length === 0) return;
     let cancelled = false;
 
     const senders: string[] = [];
@@ -97,22 +101,22 @@ export function ThreadView({ thread }: ThreadViewProps) {
     }
     const uniqueSenders = [...new Set(senders)];
 
-    getAllowlistedSenders(activeAccountId, uniqueSenders).then((allowed) => {
+    getAllowlistedSenders(threadAccountId, uniqueSenders).then((allowed) => {
       if (!cancelled) setAllowlistedSenders(allowed);
     });
 
     return () => { cancelled = true; };
-  }, [activeAccountId, messages]);
+  }, [threadAccountId, messages]);
 
   // Auto-mark unread threads as read when opened (respects mark-as-read setting)
   const markAsReadBehavior = useUIStore((s) => s.markAsReadBehavior);
   useEffect(() => {
-    if (!activeAccountId || thread.isRead || markedReadRef.current === thread.id) return;
+    if (!threadAccountId || thread.isRead || markedReadRef.current === thread.id) return;
     if (markAsReadBehavior === "manual") return;
 
     const markRead = () => {
       markedReadRef.current = thread.id;
-      markThreadRead(activeAccountId, thread.id, [], true).catch((err) => {
+      markThreadRead(threadAccountId, thread.id, [], true).catch((err) => {
         console.error("Failed to mark thread as read:", err);
       });
     };
@@ -124,7 +128,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
 
     // instant
     markRead();
-  }, [activeAccountId, thread.id, thread.isRead, updateThread, markAsReadBehavior]);
+  }, [threadAccountId, thread.id, thread.isRead, updateThread, markAsReadBehavior]);
 
   const openComposer = useComposerStore((s) => s.openComposer);
   const openMenu = useContextMenuStore((s) => s.openMenu);
@@ -414,10 +418,10 @@ export function ThreadView({ thread }: ThreadViewProps) {
         </div>
 
         {/* AI Summary */}
-        {activeAccountId && (
+        {threadAccountId && (
           <ThreadSummary
             threadId={thread.id}
-            accountId={activeAccountId}
+            accountId={threadAccountId}
             messages={messages}
           />
         )}
@@ -441,25 +445,25 @@ export function ThreadView({ thread }: ThreadViewProps) {
           </ErrorBoundary>
 
           {/* Smart Reply Suggestions */}
-          {activeAccountId && messages.length > 0 && (
+          {threadAccountId && messages.length > 0 && (
             <SmartReplySuggestions
               threadId={thread.id}
-              accountId={activeAccountId}
+              accountId={threadAccountId}
               messages={messages}
               noReply={noReply}
             />
           )}
 
           {/* Inline Reply */}
-          {activeAccountId && (
+          {threadAccountId && (
             <InlineReply
               thread={thread}
               messages={messages}
-              accountId={activeAccountId}
+              accountId={threadAccountId}
               noReply={noReply}
               onSent={() => {
                 // Reload messages after sending
-                getMessagesForThread(activeAccountId, thread.id)
+                getMessagesForThread(threadAccountId, thread.id)
                   .then(setMessages)
                   .catch(console.error);
               }}
@@ -469,7 +473,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
       </div>
 
       {/* Contact sidebar — overlay at narrow widths, inline at wide */}
-      {contactSidebarVisible && primarySender && activeAccountId && (
+      {contactSidebarVisible && primarySender && threadAccountId && (
         <>
           {/* Backdrop for overlay mode (narrow widths) */}
           <div
@@ -480,7 +484,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
             <ContactSidebar
               email={primarySender}
               name={primarySenderName}
-              accountId={activeAccountId}
+              accountId={threadAccountId}
               onClose={toggleContactSidebar}
             />
           </div>
@@ -488,8 +492,8 @@ export function ThreadView({ thread }: ThreadViewProps) {
       )}
 
       {/* Task sidebar */}
-      {taskSidebarVisible && activeAccountId && (
-        <TaskSidebar accountId={activeAccountId} threadId={thread.id} />
+      {taskSidebarVisible && threadAccountId && (
+        <TaskSidebar accountId={threadAccountId} threadId={thread.id} />
       )}
 
       {/* Raw message source modal */}
@@ -503,10 +507,10 @@ export function ThreadView({ thread }: ThreadViewProps) {
       )}
 
       {/* AI Task Extraction Dialog */}
-      {showTaskExtract && activeAccountId && (
+      {showTaskExtract && threadAccountId && (
         <AiTaskExtractDialog
           threadId={thread.id}
-          accountId={activeAccountId}
+          accountId={threadAccountId}
           messages={messages}
           onClose={() => setShowTaskExtract(false)}
         />

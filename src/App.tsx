@@ -313,6 +313,15 @@ export default function App() {
         const savedAccountId = await getSetting("active_account_id");
         useAccountStore.getState().setAccounts(mapped, savedAccountId);
 
+        // Restore the unified inbox choice, but only while it still applies
+        const savedUnified = await getSetting("unified_inbox");
+        if (savedUnified === "true") {
+          const mailboxes = mapped.filter((a) => a.provider !== "caldav");
+          if (mailboxes.length > 1) {
+            useAccountStore.getState().restoreUnifiedInbox(true);
+          }
+        }
+
         // Initialize Gmail clients for existing accounts
         await initializeClients();
 
