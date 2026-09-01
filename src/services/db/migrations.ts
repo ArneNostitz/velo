@@ -1,6 +1,6 @@
 import { getDb } from "./connection";
 
-const MIGRATIONS = [
+export const MIGRATIONS = [
   {
     version: 1,
     description: "Initial schema",
@@ -803,6 +803,19 @@ const MIGRATIONS = [
       ALTER TABLE messages ADD COLUMN is_read_receipt INTEGER NOT NULL DEFAULT 0;
       CREATE INDEX IF NOT EXISTS idx_messages_is_read_receipt
         ON messages(account_id, is_read_receipt);
+    `,
+  },
+  {
+    version: 28,
+    description: "Read receipts: index the thread lookup the list queries actually make",
+    sql: `
+      -- (account_id, is_read_receipt) matched thousands of rows per account and
+      -- left thread_id to be filtered by scan, so the per-thread EXISTS in every
+      -- list query walked the whole mailbox: 13ms became 5.7s on a 7k-message
+      -- database. Putting thread_id in the key makes it a covering lookup.
+      DROP INDEX IF EXISTS idx_messages_is_read_receipt;
+      CREATE INDEX IF NOT EXISTS idx_messages_thread_receipt
+        ON messages(account_id, thread_id, is_read_receipt);
     `,
   },
 ];

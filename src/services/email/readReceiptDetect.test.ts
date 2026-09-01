@@ -45,3 +45,4 @@ describe("looksLikeReadReceipt", () => {
     expect(looksLikeReadReceipt({ subject: null, body_text: "anything" })).toBe(false);
   });
 });
+

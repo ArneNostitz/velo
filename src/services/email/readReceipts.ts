@@ -195,6 +195,22 @@ export function parseMdnOriginalMessageId(report: string): string | null {
  * receipt whose machine-readable part never reached the database — the
  * report part is the real test.
  */
+/**
+ * The same subjects as SQL LIKE patterns, so the database can do the
+ * narrowing. Kept deliberately loose — `looksLikeReadReceipt` is the actual
+ * test, this only decides which rows are worth reading.
+ */
+const SUBJECT_LIKE = [
+  "%read receipt%",
+  "%return receipt%",
+  "%disposition notification%",
+  "%Empfangsbest%",
+  "%Lesebest%",
+  "%de r_ception%",
+  "%Confirmaci_n de lectura%",
+  "%Bevestiging van ontvangst%",
+];
+
 const RECEIPT_SUBJECTS = [
   /\bread receipt\b/i,
   /\breturn receipt\b/i,
@@ -288,6 +304,10 @@ export async function backfillStoredReadReceipts(accountId: string): Promise<num
   const { getDb } = await import("@/services/db/connection");
   const db = await getDb();
 
+  // Narrow on the subject in SQL before touching a body. Selecting body_text
+  // for every message shipped ~9MB per account across the IPC bridge on every
+  // sync; the subject filter returns a handful of rows.
+  const subjectFilter = SUBJECT_LIKE.map((_, i) => `subject LIKE $${i + 2}`).join(" OR ");
   const candidates = await db.select<{
     id: string;
     subject: string | null;
@@ -298,8 +318,8 @@ export async function backfillStoredReadReceipts(accountId: string): Promise<num
   }[]>(
     `SELECT id, subject, body_text, from_address, date, read_receipt_status
      FROM messages
-     WHERE account_id = $1 AND is_read_receipt = 0 AND subject IS NOT NULL`,
-    [accountId],
+     WHERE account_id = $1 AND is_read_receipt = 0 AND (${subjectFilter})`,
+    [accountId, ...SUBJECT_LIKE],
   );
 
   let flagged = 0;
