@@ -122,7 +122,16 @@ describe("ContactSidebar", () => {
 
   it("renders attachments section when data present", async () => {
     const mockAttachments: ContactAttachment[] = [
-      { filename: "report.pdf", mime_type: "application/pdf", size: 1024, date: 1700000000000 },
+      {
+        id: "att-1",
+        message_id: "msg-1",
+        account_id: "acc-1",
+        gmail_attachment_id: "gid-1",
+        filename: "report.pdf",
+        mime_type: "application/pdf",
+        size: 1024,
+        date: 1700000000000,
+      },
     ];
     vi.mocked(getAttachmentsFromContact).mockResolvedValueOnce(mockAttachments);
 

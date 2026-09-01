@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useUIStore } from "@/stores/uiStore";
 import { useThreadStore } from "@/stores/threadStore";
 import { useComposerStore } from "@/stores/composerStore";
-import { useAccountStore, listedAccountIds } from "@/stores/accountStore";
+import { useAccountStore } from "@/stores/accountStore";
 import { useShortcutStore } from "@/stores/shortcutStore";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 import { navigateToLabel, navigateToThread, navigateBack, getActiveLabel, getSelectedThreadId } from "@/router/navigate";
@@ -13,7 +13,7 @@ import { getGmailClient } from "@/services/gmail/tokenManager";
 import { getMessagesForThread } from "@/services/db/messages";
 import { parseUnsubscribeUrl } from "@/components/email/MessageItem";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { triggerSync } from "@/services/gmail/syncManager";
+import { refreshMail } from "@/services/refreshMail";
 
 /**
  * Parse a key binding string and check if it matches a keyboard event.
@@ -503,13 +503,7 @@ async function executeAction(actionId: string): Promise<void> {
       break;
     case "app.syncFolder": {
       // The unified list shows every mailbox, so refresh all of them
-      const state = useAccountStore.getState();
-      const syncIds = listedAccountIds(state);
-      if (syncIds.length > 0) {
-        const currentLabel = getActiveLabel();
-        useUIStore.getState().setSyncingFolder(currentLabel);
-        triggerSync(syncIds);
-      }
+      refreshMail();
       break;
     }
   }

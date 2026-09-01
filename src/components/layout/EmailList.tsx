@@ -10,7 +10,7 @@ import { collectOwnAddresses } from "@/services/accounts/ownAddresses";
 import { useUIStore } from "@/stores/uiStore";
 import { useActiveLabel, useSelectedThreadId, useActiveCategory } from "@/hooks/useRouteNavigation";
 import { navigateToThread, navigateToLabel } from "@/router/navigate";
-import { getThreadsForAccounts, getThreadsForCategoryAcrossAccounts, getThreadLabelIds, deleteThread as deleteThreadFromDb } from "@/services/db/threads";
+import { getThreadsForAccounts, getThreadsForCategoryAcrossAccounts, getThreadsByIds, getThreadLabelIds, deleteThread as deleteThreadFromDb } from "@/services/db/threads";
 import { getCategoriesForThreads, getCategoryUnreadCounts } from "@/services/db/threadCategories";
 import { getActiveFollowUpThreadIds } from "@/services/db/followUpReminders";
 import { getTaskThreadIds } from "@/services/db/tasks";
@@ -134,15 +134,22 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     const sender = selectedThread?.fromAddress;
     if (!sender) return;
     const query = `from:${sender}`;
-    const { setSearch } = useThreadStore.getState();
+    const { searchQuery, setSearch, clearSearch } = useThreadStore.getState();
+    // Clicking again reverses the search and returns to the mailbox view
+    if (searchQuery === query) {
+      clearSearch();
+      return;
+    }
     setSearch(query, null);
     try {
-      const hits = await searchMessages(query, activeAccountId ?? undefined, 100);
+      // The unified list spans every mailbox, so the search must too
+      const scope = unifiedInbox ? undefined : activeAccountId ?? undefined;
+      const hits = await searchMessages(query, scope, 200);
       useThreadStore.getState().setSearch(query, new Set(hits.map((h) => h.thread_id)));
     } catch {
       // Query stays in the box; the user can adjust it
     }
-  }, [selectedThread, activeAccountId]);
+  }, [selectedThread, activeAccountId, unifiedInbox]);
 
   const handleQuickUnsubscribe = useCallback(async () => {
     if (!selectedThread || unsubStatus === "loading" || unsubStatus === "done") return;
@@ -289,36 +296,6 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   const searchThreadIds = useThreadStore((s) => s.searchThreadIds);
   const searchQuery = useThreadStore((s) => s.searchQuery);
 
-  const filteredThreads = useMemo(() => {
-    let filtered = threads;
-    // Apply search filter
-    if (searchThreadIds !== null) {
-      filtered = filtered.filter((t) => searchThreadIds.has(t.id));
-    }
-    // Apply read filter
-    if (readFilter === "unread") filtered = filtered.filter((t) => !t.isRead);
-    else if (readFilter === "read") filtered = filtered.filter((t) => t.isRead);
-    // Category filtering is now server-side (Phase 4) — no client-side filter needed
-    return filtered;
-  }, [threads, readFilter, searchThreadIds]);
-
-  // Pre-compute bundled category Set for O(1) lookups in filter
-  const bundledCategorySet = useMemo(
-    () => new Set(bundleRules.map((r) => r.category)),
-    [bundleRules],
-  );
-
-  // Memoize visible threads (excludes bundled/held threads in "All" inbox view)
-  const visibleThreads = useMemo(() => {
-    if (activeLabel !== "inbox" || activeCategory !== "All") return filteredThreads;
-    return filteredThreads.filter((t) => {
-      const cat = categoryMap.get(t.id);
-      if (cat && bundledCategorySet.has(cat)) return false;
-      if (heldThreadIds.has(t.id)) return false;
-      return true;
-    });
-  }, [filteredThreads, activeLabel, activeCategory, categoryMap, bundledCategorySet, heldThreadIds]);
-
   const mapDbThreads = useCallback(async (dbThreads: Awaited<ReturnType<typeof getThreadsForAccounts>>): Promise<Thread[]> => {
     return Promise.all(
       dbThreads.map(async (t) => {
@@ -344,6 +321,66 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       }),
     );
   }, []);
+
+  // Search hits can live anywhere in the mailbox, so they are loaded straight
+  // from the DB — filtering the currently loaded label page would hide every
+  // hit outside it.
+  const [searchResults, setSearchResults] = useState<Thread[] | null>(null);
+  useEffect(() => {
+    if (searchThreadIds === null) {
+      setSearchResults(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await getThreadsByIds(accountIds, [...searchThreadIds], ownAddresses);
+        const mapped = await mapDbThreads(rows);
+        if (cancelled) return;
+        // Cache each result so opening one outside the current label works
+        const { cacheThread } = useThreadStore.getState();
+        mapped.forEach(cacheThread);
+        setSearchResults(mapped);
+      } catch (err) {
+        console.error("Failed to load search results:", err);
+        if (!cancelled) setSearchResults([]);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchThreadIds, accountScopeKey, ownAddressKey, mapDbThreads]);
+
+  const filteredThreads = useMemo(() => {
+    // While the search results are still loading, fall back to filtering the
+    // loaded page so the list doesn't flash empty
+    let filtered = searchThreadIds !== null
+      ? searchResults ?? threads.filter((t) => searchThreadIds.has(t.id))
+      : threads;
+    // Apply read filter
+    if (readFilter === "unread") filtered = filtered.filter((t) => !t.isRead);
+    else if (readFilter === "read") filtered = filtered.filter((t) => t.isRead);
+    // Category filtering is now server-side (Phase 4) — no client-side filter needed
+    return filtered;
+  }, [threads, readFilter, searchThreadIds, searchResults]);
+
+  // Pre-compute bundled category Set for O(1) lookups in filter
+  const bundledCategorySet = useMemo(
+    () => new Set(bundleRules.map((r) => r.category)),
+    [bundleRules],
+  );
+
+  // Memoize visible threads (excludes bundled/held threads in "All" inbox view)
+  const visibleThreads = useMemo(() => {
+    // Search results are not a mailbox view — never hide hits behind bundles
+    if (searchThreadIds !== null) return filteredThreads;
+    if (activeLabel !== "inbox" || activeCategory !== "All") return filteredThreads;
+    return filteredThreads.filter((t) => {
+      const cat = categoryMap.get(t.id);
+      if (cat && bundledCategorySet.has(cat)) return false;
+      if (heldThreadIds.has(t.id)) return false;
+      return true;
+    });
+  }, [filteredThreads, searchThreadIds, activeLabel, activeCategory, categoryMap, bundledCategorySet, heldThreadIds]);
 
   const clearSearch = useThreadStore((s) => s.clearSearch);
 
@@ -634,11 +671,17 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
           onClick={handleShowAllFromSender}
           disabled={!selectedThread?.fromAddress}
           title={
-            selectedThread?.fromAddress
-              ? `Show all messages from ${selectedThread.fromAddress}`
-              : "Select a thread to search by its sender"
+            selectedThread?.fromAddress && searchQuery === `from:${selectedThread.fromAddress}`
+              ? "Clear this search and go back to the mailbox"
+              : selectedThread?.fromAddress
+                ? `Show all messages from ${selectedThread.fromAddress}`
+                : "Select a thread to search by its sender"
           }
-          className="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          className={`p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${
+            selectedThread?.fromAddress && searchQuery === `from:${selectedThread.fromAddress}`
+              ? "text-accent bg-accent/10 hover:bg-accent/20"
+              : "text-text-tertiary hover:text-text-primary hover:bg-bg-hover"
+          }`}
         >
           <UserSearch size={15} />
         </button>
@@ -679,13 +722,15 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
         <div>
           <h2 className="text-sm font-semibold text-text-primary capitalize flex items-center gap-1.5">
             {isSmartFolder && <FolderSearch size={14} className="text-accent shrink-0" />}
-            {isSmartFolder
-              ? activeSmartFolder?.name ?? "Smart Folder"
-              : activeLabel === "inbox" && inboxViewMode === "split" && activeCategory !== "All"
-                ? `Inbox — ${activeCategory}`
-                : LABEL_MAP[activeLabel] !== undefined
-                  ? activeLabel
-                  : userLabels.find((l) => l.id === activeLabel)?.name ?? activeLabel}
+            {searchThreadIds !== null
+              ? "Search results"
+              : isSmartFolder
+                ? activeSmartFolder?.name ?? "Smart Folder"
+                : activeLabel === "inbox" && inboxViewMode === "split" && activeCategory !== "All"
+                  ? `Inbox — ${activeCategory}`
+                  : LABEL_MAP[activeLabel] !== undefined
+                    ? activeLabel
+                    : userLabels.find((l) => l.id === activeLabel)?.name ?? activeLabel}
           </h2>
           <span className="text-xs text-text-tertiary">
             {filteredThreads.length} conversation{filteredThreads.length !== 1 ? "s" : ""}

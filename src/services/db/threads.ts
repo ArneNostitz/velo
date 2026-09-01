@@ -175,6 +175,32 @@ export async function getThreadsForAccounts(
   );
 }
 
+/**
+ * Specific threads by id across accounts, newest first. Search results live
+ * anywhere in the mailbox, so they cannot be served by the label-scoped
+ * queries above.
+ */
+export async function getThreadsByIds(
+  accountIds: string[],
+  threadIds: string[],
+  ownAddresses: string[] = [],
+): Promise<DbThread[]> {
+  if (accountIds.length === 0 || threadIds.length === 0) return [];
+  const db = await getDb();
+  const accounts = inClause(accountIds.length);
+  const ids = inClause(threadIds.length, accounts.nextIndex);
+  const peer = peerJoin(ownAddresses, ids.nextIndex);
+  return db.select<DbThread[]>(
+    `SELECT t.*, m.from_name, m.from_address${peer.select} FROM threads t
+     LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
+       AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
+     ${peer.join}
+     WHERE t.account_id IN (${accounts.placeholders}) AND t.id IN (${ids.placeholders})
+     ORDER BY t.last_message_at DESC`,
+    [...accountIds, ...threadIds, ...peer.params],
+  );
+}
+
 /** Category-filtered inbox threads across several accounts. */
 export async function getThreadsForCategoryAcrossAccounts(
   accountIds: string[],

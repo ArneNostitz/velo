@@ -11,16 +11,28 @@ vi.mock("@/services/db/attachments", () => ({
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
-  save: vi.fn(),
+  open: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/plugin-fs", () => ({
-  writeFile: vi.fn(),
+// Not macOS in tests — clicking a file falls back to the in-app preview
+vi.mock("@tauri-apps/plugin-os", () => ({
+  platform: vi.fn(() => "linux"),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/path", () => ({
+  downloadDir: vi.fn(async () => "/downloads"),
+}));
+
+vi.mock("@/services/db/settings", () => ({
+  getSetting: vi.fn(async () => null),
 }));
 
 import { getEmailProvider } from "@/services/email/providerFactory";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "@tauri-apps/plugin-fs";
+import { invoke } from "@tauri-apps/api/core";
 
 const makeAttachment = (overrides: Partial<DbAttachment> = {}): DbAttachment => ({
   id: "att-1",
@@ -162,13 +174,12 @@ describe("AttachmentList", () => {
     });
   });
 
-  it("handles download via provider abstraction", async () => {
+  it("downloads into the Downloads folder via the save_attachment command", async () => {
     mockFetchAttachment.mockResolvedValue({
       data: btoa("file-content"),
       size: 12,
     });
-    vi.mocked(save).mockResolvedValue("/downloads/photo.png");
-    vi.mocked(writeFile).mockResolvedValue(undefined as never);
+    vi.mocked(invoke).mockResolvedValue("/downloads/photo.png");
 
     render(
       <AttachmentList
@@ -189,8 +200,73 @@ describe("AttachmentList", () => {
     fireEvent.click(screen.getByText("Download"));
 
     await waitFor(() => {
-      expect(save).toHaveBeenCalled();
-      expect(writeFile).toHaveBeenCalled();
+      expect(invoke).toHaveBeenCalledWith("save_attachment", {
+        dir: "/downloads",
+        filename: "photo.png",
+        dataBase64: btoa("file-content"),
+      });
+    });
+  });
+
+  it("saves via the per-attachment save button without opening the preview", async () => {
+    mockFetchAttachment.mockResolvedValue({
+      data: btoa("chip-content"),
+      size: 12,
+    });
+    vi.mocked(invoke).mockResolvedValue("/downloads/photo.png");
+
+    render(
+      <AttachmentList
+        accountId="acc-1"
+        messageId="msg-1"
+        attachments={[makeAttachment()]}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle("Save to Downloads — ⌘-click to choose a folder"));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("save_attachment", {
+        dir: "/downloads",
+        filename: "photo.png",
+        dataBase64: btoa("chip-content"),
+      });
+    });
+    // No preview modal was opened
+    expect(screen.queryByText("Download")).not.toBeInTheDocument();
+  });
+
+  it("navigates between attachments with arrow keys in the preview", async () => {
+    mockFetchAttachment.mockResolvedValue({ data: btoa("x"), size: 1 });
+
+    render(
+      <AttachmentList
+        accountId="acc-1"
+        messageId="msg-1"
+        attachments={[
+          makeAttachment({ id: "att-1", gmail_attachment_id: "gid-1", filename: "photo.png" }),
+          makeAttachment({ id: "att-2", gmail_attachment_id: "gid-2", filename: "doc.pdf", mime_type: "application/pdf" }),
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("photo.png"));
+    await waitFor(() => {
+      expect(screen.getByText("1 / 2")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    });
+
+    // Right edge clamps — no wrap-around
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.getByText("1 / 2")).toBeInTheDocument();
     });
   });
 

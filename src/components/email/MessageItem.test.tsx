@@ -14,6 +14,7 @@ vi.mock("./InlineAttachmentPreview", () => ({
 
 vi.mock("./AttachmentList", () => ({
   AttachmentList: () => null,
+  useAttachmentViewer: () => ({ fileAttachments: [], openAttachment: vi.fn(), viewer: null }),
   getAttachmentsForMessage: vi.fn().mockResolvedValue([]),
 }));
 

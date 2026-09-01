@@ -99,7 +99,7 @@ export function AttachmentLibrary() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [sizeFilter, setSizeFilter] = useState<SizeFilter>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const [previewAttachment, setPreviewAttachment] = useState<AttachmentWithContext | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   const loadData = useCallback(async (acctId: string) => {
     setLoading(true);
@@ -153,6 +153,17 @@ export function AttachmentLibrary() {
       return true;
     });
   }, [attachments, searchQuery, typeFilter, senderFilter, dateFilter, sizeFilter]);
+
+  // The set ←/→ moves through in the preview: every fetchable filtered file
+  const openableFiltered = useMemo(
+    () => filtered.filter((att) => att.gmail_attachment_id),
+    [filtered],
+  );
+
+  const handlePreview = useCallback((att: AttachmentWithContext) => {
+    const idx = openableFiltered.findIndex((f) => f.id === att.id);
+    if (idx >= 0) setPreviewIndex(idx);
+  }, [openableFiltered]);
 
   const handleDownload = useCallback(async (att: AttachmentWithContext) => {
     if (!att.gmail_attachment_id || !accountId) return;
@@ -294,7 +305,7 @@ export function AttachmentLibrary() {
               <AttachmentGridItem
                 key={att.id}
                 attachment={att}
-                onPreview={() => setPreviewAttachment(att)}
+                onPreview={() => handlePreview(att)}
                 onDownload={() => handleDownload(att)}
                 onJumpToEmail={() => handleJumpToEmail(att)}
               />
@@ -306,7 +317,7 @@ export function AttachmentLibrary() {
               <AttachmentListItem
                 key={att.id}
                 attachment={att}
-                onPreview={() => setPreviewAttachment(att)}
+                onPreview={() => handlePreview(att)}
                 onDownload={() => handleDownload(att)}
                 onJumpToEmail={() => handleJumpToEmail(att)}
               />
@@ -316,12 +327,11 @@ export function AttachmentLibrary() {
       </div>
 
       {/* Preview modal */}
-      {previewAttachment && (
+      {previewIndex !== null && openableFiltered.length > 0 && (
         <AttachmentPreview
-          attachment={previewAttachment}
-          accountId={accountId!}
-          messageId={previewAttachment.message_id}
-          onClose={() => setPreviewAttachment(null)}
+          attachments={openableFiltered}
+          startIndex={previewIndex}
+          onClose={() => setPreviewIndex(null)}
         />
       )}
     </div>
