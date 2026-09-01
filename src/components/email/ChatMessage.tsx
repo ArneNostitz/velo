@@ -118,10 +118,10 @@ export const ChatMessage = memo(function ChatMessage({
           {openedCount > 0 && (
             <span
               className="inline-flex items-center gap-0.5 text-[0.625rem] px-1.5 py-px rounded-full bg-success/15 text-success shrink-0"
-              title="Read receipt received"
+              title={`Read receipt received${message.read_receipt_last_at ? ` — last ${formatFullDate(message.read_receipt_last_at)}` : ""}`}
             >
               <CheckCheck size={10} />
-              {openedCount > 1 ? `${openedCount}\u00d7` : "Opened"}
+              {openedCount > 1 ? `Opened ${openedCount}\u00d7` : "Opened"}
             </span>
           )}
         </div>

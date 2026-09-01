@@ -3,6 +3,7 @@ import { render, screen, act } from "@testing-library/react";
 import { createRef } from "react";
 import { MessageItem } from "./MessageItem";
 import type { DbMessage } from "@/services/db/messages";
+import { useAccountStore } from "@/stores/accountStore";
 
 vi.mock("./EmailRenderer", () => ({
   EmailRenderer: () => <div data-testid="email-renderer" />,
@@ -129,5 +130,51 @@ describe("MessageItem", () => {
       <MessageItem ref={ref} message={makeMessage()} isLast={true} blockImages={false} />,
     );
     expect(ref.current).toBeInstanceOf(HTMLDivElement);
+  });
+});
+
+describe("MessageItem - \"Opened\" marker", () => {
+  const sentFromAlias = makeMessage({
+    from_address: "alias@example.com",
+    read_receipt_count: 2,
+    read_receipt_last_at: Date.now(),
+  });
+
+  beforeEach(() => {
+    useAccountStore.setState({
+      accounts: [{ id: "a1", email: "me@example.com" }] as never,
+    });
+  });
+
+  it("counts a message sent from a send-as alias as the user's own", () => {
+    render(
+      <MessageItem
+        message={sentFromAlias}
+        isLast={false}
+        ownAddresses={new Set(["me@example.com", "alias@example.com"])}
+      />,
+    );
+    expect(screen.getByText("Opened 2×")).toBeInTheDocument();
+  });
+
+  it("stays silent for a message the user did not send", () => {
+    render(
+      <MessageItem
+        message={sentFromAlias}
+        isLast={false}
+        ownAddresses={new Set(["me@example.com"])}
+      />,
+    );
+    expect(screen.queryByText(/Opened/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the account address when no own addresses are supplied", () => {
+    render(
+      <MessageItem
+        message={makeMessage({ from_address: "me@example.com", read_receipt_count: 1 })}
+        isLast={false}
+      />,
+    );
+    expect(screen.getByText("Opened")).toBeInTheDocument();
   });
 });

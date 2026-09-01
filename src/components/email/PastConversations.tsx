@@ -194,6 +194,7 @@ export function PastConversations({
                         senderAllowlisted={
                           msg.from_address ? allowlistedSenders?.has(msg.from_address) ?? false : false
                         }
+                        ownAddresses={ownAddresses}
                       />
                     ))
                   )

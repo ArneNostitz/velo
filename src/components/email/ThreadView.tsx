@@ -486,6 +486,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
                   blockImages={blockImages}
                   senderAllowlisted={msg.from_address ? allowlistedSenders.has(msg.from_address) : false}
                   isSpam={thread.labelIds.includes("SPAM")}
+                  ownAddresses={ownAddresses}
                   onContextMenu={(e) => handleMessageContextMenu(e, msg)}
                 />
               ))
