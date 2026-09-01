@@ -3,7 +3,8 @@ import { useUIStore, type SettingsTab } from "@/stores/uiStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { getSetting, setSetting, getSecureSetting, setSecureSetting } from "@/services/db/settings";
 import { PROVIDER_MODELS } from "@/services/ai/types";
-import { deleteAccount } from "@/services/db/accounts";
+import { deleteAccount, updateAccountColor } from "@/services/db/accounts";
+import { ACCOUNT_COLORS, accountColor } from "@/constants/accountColors";
 import { removeClient, reauthorizeAccount } from "@/services/gmail/tokenManager";
 import { validateClientId, validateClientSecret } from "@/services/gmail/clientCredentials";
 import { triggerSync, forceFullSync, resyncAccount } from "@/services/gmail/syncManager";
@@ -95,6 +96,8 @@ export function SettingsPage() {
   const inboxViewMode = useUIStore((s) => s.inboxViewMode);
   const setInboxViewMode = useUIStore((s) => s.setInboxViewMode);
   const reduceMotion = useUIStore((s) => s.reduceMotion);
+  const timeFormat = useUIStore((s) => s.timeFormat);
+  const setTimeFormat = useUIStore((s) => s.setTimeFormat);
   const setReduceMotion = useUIStore((s) => s.setReduceMotion);
   const accounts = useAccountStore((s) => s.accounts);
   const removeAccountFromStore = useAccountStore((s) => s.removeAccount);
@@ -526,6 +529,19 @@ export function SettingsPage() {
                         <option value="split">Split (Categories)</option>
                       </select>
                     </SettingRow>
+                    <SettingRow label="Time format">
+                      <select
+                        value={timeFormat}
+                        onChange={(e) =>
+                          setTimeFormat(e.target.value as "system" | "12h" | "24h")
+                        }
+                        className="w-48 bg-bg-tertiary text-text-primary text-sm px-3 py-1.5 rounded-md border border-border-primary focus:border-accent outline-none"
+                      >
+                        <option value="system">Match system</option>
+                        <option value="12h">12-hour (1:30 PM)</option>
+                        <option value="24h">24-hour (13:30)</option>
+                      </select>
+                    </SettingRow>
                     <ToggleRow
                       label="Reduce motion"
                       description="Disable UI animations and transitions"
@@ -895,14 +911,21 @@ export function SettingsPage() {
                       </button>
                     ) : (
                       <div className="space-y-2">
-                        {accounts.filter((a) => a.provider !== "caldav").map((account) => {
+                        {accounts.filter((a) => a.provider !== "caldav").map((account, accountIndex) => {
                           const providerLabel = account.provider === "imap" ? "IMAP" : "Gmail";
+                          const current = accountColor(account.color, accountIndex);
                           return (
                             <div
                               key={account.id}
                               className="flex items-center justify-between py-2.5 px-4 bg-bg-secondary rounded-lg"
                             >
-                              <div>
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: current.hex }}
+                                  aria-hidden="true"
+                                />
+                              <div className="min-w-0">
                                 <div className="text-sm font-medium text-text-primary flex items-center gap-2">
                                   {account.displayName ?? account.email}
                                   <span className="text-[0.6rem] font-medium px-1.5 py-0.5 rounded-full bg-bg-tertiary text-text-tertiary">
@@ -912,6 +935,11 @@ export function SettingsPage() {
                                 <div className="text-xs text-text-tertiary">
                                   {account.email}
                                 </div>
+                                <AccountColorPicker
+                                  accountId={account.id}
+                                  selectedId={current.id}
+                                />
+                              </div>
                               </div>
                               <div className="flex items-center gap-3">
                                 <button
@@ -1456,6 +1484,46 @@ export function SettingsPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Colour swatches for one account. The colour identifies the mailbox in the
+ * unified inbox, where every thread otherwise looks alike.
+ */
+function AccountColorPicker({
+  accountId,
+  selectedId,
+}: {
+  accountId: string;
+  selectedId: string;
+}) {
+  const setAccountColor = useAccountStore((s) => s.setAccountColor);
+
+  const pick = async (colorId: string) => {
+    setAccountColor(accountId, colorId);
+    await updateAccountColor(accountId, colorId);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 mt-1.5">
+      {ACCOUNT_COLORS.map((color) => {
+        const isSelected = color.id === selectedId;
+        return (
+          <button
+            key={color.id}
+            onClick={() => pick(color.id)}
+            title={color.label}
+            aria-label={`Use ${color.label} for this account`}
+            aria-pressed={isSelected}
+            className={`w-4 h-4 rounded-full transition-transform hover:scale-110 ${
+              isSelected ? "ring-2 ring-offset-2 ring-offset-bg-secondary ring-text-tertiary" : ""
+            }`}
+            style={{ backgroundColor: color.hex }}
+          />
+        );
+      })}
     </div>
   );
 }

@@ -97,7 +97,8 @@ function applyOptimisticUpdate(action: EmailAction): void {
     case "spam":
     case "moveToFolder": {
       const nextId = getNextThreadId(action.threadId);
-      store.removeThread(action.threadId);
+      // Fades the row out, then drops it — the list still updates immediately
+      store.beginThreadRemoval(action.threadId);
       if (nextId) {
         navigateToThread(nextId);
       }

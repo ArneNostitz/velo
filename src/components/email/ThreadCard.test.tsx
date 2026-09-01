@@ -17,6 +17,7 @@ vi.mock("@/stores/threadStore", () => ({
     (selector: (s: Record<string, unknown>) => unknown) =>
       selector({
         selectedThreadIds: new Set(),
+        removingThreadIds: new Set(),
         toggleThreadSelection: vi.fn(),
         selectThreadRange: vi.fn(),
       }),

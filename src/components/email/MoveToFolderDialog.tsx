@@ -3,6 +3,7 @@ import { CSSTransition } from "react-transition-group";
 import { useLabelStore } from "@/stores/labelStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useThreadStore } from "@/stores/threadStore";
+import { useActiveLabel } from "@/hooks/useRouteNavigation";
 import {
   archiveThread,
   trashThread,
@@ -36,6 +37,13 @@ interface Destination {
   folderPath?: string;
 }
 
+/** Maps a sidebar view name onto the destination id that means "here". */
+const VIEW_TO_DESTINATION: Record<string, string> = {
+  inbox: "INBOX",
+  trash: "TRASH",
+  spam: "SPAM",
+};
+
 const SYSTEM_DESTINATIONS: Destination[] = [
   { id: "INBOX", label: "Inbox", icon: Inbox, type: "system" },
   { id: "__archive__", label: "Archive", icon: Archive, type: "system" },
@@ -56,12 +64,9 @@ export function MoveToFolderDialog({
   const labels = useLabelStore((s) => s.labels);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
-
-  const account = useMemo(
-    () => accounts.find((a) => a.id === activeAccountId),
-    [accounts, activeAccountId],
-  );
-  const isImap = account?.provider === "imap";
+  const activeLabel = useActiveLabel();
+  /** The destination id that corresponds to the view currently on screen. */
+  const activeLabelId = VIEW_TO_DESTINATION[activeLabel] ?? activeLabel;
 
   // Build the full destination list: system destinations + user labels
   const destinations = useMemo(() => {
@@ -83,45 +88,63 @@ export function MoveToFolderDialog({
 
   const handleSelect = useCallback(
     async (dest: Destination) => {
-      if (!activeAccountId || threadIds.length === 0) return;
+      if (threadIds.length === 0) return;
       onClose();
 
+      const store = useThreadStore.getState();
+      const accountsById = new Map(accounts.map((a) => [a.id, a]));
+
+      // A moved thread leaves the current view unless it is being moved into it.
+      // Fade the rows out straight away rather than waiting for the round trip:
+      // the add/remove-label pair below has no optimistic step of its own, which
+      // is what made a Gmail move feel like it hung.
+      const staysInView = dest.id === activeLabelId;
+      if (!staysInView) {
+        store.beginThreadRemoval(threadIds);
+      }
+
       for (const threadId of threadIds) {
+        // The unified list can hold threads from several mailboxes
+        const thread = store.threads.find((t) => t.id === threadId);
+        const threadAccountId = thread?.accountId ?? activeAccountId;
+        if (!threadAccountId) continue;
+        const threadIsImap = accountsById.get(threadAccountId)?.provider === "imap";
+
         if (dest.id === "__archive__") {
-          await archiveThread(activeAccountId, threadId, []);
+          await archiveThread(threadAccountId, threadId, []);
         } else if (dest.id === "TRASH") {
-          await trashThread(activeAccountId, threadId, []);
+          await trashThread(threadAccountId, threadId, []);
         } else if (dest.id === "SPAM") {
-          await spamThread(activeAccountId, threadId, [], true);
+          await spamThread(threadAccountId, threadId, [], true);
         } else if (dest.id === "INBOX") {
-          if (isImap) {
-            await moveThread(activeAccountId, threadId, [], "INBOX");
+          if (threadIsImap) {
+            await moveThread(threadAccountId, threadId, [], "INBOX");
           } else {
             // Gmail: add INBOX label (un-archive)
-            await addThreadLabel(activeAccountId, threadId, "INBOX");
+            await addThreadLabel(threadAccountId, threadId, "INBOX");
           }
         } else if (dest.type === "label") {
-          if (isImap) {
+          if (threadIsImap) {
             // IMAP: move to folder. The label's id is the folder path for IMAP accounts.
-            await moveThread(activeAccountId, threadId, [], dest.id);
+            await moveThread(threadAccountId, threadId, [], dest.id);
           } else {
             // Gmail: add destination label + remove from current location (archive)
-            await addThreadLabel(activeAccountId, threadId, dest.id);
+            await addThreadLabel(threadAccountId, threadId, dest.id);
             // Remove INBOX to complete the "move" semantics
-            const thread = useThreadStore
-              .getState()
-              .threads.find((t) => t.id === threadId);
             if (thread?.labelIds.includes("INBOX")) {
-              await removeThreadLabel(activeAccountId, threadId, "INBOX");
+              await removeThreadLabel(threadAccountId, threadId, "INBOX");
             }
           }
         }
       }
 
-      // Refresh thread list
-      window.dispatchEvent(new Event("velo-sync-done"));
+      // Only reload when the rows stayed put — otherwise the optimistic removal
+      // above already reflects the result, and reloading would reset the list.
+      if (staysInView) {
+        window.dispatchEvent(new Event("velo-sync-done"));
+      }
     },
-    [activeAccountId, threadIds, isImap, onClose],
+    [activeAccountId, accounts, activeLabelId, threadIds, onClose],
   );
 
   const handleKeyDown = useCallback(

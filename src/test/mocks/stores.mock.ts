@@ -15,6 +15,7 @@ export function createMockThreadStoreState(
     threads: [],
     updateThread: vi.fn(),
     removeThread: vi.fn(),
+    beginThreadRemoval: vi.fn(),
     removeThreads: vi.fn(),
     ...overrides,
   };

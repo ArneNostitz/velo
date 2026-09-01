@@ -1,4 +1,8 @@
 import { create } from "zustand";
+import { useUIStore } from "./uiStore";
+
+/** Matches the .thread-exit transition in globals.css */
+export const THREAD_EXIT_MS = 200;
 
 export interface Thread {
   id: string;
@@ -36,6 +40,14 @@ interface ThreadState {
   updateThread: (id: string, updates: Partial<Thread>) => void;
   removeThread: (id: string) => void;
   removeThreads: (ids: string[]) => void;
+  /** Threads currently playing their exit animation */
+  removingThreadIds: Set<string>;
+  /**
+   * Fade a thread out, then drop it. The row is removed from the model only
+   * after the animation, so an archive or move reads as the row leaving rather
+   * than the list snapping shut.
+   */
+  beginThreadRemoval: (ids: string | string[]) => void;
   setSearch: (query: string, threadIds: Set<string> | null) => void;
   clearSearch: () => void;
 }
@@ -48,8 +60,15 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
   isLoading: false,
   searchQuery: "",
   searchThreadIds: null,
+  removingThreadIds: new Set<string>(),
 
-  setThreads: (threads) => set({ threads, threadMap: new Map(threads.map((t) => [t.id, t])) }),
+  setThreads: (threads) =>
+    set({
+      threads,
+      threadMap: new Map(threads.map((t) => [t.id, t])),
+      // A reload replaces the list wholesale — nothing is mid-exit any more
+      removingThreadIds: new Set<string>(),
+    }),
   selectThread: (selectedThreadId) => set({ selectedThreadId, selectedThreadIds: new Set() }),
   toggleThreadSelection: (id) =>
     set((state) => {
@@ -105,6 +124,27 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       if (existing) threadMap.set(id, { ...existing, ...updates });
       return { threads, threadMap };
     }),
+  beginThreadRemoval: (ids) => {
+    const list = Array.isArray(ids) ? ids : [ids];
+    if (list.length === 0) return;
+
+    set((state) => {
+      const removing = new Set(state.removingThreadIds);
+      for (const id of list) removing.add(id);
+      return { removingThreadIds: removing };
+    });
+
+    // Reduced motion means no animation to wait for
+    const delay = useUIStore.getState().reduceMotion ? 0 : THREAD_EXIT_MS;
+    setTimeout(() => {
+      useThreadStore.getState().removeThreads(list);
+      set((state) => {
+        const removing = new Set(state.removingThreadIds);
+        for (const id of list) removing.delete(id);
+        return { removingThreadIds: removing };
+      });
+    }, delay);
+  },
   removeThread: (id) =>
     set((state) => {
       const threadMap = new Map(state.threadMap);

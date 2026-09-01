@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { useThreadStore, type Thread } from "./threadStore";
 
 const mockThread: Thread = {
@@ -183,5 +183,58 @@ describe("threadStore", () => {
     // Other thread should be untouched
     const other = useThreadStore.getState().threads.find((t) => t.id === "thread-2");
     expect(other?.isRead).toBe(true); // was already true
+  });
+});
+
+
+describe("threadStore - animated removal", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useThreadStore.setState({
+      threads: [mockThread, { ...mockThread, id: "thread-2" }],
+      threadMap: new Map(),
+      removingThreadIds: new Set(),
+      selectedThreadIds: new Set(),
+      selectedThreadId: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("marks a thread as removing before dropping it", () => {
+    useThreadStore.getState().beginThreadRemoval("thread-1");
+
+    // Still present, so the row can animate out
+    expect(useThreadStore.getState().removingThreadIds.has("thread-1")).toBe(true);
+    expect(useThreadStore.getState().threads).toHaveLength(2);
+
+    vi.runAllTimers();
+
+    expect(useThreadStore.getState().threads).toHaveLength(1);
+    expect(useThreadStore.getState().threads[0]!.id).toBe("thread-2");
+    expect(useThreadStore.getState().removingThreadIds.has("thread-1")).toBe(false);
+  });
+
+  it("removes several threads at once", () => {
+    useThreadStore.getState().beginThreadRemoval(["thread-1", "thread-2"]);
+    expect(useThreadStore.getState().removingThreadIds.size).toBe(2);
+
+    vi.runAllTimers();
+    expect(useThreadStore.getState().threads).toHaveLength(0);
+  });
+
+  it("does nothing for an empty list", () => {
+    useThreadStore.getState().beginThreadRemoval([]);
+    vi.runAllTimers();
+    expect(useThreadStore.getState().threads).toHaveLength(2);
+  });
+
+  it("clears pending removals when the list is replaced", () => {
+    useThreadStore.getState().beginThreadRemoval("thread-1");
+    // A reload mid-animation must not leave a row stuck faded out
+    useThreadStore.getState().setThreads([mockThread]);
+    expect(useThreadStore.getState().removingThreadIds.size).toBe(0);
   });
 });

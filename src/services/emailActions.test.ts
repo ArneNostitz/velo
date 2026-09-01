@@ -12,6 +12,7 @@ vi.mock("@/stores/threadStore", () => ({
     getState: vi.fn(() => ({
       updateThread: vi.fn(),
       removeThread: vi.fn(),
+      beginThreadRemoval: vi.fn(),
     })),
   },
 }));
@@ -68,6 +69,7 @@ describe("emailActions", () => {
     vi.mocked(useThreadStore.getState).mockReturnValue(createMockThreadStoreState({
       updateThread: mockUpdateThread,
       removeThread: mockRemoveThread,
+      beginThreadRemoval: mockRemoveThread,
     }) as never);
   });
 
@@ -180,6 +182,7 @@ describe("emailActions", () => {
         threads,
         updateThread: mockUpdateThread,
         removeThread: mockRemoveThread,
+        beginThreadRemoval: mockRemoveThread,
       }) as never);
 
       await archiveThread("acct-1", "t2", ["m1"]);
@@ -192,6 +195,7 @@ describe("emailActions", () => {
         threads,
         updateThread: mockUpdateThread,
         removeThread: mockRemoveThread,
+        beginThreadRemoval: mockRemoveThread,
       }) as never);
 
       await archiveThread("acct-1", "t3", ["m1"]);
@@ -204,6 +208,7 @@ describe("emailActions", () => {
         threads,
         updateThread: mockUpdateThread,
         removeThread: mockRemoveThread,
+        beginThreadRemoval: mockRemoveThread,
       }) as never);
 
       await archiveThread("acct-1", "t2", ["m1"]);
@@ -216,6 +221,7 @@ describe("emailActions", () => {
         threads: [{ id: "t1" }],
         updateThread: mockUpdateThread,
         removeThread: mockRemoveThread,
+        beginThreadRemoval: mockRemoveThread,
       }) as never);
 
       await archiveThread("acct-1", "t1", ["m1"]);
@@ -228,6 +234,7 @@ describe("emailActions", () => {
         threads,
         updateThread: mockUpdateThread,
         removeThread: mockRemoveThread,
+        beginThreadRemoval: mockRemoveThread,
       }) as never);
 
       await trashThread("acct-1", "t1", ["m1"]);
@@ -240,6 +247,7 @@ describe("emailActions", () => {
         threads,
         updateThread: mockUpdateThread,
         removeThread: mockRemoveThread,
+        beginThreadRemoval: mockRemoveThread,
       }) as never);
 
       await spamThread("acct-1", "t1", ["m1"], true);
@@ -252,6 +260,7 @@ describe("emailActions", () => {
         threads,
         updateThread: mockUpdateThread,
         removeThread: mockRemoveThread,
+        beginThreadRemoval: mockRemoveThread,
       }) as never);
 
       await permanentDeleteThread("acct-1", "t2", ["m1"]);
@@ -264,6 +273,7 @@ describe("emailActions", () => {
         threads,
         updateThread: mockUpdateThread,
         removeThread: mockRemoveThread,
+        beginThreadRemoval: mockRemoveThread,
       }) as never);
 
       await moveThread("acct-1", "t2", ["m1"], "Archive");

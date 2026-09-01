@@ -32,6 +32,7 @@ export interface DbAccount {
   caldav_password: string | null;
   caldav_principal_url: string | null;
   caldav_home_url: string | null;
+  color: string | null;
   calendar_provider: string | null;
   accept_invalid_certs: number;
 }
@@ -246,6 +247,15 @@ export async function insertCalDavAccount(account: {
       account.caldavHomeUrl ?? null,
     ],
   );
+}
+
+/** Set the colour used to identify this account in the UI. */
+export async function updateAccountColor(
+  accountId: string,
+  color: string | null,
+): Promise<void> {
+  const db = await getDb();
+  await db.execute("UPDATE accounts SET color = $1 WHERE id = $2", [color, accountId]);
 }
 
 export async function updateAccountCalDav(

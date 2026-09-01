@@ -1,3 +1,30 @@
+export type TimeFormat = "system" | "12h" | "24h";
+
+/**
+ * Clock preference, applied to every time the app renders.
+ *
+ * Held here rather than read from the store so the formatters stay pure
+ * functions callable from anywhere, including outside React.
+ */
+let timeFormat: TimeFormat = "system";
+
+export function setTimeFormatPreference(format: TimeFormat): void {
+  timeFormat = format;
+}
+
+export function getTimeFormatPreference(): TimeFormat {
+  return timeFormat;
+}
+
+/**
+ * `hour12` for Intl, or undefined to let the locale decide.
+ */
+export function hourCycleOption(): { hour12?: boolean } {
+  if (timeFormat === "24h") return { hour12: false };
+  if (timeFormat === "12h") return { hour12: true };
+  return {};
+}
+
 /**
  * Format a unix timestamp (milliseconds) into a relative date string.
  */
@@ -12,6 +39,7 @@ export function formatRelativeDate(timestamp: number): string {
     return date.toLocaleTimeString(undefined, {
       hour: "numeric",
       minute: "2-digit",
+      ...hourCycleOption(),
     });
   }
 
@@ -55,6 +83,7 @@ export function formatFullDate(timestamp: number): string {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    ...hourCycleOption(),
   });
 }
 

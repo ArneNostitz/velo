@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { setSetting } from "@/services/db/settings";
 import type { ColorThemeId } from "@/constants/themes";
+import { setTimeFormatPreference, type TimeFormat } from "@/utils/date";
 
 type Theme = "light" | "dark" | "system";
 type ReadingPanePosition = "right" | "bottom" | "hidden";
@@ -10,6 +11,7 @@ export type DefaultReplyMode = "reply" | "replyAll";
 export type MarkAsReadBehavior = "instant" | "2s" | "manual";
 export type FontScale = "small" | "default" | "large" | "xlarge";
 export type InboxViewMode = "unified" | "split";
+export type { TimeFormat } from "@/utils/date";
 export type SettingsTab =
   | "general"
   | "notifications"
@@ -59,6 +61,7 @@ interface UIState {
   taskSidebarVisible: boolean;
   sidebarNavConfig: SidebarNavItem[] | null;
   reduceMotion: boolean;
+  timeFormat: TimeFormat;
   isOnline: boolean;
   pendingOpsCount: number;
   isSyncingFolder: string | null;
@@ -86,6 +89,8 @@ interface UIState {
   setSidebarNavConfig: (config: SidebarNavItem[]) => void;
   restoreSidebarNavConfig: (config: SidebarNavItem[]) => void;
   setReduceMotion: (reduce: boolean) => void;
+  setTimeFormat: (format: TimeFormat) => void;
+  restoreTimeFormat: (format: TimeFormat) => void;
   setOnline: (online: boolean) => void;
   setPendingOpsCount: (count: number) => void;
   setSyncingFolder: (folder: string | null) => void;
@@ -114,6 +119,7 @@ export const useUIStore = create<UIState>((set) => ({
   taskSidebarVisible: false,
   sidebarNavConfig: null,
   reduceMotion: false,
+  timeFormat: "system",
   isOnline: true,
   pendingOpsCount: 0,
   isSyncingFolder: null,
@@ -191,6 +197,16 @@ export const useUIStore = create<UIState>((set) => ({
   setReduceMotion: (reduceMotion) => {
     setSetting("reduce_motion", String(reduceMotion)).catch(() => {});
     set({ reduceMotion });
+  },
+  setTimeFormat: (timeFormat) => {
+    setSetting("time_format", timeFormat).catch(() => {});
+    setTimeFormatPreference(timeFormat);
+    set({ timeFormat });
+  },
+  /** Apply a persisted value on startup without writing it back. */
+  restoreTimeFormat: (timeFormat) => {
+    setTimeFormatPreference(timeFormat);
+    set({ timeFormat });
   },
   setOnline: (isOnline) => set({ isOnline }),
   setPendingOpsCount: (pendingOpsCount) => set({ pendingOpsCount }),

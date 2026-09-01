@@ -283,6 +283,11 @@ export default function App() {
           ui.setReduceMotion(true);
         }
 
+        const savedTimeFormat = await getSetting("time_format");
+        if (savedTimeFormat === "12h" || savedTimeFormat === "24h") {
+          ui.restoreTimeFormat(savedTimeFormat);
+        }
+
         // Restore task sidebar visibility
         const savedTaskSidebar = await getSetting("task_sidebar_visible");
         if (savedTaskSidebar === "true") {
@@ -309,6 +314,7 @@ export default function App() {
           avatarUrl: a.avatar_url,
           isActive: a.is_active === 1,
           provider: a.provider,
+          color: a.color,
         }));
         const savedAccountId = await getSetting("active_account_id");
         useAccountStore.getState().setAccounts(mapped, savedAccountId);

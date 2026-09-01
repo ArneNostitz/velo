@@ -100,6 +100,29 @@ body {
   overflow: hidden;
 }
 
+/* A thread leaving the list — archive, trash, move. Kept short so the row is
+   gone before the next action, and disabled entirely under reduce-motion. */
+.thread-exit {
+  animation: threadExit 200ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes threadExit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(1.5rem);
+  }
+}
+
+.reduce-motion .thread-exit {
+  opacity: 0;
+  animation: none;
+}
+
 /* Prevent text selection on UI chrome (not email content) */
 .no-select {
   user-select: none;

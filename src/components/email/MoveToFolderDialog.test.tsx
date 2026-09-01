@@ -29,7 +29,8 @@ vi.mock("@/stores/threadStore", () => ({
     vi.fn(() => ({})),
     {
       getState: () => ({
-        threads: [{ id: "thread-1", labelIds: ["INBOX"] }],
+        threads: [{ id: "thread-1", accountId: "acc-1", labelIds: ["INBOX"] }],
+        beginThreadRemoval: vi.fn(),
       }),
     },
   ),
@@ -42,6 +43,10 @@ vi.mock("@/services/emailActions", () => ({
   addThreadLabel: vi.fn(() => Promise.resolve({ success: true })),
   removeThreadLabel: vi.fn(() => Promise.resolve({ success: true })),
   moveThread: vi.fn(() => Promise.resolve({ success: true })),
+}));
+
+vi.mock("@/hooks/useRouteNavigation", () => ({
+  useActiveLabel: () => "inbox",
 }));
 
 // CSSTransition mock: render children immediately when `in` is true

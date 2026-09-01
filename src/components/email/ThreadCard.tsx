@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { Thread } from "@/stores/threadStore";
 import { useAccountStore } from "@/stores/accountStore";
+import { accountColor } from "@/constants/accountColors";
 import { useThreadStore } from "@/stores/threadStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useActiveLabel } from "@/hooks/useRouteNavigation";
@@ -28,6 +29,7 @@ interface ThreadCardProps {
 
 export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick, onContextMenu, category, showCategoryBadge, hasFollowUp }: ThreadCardProps) {
   const isMultiSelected = useThreadStore((s) => s.selectedThreadIds.has(thread.id));
+  const isRemoving = useThreadStore((s) => s.removingThreadIds.has(thread.id));
   const hasMultiSelect = useThreadStore((s) => s.selectedThreadIds.size > 0);
   const toggleThreadSelection = useThreadStore((s) => s.toggleThreadSelection);
   const selectThreadRange = useThreadStore((s) => s.selectThreadRange);
@@ -35,9 +37,13 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
   // Only in the unified list is it ambiguous which mailbox a thread came from
   const unifiedInbox = useAccountStore((s) => s.unifiedInbox);
   const accounts = useAccountStore((s) => s.accounts);
-  const threadAccount = unifiedInbox
-    ? accounts.find((a) => a.id === thread.accountId)
-    : undefined;
+  const threadAccountIndex = unifiedInbox
+    ? accounts.findIndex((a) => a.id === thread.accountId)
+    : -1;
+  const threadAccount = threadAccountIndex >= 0 ? accounts[threadAccountIndex] : undefined;
+  const threadAccountColor = threadAccount
+    ? accountColor(threadAccount.color, threadAccountIndex)
+    : null;
   const emailDensity = useUIStore((s) => s.emailDensity);
   const isSpam = thread.labelIds.includes("SPAM");
 
@@ -87,6 +93,8 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
       aria-label={`${thread.isRead ? "" : "Unread "}email from ${thread.fromName ?? thread.fromAddress ?? "Unknown"}: ${thread.subject ?? "(No subject)"}`}
       aria-selected={isSelected}
       className={`w-full text-left border-b border-border-secondary group hover-lift press-scale ${
+        isRemoving ? "thread-exit " : ""
+      }${
         emailDensity === "compact" ? "px-3 py-1.5" : emailDensity === "spacious" ? "px-4 py-4" : "px-4 py-3"
       } ${
         isDragging
@@ -123,9 +131,9 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
             >
               {thread.fromName ?? thread.fromAddress ?? "Unknown"}
             </span>
-            {threadAccount && (
+            {threadAccount && threadAccountColor && (
               <span
-                className="text-[0.625rem] px-1.5 py-0.5 rounded-full bg-bg-tertiary text-text-tertiary whitespace-nowrap shrink-0 max-w-[8rem] truncate"
+                className={`text-[0.625rem] px-1.5 py-0.5 rounded-full whitespace-nowrap shrink-0 max-w-[8rem] truncate ${threadAccountColor.pill}`}
                 title={threadAccount.email}
               >
                 {threadAccount.email}

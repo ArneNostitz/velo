@@ -1,3 +1,4 @@
+import { hourCycleOption } from "@/utils/date";
 import type { DbCalendarEvent } from "@/services/db/calendarEvents";
 
 interface EventCardProps {
@@ -10,7 +11,7 @@ export function EventCard({ event, compact, onClick }: EventCardProps) {
   const startDate = new Date(event.start_time * 1000);
   const timeStr = event.is_all_day
     ? "All day"
-    : startDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    : startDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", ...hourCycleOption() });
 
   if (compact) {
     return (

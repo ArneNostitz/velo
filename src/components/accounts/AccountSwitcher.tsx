@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { useAccountStore, mailAccounts, type Account } from "@/stores/accountStore";
 import { ChevronDown, Check, Plus, UserPlus, Calendar, Layers } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { accountColor } from "@/constants/accountColors";
 
 interface AccountSwitcherProps {
   collapsed: boolean;
@@ -136,8 +137,9 @@ export function AccountSwitcher({
               Accounts
             </div>
           )}
-          {accounts.map((account) => {
+          {accounts.map((account, accountIndex) => {
             const isActive = !unifiedInbox && account.id === activeAccountId;
+            const color = accountColor(account.color, accountIndex);
             return (
               <button
                 key={account.id}
@@ -149,6 +151,11 @@ export function AccountSwitcher({
                 }`}
               >
                 <AccountAvatarSmall account={account} isActive={isActive} />
+                <span
+                  className="w-1.5 h-6 rounded-full shrink-0 -ml-1"
+                  style={{ backgroundColor: color.hex }}
+                  aria-hidden="true"
+                />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate leading-tight flex items-center gap-1.5">
                     {account.displayName || account.email.split("@")[0]}

@@ -62,6 +62,7 @@ export default function ThreadWindow() {
           avatarUrl: a.avatar_url,
           isActive: a.is_active === 1,
           provider: a.provider,
+          color: a.color,
         }));
         setAccounts(mapped);
 

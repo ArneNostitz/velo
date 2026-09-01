@@ -1,3 +1,4 @@
+import { hourCycleOption } from "@/utils/date";
 import { useState, useCallback } from "react";
 import { MapPin, Clock, User, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -79,6 +80,7 @@ export function EventDetailModal({ event, calendars, accountId, onClose, onUpdat
       day: "numeric",
       hour: "numeric",
       minute: "2-digit",
+      ...hourCycleOption(),
     });
   };
 
