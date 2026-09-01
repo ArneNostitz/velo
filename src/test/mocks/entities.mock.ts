@@ -23,6 +23,8 @@ export function createMockParsedMessage(
     toAddresses: "bob@example.com",
     ccAddresses: null,
     bccAddresses: null,
+    inReplyToHeader: null,
+    referencesHeader: null,
     replyTo: null,
     subject: "Project Update",
     snippet: "Here is the latest update...",

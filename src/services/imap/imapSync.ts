@@ -184,6 +184,8 @@ export function imapMessageToParsedMessage(
     listUnsubscribePost: msg.list_unsubscribe_post,
     authResults: msg.auth_results,
     messageIdHeader: msg.message_id,
+    inReplyToHeader: msg.in_reply_to,
+    referencesHeader: msg.references,
     dispositionNotificationTo: msg.disposition_notification_to,
     mdnReport: msg.mdn_report,
   };

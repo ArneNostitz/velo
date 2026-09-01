@@ -165,3 +165,40 @@ describe("parseGmailMessage", () => {
     ]);
   });
 });
+
+describe("parseGmailMessage - threading headers", () => {
+  it("keeps In-Reply-To and References so replies can be related", () => {
+    const msg = createMockGmailMessage({
+      payload: {
+        mimeType: "text/plain",
+        headers: [
+          { name: "Message-ID", value: "<c@x>" },
+          { name: "In-Reply-To", value: "<b@x>" },
+          { name: "References", value: "<a@x> <b@x>" },
+        ],
+        body: { size: 0 },
+      },
+    });
+    const parsed = parseGmailMessage(msg);
+    expect(parsed.messageIdHeader).toBe("<c@x>");
+    expect(parsed.inReplyToHeader).toBe("<b@x>");
+    expect(parsed.referencesHeader).toBe("<a@x> <b@x>");
+  });
+
+  it("matches the header name however the sender cased it", () => {
+    const msg = createMockGmailMessage({
+      payload: {
+        mimeType: "text/plain",
+        headers: [{ name: "in-reply-to", value: "<b@x>" }],
+        body: { size: 0 },
+      },
+    });
+    expect(parseGmailMessage(msg).inReplyToHeader).toBe("<b@x>");
+  });
+
+  it("leaves them null on a message that starts a conversation", () => {
+    const parsed = parseGmailMessage(createMockGmailMessage());
+    expect(parsed.inReplyToHeader).toBeNull();
+    expect(parsed.referencesHeader).toBeNull();
+  });
+});

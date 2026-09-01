@@ -13,6 +13,7 @@ import { AuthWarningBanner } from "./AuthWarningBanner";
 import { PhishingBanner } from "./PhishingBanner";
 import { ReadReceiptBanner } from "./ReadReceiptBanner";
 import { ReadReceiptBadge } from "./ReadReceiptBadge";
+import { RecipientLine } from "./RecipientLine";
 import type { MessageScanResult } from "@/utils/phishingDetector";
 
 interface MessageItemProps {
@@ -180,14 +181,16 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
             {formatFullDate(message.date)}
           </span>
         </div>
-        {expanded && (
-          <div className="mt-1 text-xs text-text-tertiary">
-            {message.to_addresses && (
-              <span>To: {message.to_addresses}</span>
-            )}
-          </div>
-        )}
       </button>
+
+      {/* Outside the toggle button: a recipient list folds on its own, so a
+          mail to three hundred people does not have to be closed to be read
+          (and a button cannot legally nest inside another button) */}
+      {expanded && (
+        <div className="px-4 -mt-1 pb-2">
+          <RecipientLine toAddresses={message.to_addresses} ccAddresses={message.cc_addresses} />
+        </div>
+      )}
 
       {/* Body — shown when expanded and image setting resolved */}
       {expanded && (

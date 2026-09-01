@@ -134,6 +134,8 @@ async function processAndStoreThread(
       listUnsubscribePost: parsed.listUnsubscribePost,
       authResults: parsed.authResults,
       messageIdHeader: parsed.messageIdHeader,
+      inReplyToHeader: parsed.inReplyToHeader,
+      referencesHeader: parsed.referencesHeader,
       dispositionNotificationTo: parsed.dispositionNotificationTo,
     });
 
