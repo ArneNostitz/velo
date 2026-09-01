@@ -14,6 +14,9 @@ npm run tauri build
 # Vite dev server only (no Tauri)
 npm run dev
 
+# Lint — Rules of Hooks only (also runs as part of `npm run build`)
+npm run lint
+
 # Run all tests (single run)
 npm run test
 
@@ -199,6 +202,7 @@ Key tables (37 total): `accounts` (with `provider` "gmail_api"|"imap", IMAP/SMTP
 - **Offline mode**: All email modify operations (archive, trash, star, read, send, labels, drafts) go through `emailActions.ts` which applies optimistic UI updates, local DB changes, and queues operations when offline. Never call `getGmailClient()` directly for modify operations — use the convenience wrappers (`archiveThread`, `trashThread`, `starThread`, etc.). Queue processor runs every 30s, compacts redundant ops, uses exponential backoff retries. Conflict detection in delta sync skips threads with pending local ops
 - **Network detection**: `uiStore.isOnline` tracks connectivity via `navigator.onLine` + window `online`/`offline` events. Queue flush triggers automatically on reconnect
 - **CSP**: Allows connections to googleapis.com, anthropic.com, openai.com, generativelanguage.googleapis.com, gravatar.com, googleusercontent.com
+- **Rules of Hooks**: `npm run lint` enforces `react-hooks/rules-of-hooks` and runs as the first step of `npm run build`. TypeScript cannot see a hook sitting below an early return; React only fails at runtime, with minified error #310 ("Rendered more hooks than during the previous render") surfacing as a blank pane inside an ErrorBoundary. The lint config is deliberately narrow — this one rule — so it stays a signal
 - **TypeScript strict mode**: `noUnusedLocals`, `noUnusedParameters`, `noUncheckedIndexedAccess` are all enabled. Target ES2021, bundler module resolution, `moduleDetection: "force"`
 - **Path alias**: `@/*` maps to `src/*`
 - **Email HTML rendering**: DOMPurify sanitization, rendered in sandboxed iframe (`allow-same-origin` only). Strips remote images by default (uses `data-blocked-src` attributes), allowlist per sender
