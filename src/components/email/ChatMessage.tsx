@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Maximize2, Minimize2, CheckCheck } from "lucide-react";
+import { ChevronDown, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import { formatFullDate } from "@/utils/date";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { trimMessageBody, previewText } from "@/utils/messageTrim";
@@ -8,6 +8,7 @@ import { InlineAttachmentPreview } from "./InlineAttachmentPreview";
 import { AttachmentList, useAttachmentViewer, getAttachmentsForMessage } from "./AttachmentList";
 import { SenderAvatar } from "./SenderAvatar";
 import { AuthBadge } from "./AuthBadge";
+import { ReadReceiptBadge } from "./ReadReceiptBadge";
 import type { DbMessage } from "@/services/db/messages";
 import type { DbAttachment } from "@/services/db/attachments";
 
@@ -82,7 +83,6 @@ export const ChatMessage = memo(function ChatMessage({
   );
 
   const fromDisplay = message.from_name ?? message.from_address ?? "Unknown";
-  const openedCount = isMine ? (message.read_receipt_count ?? 0) : 0;
   const bodyHtml = showFull ? message.body_html : trimmed.html;
   const bodyText = showFull ? message.body_text : trimmed.text;
 
@@ -125,15 +125,7 @@ export const ChatMessage = memo(function ChatMessage({
             {formatFullDate(message.date)}
           </span>
           <AuthBadge authResults={message.auth_results} />
-          {openedCount > 0 && (
-            <span
-              className="inline-flex items-center gap-0.5 text-[0.625rem] px-1.5 py-px rounded-full bg-success/15 text-success shrink-0"
-              title={`Read receipt received${message.read_receipt_last_at ? ` — last ${formatFullDate(message.read_receipt_last_at)}` : ""}`}
-            >
-              <CheckCheck size={10} />
-              {openedCount > 1 ? `Opened ${openedCount}\u00d7` : "Opened"}
-            </span>
-          )}
+          <ReadReceiptBadge message={message} isOwnMessage={isMine} />
         </div>
       </div>
 

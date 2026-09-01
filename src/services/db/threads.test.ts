@@ -235,30 +235,72 @@ describe("threads service - getThreadsWithContact", () => {
     return { sql: call[0] as string, params: call[1] as unknown[] };
   }
 
-  it("matches mail in both directions, lowercased", async () => {
-    await getThreadsWithContact("acc-1", "Sam@Example.com", "thread-1", 10, 0);
+  it("counts only mail exchanged directly with the person", async () => {
+    await getThreadsWithContact("acc-1", "Sam@Example.com", "thread-1", ["me@x.com"], 10, 0);
     const { sql, params } = lastSelect();
-    expect(sql).toContain("mc.from_address");
-    expect(sql).toContain("mc.to_addresses");
-    expect(sql).toContain("mc.cc_addresses");
+    // Their mail must be addressed to the user, and the user's to them
+    expect(sql).toContain("mc.from_address, '')) = $3 AND (LOWER(COALESCE(mc.to_addresses");
+    expect(sql).toContain("mc.from_address, '')) IN ($5)");
     expect(params).toEqual([
       "acc-1",
       "thread-1",
       "sam@example.com",
       "%sam@example.com%",
+      "me@x.com",
+      "%me@x.com%",
       10,
       0,
     ]);
   });
 
-  it("excludes the thread already on screen", async () => {
-    await getThreadsWithContact("acc-1", "sam@example.com", "thread-1");
+  it("never matches on Cc — sharing a Cc is not a conversation", async () => {
+    await getThreadsWithContact("acc-1", "sam@example.com", null, ["me@x.com"]);
+    expect(lastSelect().sql).not.toContain("cc_addresses");
+  });
+
+  it("leaves out drafts, trash and spam", async () => {
+    await getThreadsWithContact("acc-1", "sam@example.com", null, ["me@x.com"]);
     const { sql } = lastSelect();
-    expect(sql).toContain("t.id != $2");
+    expect(sql).toContain("'DRAFT', 'TRASH', 'SPAM'");
+  });
+
+  it("leaves out threads that are nothing but read receipts", async () => {
+    await getThreadsWithContact("acc-1", "sam@example.com", null, ["me@x.com"]);
+    expect(lastSelect().sql).toContain("mr.is_read_receipt = 0");
+  });
+
+  it("falls back to either direction when no own address is known", async () => {
+    await getThreadsWithContact("acc-1", "sam@example.com", null, []);
+    const { sql, params } = lastSelect();
+    expect(sql).toContain("LOWER(COALESCE(mc.from_address, '')) = $3");
+    expect(params).toEqual(["acc-1", null, "sam@example.com", "%sam@example.com%", 25, 0]);
+  });
+
+  it("excludes the thread already on screen", async () => {
+    await getThreadsWithContact("acc-1", "sam@example.com", "thread-1", ["me@x.com"]);
+    expect(lastSelect().sql).toContain("t.id != $2");
   });
 
   it("does not query without an address", async () => {
-    expect(await getThreadsWithContact("acc-1", "", null)).toEqual([]);
+    expect(await getThreadsWithContact("acc-1", "", null, ["me@x.com"])).toEqual([]);
     expect(mockDb.select).not.toHaveBeenCalled();
+  });
+});
+
+describe("threads service - hiding receipt-only threads", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getDb).mockResolvedValue(mockDb as unknown as Awaited<ReturnType<typeof getDb>>);
+    mockDb.select.mockResolvedValue([]);
+  });
+
+  it("keeps them out of a label list", async () => {
+    await getThreadsForAccounts(["a"], "INBOX", 50, 0, []);
+    expect(mockDb.select.mock.calls.at(-1)![0]).toContain("mr.is_read_receipt = 0");
+  });
+
+  it("keeps them out of a category list", async () => {
+    await getThreadsForCategoryAcrossAccounts(["a"], "Primary", 50, 0, []);
+    expect(mockDb.select.mock.calls.at(-1)![0]).toContain("mr.is_read_receipt = 0");
   });
 });

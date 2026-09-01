@@ -348,8 +348,10 @@ async function storeThreadsAndMessages(
 
   // Count incoming read receipts against the sent messages they acknowledge
   try {
-    const { processReadReceiptReports } = await import("@/services/email/readReceipts");
+    const { processReadReceiptReports, backfillStoredReadReceipts } =
+      await import("@/services/email/readReceipts");
     await processReadReceiptReports(accountId, storedMessages);
+    await backfillStoredReadReceipts(accountId);
   } catch (err) {
     console.error("Read receipt processing failed:", err);
   }
