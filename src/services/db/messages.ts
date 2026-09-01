@@ -52,6 +52,26 @@ export async function getMessagesForThread(
   );
 }
 
+/**
+ * Messages for several threads at once, oldest first.
+ *
+ * One query rather than one per thread — the past-conversations list below a
+ * thread can span dozens of them.
+ */
+export async function getMessagesForThreads(
+  accountId: string,
+  threadIds: string[],
+): Promise<DbMessage[]> {
+  if (threadIds.length === 0) return [];
+  const db = await getDb();
+  const placeholders = threadIds.map((_, i) => `$${i + 2}`).join(", ");
+  return db.select<DbMessage[]>(
+    `SELECT * FROM messages WHERE account_id = $1 AND thread_id IN (${placeholders})
+     ORDER BY date ASC`,
+    [accountId, ...threadIds],
+  );
+}
+
 export async function upsertMessage(msg: {
   id: string;
   accountId: string;

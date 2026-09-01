@@ -314,6 +314,11 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   const searchThreadIds = useThreadStore((s) => s.searchThreadIds);
   const searchQuery = useThreadStore((s) => s.searchQuery);
 
+  const ownAddressSet = useMemo(
+    () => new Set(ownAddresses.map((a) => a.toLowerCase())),
+    [ownAddressKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   const mapDbThreads = useCallback(async (dbThreads: Awaited<ReturnType<typeof getThreadsForAccounts>>): Promise<Thread[]> => {
     return Promise.all(
       dbThreads.map(async (t) => {
@@ -335,10 +340,14 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
           // they started — the peer is null only when nobody else has written
           fromName: t.peer_address ? (t.peer_name ?? null) : t.from_name,
           fromAddress: t.peer_address ?? t.from_address,
+          // from_address is the true last sender, peer_address is whoever
+          // last wrote who is not the user — so they differ exactly when the
+          // newest message is the user's own
+          lastFromMe: !!t.from_address && ownAddressSet.has(t.from_address.toLowerCase()),
         };
       }),
     );
-  }, []);
+  }, [ownAddressSet]);
 
   // Search hits can live anywhere in the mailbox, so they are loaded straight
   // from the DB — filtering the currently loaded label page would hide every
@@ -410,13 +419,18 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
 
   const clearSearch = useThreadStore((s) => s.clearSearch);
 
+  // A search survives every background reload. Only moving to another view
+  // ends it — sync finishes every 60s and used to wipe the box mid-read.
+  useEffect(() => {
+    clearSearch();
+  }, [accountScopeKey, activeLabel, activeCategory, clearSearch]);
+
   const loadThreads = useCallback(async () => {
     if (accountIds.length === 0) {
       setThreads([]);
       return;
     }
 
-    clearSearch();
     setLoading(true);
     setHasMore(true);
     try {
@@ -464,7 +478,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     } finally {
       setLoading(false);
     }
-  }, [activeAccountId, accountScopeKey, ownAddressKey, activeLabel, activeCategory, isSmartFolder, activeSmartFolder, setThreads, setLoading, mapDbThreads, clearSearch]);
+  }, [activeAccountId, accountScopeKey, ownAddressKey, activeLabel, activeCategory, isSmartFolder, activeSmartFolder, setThreads, setLoading, mapDbThreads]);
 
   const loadMore = useCallback(async () => {
     if (accountIds.length === 0 || loadingMore || !hasMore) return;

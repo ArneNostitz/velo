@@ -174,6 +174,17 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
           {/* Snippet + indicators */}
           <div className={`flex items-center gap-1.5 mt-0.5 ${emailDensity === "compact" ? "hidden" : ""}`}>
             <span className="text-xs text-text-tertiary truncate flex-1">
+              {/* Who spoke last — a thread waiting on them reads differently
+                  from one waiting on you */}
+              {thread.lastFromMe && (
+                <span
+                  className="mr-1 px-1 py-px bg-blue-500/15 text-blue-600 dark:text-blue-300 font-medium align-baseline"
+                  style={{ borderRadius: "5px" }}
+                  title="You sent the last message"
+                >
+                  me:
+                </span>
+              )}
               {thread.snippet}
             </span>
             {showCategoryBadge && category && category !== "Primary" && CATEGORY_COLORS[category] && (

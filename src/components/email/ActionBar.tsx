@@ -11,8 +11,9 @@ import { snoozeThread } from "@/services/snooze/snoozeManager";
 import { getGmailClient } from "@/services/gmail/tokenManager";
 import { SnoozeDialog } from "./SnoozeDialog";
 import { FollowUpDialog } from "./FollowUpDialog";
-import { Archive, Trash2, MailOpen, Mail, Star, Clock, Ban, Pin, MailMinus, BellRing, VolumeX, Reply, ReplyAll, Forward, FolderInput, Printer, Download, ExternalLink, PanelRightClose, PanelRightOpen, ListTodo } from "lucide-react";
+import { Archive, Trash2, MailOpen, Mail, Star, Clock, Ban, Pin, MailMinus, BellRing, VolumeX, Reply, ReplyAll, Forward, FolderInput, Printer, Download, ExternalLink, PanelRightClose, PanelRightOpen, ListTodo, MessagesSquare } from "lucide-react";
 import type { DbMessage } from "@/services/db/messages";
+import type { ThreadViewMode } from "@/stores/uiStore";
 import { insertFollowUpReminder, getFollowUpForThread, cancelFollowUpForThread } from "@/services/db/followUpReminders";
 import { Button } from "@/components/ui/Button";
 
@@ -31,13 +32,15 @@ interface ActionBarProps {
   onPopOut?: () => void;
   onToggleContactSidebar?: () => void;
   onToggleTaskSidebar?: () => void;
+  threadViewMode?: ThreadViewMode;
+  onToggleThreadViewMode?: () => void;
 }
 
 function Separator() {
   return <div className="w-px h-5 bg-border-secondary mx-1 shrink-0" />;
 }
 
-export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply", contactSidebarVisible, taskSidebarVisible, onReply, onReplyAll, onForward, onPrint, onExport, onPopOut, onToggleContactSidebar, onToggleTaskSidebar }: ActionBarProps) {
+export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply", contactSidebarVisible, taskSidebarVisible, onReply, onReplyAll, onForward, onPrint, onExport, onPopOut, onToggleContactSidebar, onToggleTaskSidebar, threadViewMode, onToggleThreadViewMode }: ActionBarProps) {
   const updateThread = useThreadStore((s) => s.updateThread);
   const removeThread = useThreadStore((s) => s.removeThread);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
@@ -326,6 +329,15 @@ export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply
         <div className="ml-auto" />
 
         {/* Utility group */}
+        {onToggleThreadViewMode && (
+          <Button
+            variant="secondary"
+            iconOnly
+            icon={<MessagesSquare size={15} className={threadViewMode === "chat" ? "text-accent" : ""} />}
+            onClick={onToggleThreadViewMode}
+            title={threadViewMode === "chat" ? "Switch to the classic message list" : "Switch to chat view"}
+          />
+        )}
         <Button variant="secondary" iconOnly icon={<Printer size={15} />} onClick={onPrint} title="Print" />
         <Button variant="secondary" iconOnly icon={<Download size={15} />} onClick={onExport} title="Export as .eml" />
         <Button variant="secondary" iconOnly icon={<ExternalLink size={15} />} onClick={onPopOut} title="Open in new window" />

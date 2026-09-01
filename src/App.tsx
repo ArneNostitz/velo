@@ -254,6 +254,12 @@ export default function App() {
           ui.setEmailDensity(savedDensity);
         }
 
+        // Restore thread view mode (classic list vs chat bubbles)
+        const savedThreadView = await getSetting("thread_view_mode");
+        if (savedThreadView === "classic" || savedThreadView === "chat") {
+          ui.setThreadViewMode(savedThreadView);
+        }
+
         // Restore default reply mode
         const savedReplyMode = await getSetting("default_reply_mode");
         if (savedReplyMode === "reply" || savedReplyMode === "replyAll") {
