@@ -5,6 +5,7 @@ import { getSetting, setSetting, getSecureSetting, setSecureSetting } from "@/se
 import { PROVIDER_MODELS } from "@/services/ai/types";
 import { deleteAccount } from "@/services/db/accounts";
 import { removeClient, reauthorizeAccount } from "@/services/gmail/tokenManager";
+import { validateClientId, validateClientSecret } from "@/services/gmail/clientCredentials";
 import { triggerSync, forceFullSync, resyncAccount } from "@/services/gmail/syncManager";
 import {
   registerComposeShortcut,
@@ -116,6 +117,8 @@ export function SettingsPage() {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [apiSettingsSaved, setApiSettingsSaved] = useState(false);
+  const clientIdError = clientId.trim() ? validateClientId(clientId) : null;
+  const clientSecretError = clientSecret.trim() ? validateClientSecret(clientSecret) : null;
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncPeriodDays, setSyncPeriodDays] = useState("365");
   const [blockRemoteImages, setBlockRemoteImages] = useState(true);
@@ -267,10 +270,14 @@ export function SettingsPage() {
 
   const handleSaveApiSettings = useCallback(async () => {
     const trimmedId = clientId.trim();
+    const trimmedSecret = clientSecret.trim();
+    // Never persist swapped credentials — Google only reports that as
+    // `invalid_client` on its own page, after the browser is already open.
+    if (trimmedId && validateClientId(trimmedId)) return;
+    if (trimmedSecret && validateClientSecret(trimmedSecret)) return;
     if (trimmedId) {
       await setSetting("google_client_id", trimmedId);
     }
-    const trimmedSecret = clientSecret.trim();
     if (trimmedSecret) {
       await setSecureSetting("google_client_secret", trimmedSecret);
     }
@@ -984,7 +991,8 @@ export function SettingsPage() {
                         type="text"
                         value={clientId}
                         onChange={(e) => setClientId(e.target.value)}
-                        placeholder="Google OAuth Client ID"
+                        placeholder="1234567890-abc.apps.googleusercontent.com"
+                        {...(clientIdError ? { error: clientIdError } : {})}
                       />
                       <TextField
                         label="Client Secret"
@@ -992,13 +1000,14 @@ export function SettingsPage() {
                         type="password"
                         value={clientSecret}
                         onChange={(e) => setClientSecret(e.target.value)}
-                        placeholder="Google OAuth Client Secret"
+                        placeholder="GOCSPX-..."
+                        {...(clientSecretError ? { error: clientSecretError } : {})}
                       />
                       <Button
                         variant="primary"
                         size="md"
                         onClick={handleSaveApiSettings}
-                        disabled={!clientId.trim()}
+                        disabled={!clientId.trim() || !!clientIdError || !!clientSecretError}
                       >
                         {apiSettingsSaved ? "Saved!" : "Save"}
                       </Button>

@@ -4,6 +4,7 @@ import { getAllAccounts, getAccount, updateAccountAllTokens } from "../db/accoun
 import { getSetting, getSecureSetting } from "../db/settings";
 import { getCurrentUnixTimestamp } from "@/utils/timestamp";
 import { normalizeEmail } from "@/utils/emailUtils";
+import { validateClientId, validateClientSecret } from "./clientCredentials";
 
 // In-memory cache of active GmailClient instances per account
 const clients = new Map<string, GmailClient>();
@@ -52,7 +53,13 @@ export async function getClientId(): Promise<string> {
   if (!clientId) {
     throw new Error("Google Client ID not configured. Go to Settings to set it up.");
   }
-  return clientId;
+  // Google answers a malformed client ID with `invalid_client` on its own error
+  // page, long after the browser has been opened — say it here instead.
+  const problem = validateClientId(clientId);
+  if (problem) {
+    throw new Error(`${problem} Fix it in Settings → Accounts → Google API.`);
+  }
+  return clientId.trim();
 }
 
 /**
@@ -60,7 +67,12 @@ export async function getClientId(): Promise<string> {
  */
 export async function getClientSecret(): Promise<string | undefined> {
   const clientSecret = await getSecureSetting("google_client_secret");
-  return clientSecret ?? undefined;
+  if (!clientSecret) return undefined;
+  const problem = validateClientSecret(clientSecret);
+  if (problem) {
+    throw new Error(`${problem} Fix it in Settings → Accounts → Google API.`);
+  }
+  return clientSecret.trim();
 }
 
 /**

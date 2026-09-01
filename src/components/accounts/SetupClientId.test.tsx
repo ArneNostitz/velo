@@ -10,6 +10,9 @@ vi.mock("@/services/db/settings", () => ({
 const openUrl = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
+const VALID_ID = "1234567890-abcdefghijklmnop.apps.googleusercontent.com";
+const VALID_SECRET = "GOCSPX-AbCdEfGhIjKlMnOpQrStUvWxYz";
+
 describe("SetupClientId", () => {
   it("disables Save button when both fields are empty", () => {
     render(<SetupClientId onComplete={() => {}} onCancel={() => {}} />);
@@ -24,7 +27,7 @@ describe("SetupClientId", () => {
     const clientIdInput = screen.getByPlaceholderText(
       "Paste your Client ID here...",
     );
-    fireEvent.change(clientIdInput, { target: { value: "my-client-id" } });
+    fireEvent.change(clientIdInput, { target: { value: VALID_ID } });
 
     const saveButton = screen.getByText("Save & Continue");
     expect(saveButton).toBeDisabled();
@@ -35,7 +38,7 @@ describe("SetupClientId", () => {
     const secretInput = screen.getByPlaceholderText(
       "Paste your Client Secret here...",
     );
-    fireEvent.change(secretInput, { target: { value: "my-secret" } });
+    fireEvent.change(secretInput, { target: { value: VALID_SECRET } });
 
     const saveButton = screen.getByText("Save & Continue");
     expect(saveButton).toBeDisabled();
@@ -50,11 +53,39 @@ describe("SetupClientId", () => {
       "Paste your Client Secret here...",
     );
 
-    fireEvent.change(clientIdInput, { target: { value: "my-client-id" } });
-    fireEvent.change(secretInput, { target: { value: "my-secret" } });
+    fireEvent.change(clientIdInput, { target: { value: VALID_ID } });
+    fireEvent.change(secretInput, { target: { value: VALID_SECRET } });
 
     const saveButton = screen.getByText("Save & Continue");
     expect(saveButton).not.toBeDisabled();
+  });
+
+  it("catches the client secret being pasted into the Client ID field", () => {
+    // Google only reports this as "Error 401: invalid_client" on its own page,
+    // after the browser has already opened.
+    render(<SetupClientId onComplete={() => {}} onCancel={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText("Paste your Client ID here..."), {
+      target: { value: VALID_SECRET },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Paste your Client Secret here..."), {
+      target: { value: VALID_SECRET },
+    });
+
+    expect(screen.getByText(/looks like the Client Secret/)).toBeInTheDocument();
+    expect(screen.getByText("Save & Continue")).toBeDisabled();
+  });
+
+  it("catches the client ID being pasted into the Client Secret field", () => {
+    render(<SetupClientId onComplete={() => {}} onCancel={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText("Paste your Client ID here..."), {
+      target: { value: VALID_ID },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Paste your Client Secret here..."), {
+      target: { value: VALID_ID },
+    });
+
+    expect(screen.getByText(/looks like the Client ID/)).toBeInTheDocument();
+    expect(screen.getByText("Save & Continue")).toBeDisabled();
   });
 
   it("shows helper text about client secret being required", () => {

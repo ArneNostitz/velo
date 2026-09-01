@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { setSetting, setSecureSetting } from "@/services/db/settings";
+import { validateClientId, validateClientSecret } from "@/services/gmail/clientCredentials";
 import { Modal } from "@/components/ui/Modal";
 
 const CREDENTIALS_URL = "https://console.cloud.google.com/apis/credentials";
@@ -20,10 +21,15 @@ export function SetupClientId({ onComplete, onCancel, zIndex }: SetupClientIdPro
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Only complain once there is something to complain about
+  const idError = clientId.trim() ? validateClientId(clientId) : null;
+  const secretError = clientSecret.trim() ? validateClientSecret(clientSecret) : null;
+  const canSave = !!clientId.trim() && !!clientSecret.trim() && !idError && !secretError;
+
   const handleSave = async () => {
     const trimmedId = clientId.trim();
     const trimmedSecret = clientSecret.trim();
-    if (!trimmedId || !trimmedSecret) return;
+    if (!canSave) return;
 
     setSaving(true);
     try {
@@ -89,18 +95,23 @@ export function SetupClientId({ onComplete, onCancel, zIndex }: SetupClientIdPro
           value={clientId}
           onChange={(e) => setClientId(e.target.value)}
           placeholder="Paste your Client ID here..."
-          className="w-full px-3 py-2 bg-bg-secondary border border-border-primary rounded-lg text-sm mb-3 outline-none focus:border-accent"
+          className={`w-full px-3 py-2 bg-bg-secondary border rounded-lg text-sm outline-none focus:border-accent ${
+            idError ? "border-danger mb-1" : "border-border-primary mb-3"
+          }`}
         />
+        {idError && <p className="text-danger text-xs mb-3">{idError}</p>}
 
         <input
           type="password"
           value={clientSecret}
           onChange={(e) => setClientSecret(e.target.value)}
           placeholder="Paste your Client Secret here..."
-          className="w-full px-3 py-2 bg-bg-secondary border border-border-primary rounded-lg text-sm mb-1 outline-none focus:border-accent"
+          className={`w-full px-3 py-2 bg-bg-secondary border rounded-lg text-sm mb-1 outline-none focus:border-accent ${
+            secretError ? "border-danger" : "border-border-primary"
+          }`}
         />
-        <p className="text-text-tertiary text-xs mb-4">
-          Required for Web application credentials
+        <p className={`text-xs mb-4 ${secretError ? "text-danger" : "text-text-tertiary"}`}>
+          {secretError ?? "Required for Web application credentials"}
         </p>
 
         <div className="flex gap-3 justify-end">
@@ -112,7 +123,7 @@ export function SetupClientId({ onComplete, onCancel, zIndex }: SetupClientIdPro
           </button>
           <button
             onClick={handleSave}
-            disabled={!clientId.trim() || !clientSecret.trim() || saving}
+            disabled={!canSave || saving}
             className="px-4 py-2 text-sm bg-accent text-white rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? "Saving..." : "Save & Continue"}
