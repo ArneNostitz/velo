@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import {
   formatRelativeDate,
   formatFullDate,
+  formatDateTime,
   hourCycleOption,
   setTimeFormatPreference,
   getTimeFormatPreference,
@@ -54,6 +55,16 @@ describe("time format preference", () => {
 
     setTimeFormatPreference("12h");
     expect(formatFullDate(todayAtHalfPastOne())).toMatch(/[AP]M/i);
+  });
+
+  it("applies the preference to quoted reply headers", () => {
+    // These bypassed the formatter entirely and always rendered locale default
+    const at = todayAtHalfPastOne();
+    setTimeFormatPreference("24h");
+    expect(formatDateTime(at)).not.toMatch(/[AP]M/i);
+
+    setTimeFormatPreference("12h");
+    expect(formatDateTime(at)).toMatch(/[AP]M/i);
   });
 
   it("leaves non-time output alone", () => {

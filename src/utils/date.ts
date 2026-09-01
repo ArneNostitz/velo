@@ -72,6 +72,13 @@ export function formatRelativeDate(timestamp: number): string {
 }
 
 /**
+ * Full local date and time — used for quoted headers in replies and forwards.
+ */
+export function formatDateTime(timestamp: number | string): string {
+  return new Date(timestamp).toLocaleString(undefined, hourCycleOption());
+}
+
+/**
  * Format a unix timestamp into a full date string for message headers.
  */
 export function formatFullDate(timestamp: number): string {

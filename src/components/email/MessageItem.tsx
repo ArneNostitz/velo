@@ -1,5 +1,6 @@
 import { memo, useState, useRef, useEffect, useMemo, forwardRef } from "react";
 import { formatFullDate } from "@/utils/date";
+import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { EmailRenderer } from "./EmailRenderer";
 import { InlineAttachmentPreview } from "./InlineAttachmentPreview";
 import { AttachmentList, getAttachmentsForMessage } from "./AttachmentList";
@@ -25,6 +26,8 @@ interface MessageItemProps {
 
 export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(function MessageItem({ message, isLast, blockImages, senderAllowlisted, accountId, threadId, isSpam, focused, onContextMenu }, ref) {
   const [expanded, setExpanded] = useState(isLast);
+  // Repaint when the 12/24-hour preference changes
+  useTimeFormat();
   const [attachments, setAttachments] = useState<DbAttachment[]>([]);
   const [authBannerDismissed, setAuthBannerDismissed] = useState(false);
   const [scanResult, setScanResult] = useState<MessageScanResult | null>(null);

@@ -22,6 +22,7 @@ import { AiTaskExtractDialog } from "@/components/tasks/AiTaskExtractDialog";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { MessageSkeleton } from "@/components/ui/Skeleton";
 import { RawMessageModal } from "./RawMessageModal";
+import { formatDateTime } from "@/utils/date";
 
 interface ThreadViewProps {
   thread: Thread;
@@ -197,7 +198,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
     if (!doc) { document.body.removeChild(iframe); return; }
 
     const messagesHtml = messages.map((msg) => {
-      const date = new Date(msg.date).toLocaleString();
+      const date = formatDateTime(msg.date);
       const from = msg.from_name
         ? `${escapeHtml(msg.from_name)} &lt;${escapeHtml(msg.from_address ?? "")}&gt;`
         : escapeHtml(msg.from_address ?? "Unknown");
@@ -520,7 +521,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
 }
 
 function buildQuote(msg: DbMessage): string {
-  const date = new Date(msg.date).toLocaleString();
+  const date = formatDateTime(msg.date);
   const from = msg.from_name
     ? `${escapeHtml(msg.from_name)} &lt;${escapeHtml(msg.from_address ?? "")}&gt;`
     : escapeHtml(msg.from_address ?? "Unknown");
@@ -529,7 +530,7 @@ function buildQuote(msg: DbMessage): string {
 }
 
 function buildForwardQuote(msg: DbMessage): string {
-  const date = new Date(msg.date).toLocaleString();
+  const date = formatDateTime(msg.date);
   const body = msg.body_html ? sanitizeHtml(msg.body_html) : escapeHtml(msg.body_text ?? "");
   return `<br><br>---------- Forwarded message ---------<br>From: ${escapeHtml(msg.from_name ?? "")} &lt;${escapeHtml(msg.from_address ?? "")}&gt;<br>Date: ${date}<br>Subject: ${escapeHtml(msg.subject ?? "")}<br>To: ${escapeHtml(msg.to_addresses ?? "")}<br><br>${body}`;
 }

@@ -18,6 +18,7 @@ import { navigateToThread } from "@/router/navigate";
 import { formatRelativeDate } from "@/utils/date";
 import { formatFileSize, getFileIcon } from "@/utils/fileTypeHelpers";
 import { AuthBadge } from "./AuthBadge";
+import { useTimeFormat } from "@/hooks/useTimeFormat";
 
 interface ContactSidebarProps {
   email: string;
@@ -27,6 +28,8 @@ interface ContactSidebarProps {
 }
 
 export function ContactSidebar({ email, name, accountId, onClose }: ContactSidebarProps) {
+  // Repaint when the 12/24-hour preference changes
+  useTimeFormat();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [stats, setStats] = useState<ContactStats | null>(null);
   const [recentThreads, setRecentThreads] = useState<{ thread_id: string; subject: string | null; last_message_at: number | null }[]>([]);

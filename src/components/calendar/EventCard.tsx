@@ -1,5 +1,6 @@
 import { hourCycleOption } from "@/utils/date";
 import type { DbCalendarEvent } from "@/services/db/calendarEvents";
+import { useTimeFormat } from "@/hooks/useTimeFormat";
 
 interface EventCardProps {
   event: DbCalendarEvent;
@@ -8,6 +9,8 @@ interface EventCardProps {
 }
 
 export function EventCard({ event, compact, onClick }: EventCardProps) {
+  // Repaint when the 12/24-hour preference changes
+  useTimeFormat();
   const startDate = new Date(event.start_time * 1000);
   const timeStr = event.is_all_day
     ? "All day"

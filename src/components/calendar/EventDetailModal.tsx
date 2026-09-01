@@ -8,6 +8,7 @@ import type { DbCalendarEvent } from "@/services/db/calendarEvents";
 import type { DbCalendar } from "@/services/db/calendars";
 import { getCalendarProvider } from "@/services/calendar/providerFactory";
 import { deleteCalendarEvent as deleteCalendarEventDb } from "@/services/db/calendarEvents";
+import { useTimeFormat } from "@/hooks/useTimeFormat";
 
 interface EventDetailModalProps {
   event: DbCalendarEvent;
@@ -18,6 +19,8 @@ interface EventDetailModalProps {
 }
 
 export function EventDetailModal({ event, calendars, accountId, onClose, onUpdated }: EventDetailModalProps) {
+  // Repaint when the 12/24-hour preference changes
+  useTimeFormat();
   const [editing, setEditing] = useState(false);
   const [summary, setSummary] = useState(event.summary ?? "");
   const [description, setDescription] = useState(event.description ?? "");

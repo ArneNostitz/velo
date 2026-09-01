@@ -7,6 +7,7 @@ import { useThreadStore } from "@/stores/threadStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useActiveLabel } from "@/hooks/useRouteNavigation";
 import { formatRelativeDate } from "@/utils/date";
+import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { Paperclip, Star, Check, Pin, BellRing, VolumeX } from "lucide-react";
 import type { DragData } from "@/components/dnd/DndProvider";
 
@@ -45,6 +46,8 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
     ? accountColor(threadAccount.color, threadAccountIndex)
     : null;
   const emailDensity = useUIStore((s) => s.emailDensity);
+  // Repaint when the 12/24-hour preference changes
+  useTimeFormat();
   const isSpam = thread.labelIds.includes("SPAM");
 
   // Read selectedThreadIds lazily for drag — avoids subscribing all cards to the Set reference
