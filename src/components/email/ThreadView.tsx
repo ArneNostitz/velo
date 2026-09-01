@@ -14,6 +14,7 @@ import { VolumeX } from "lucide-react";
 import { escapeHtml, sanitizeHtml } from "@/utils/sanitize";
 import { isNoReplyAddress } from "@/utils/noReply";
 import { recipientHeadersFromMessages } from "@/utils/resolveFromAddress";
+import { extractEmailAddresses } from "@/utils/emailUtils";
 import { ThreadSummary } from "./ThreadSummary";
 import { ChatThread } from "./ChatThread";
 import { PastConversations } from "./PastConversations";
@@ -408,11 +409,19 @@ export function ThreadView({ thread }: ThreadViewProps) {
   // The other side of the conversation. Not the same as primarySender: when
   // the user wrote last, that is their own address, and hanging *their* whole
   // mailbox under the thread is not what "earlier with them" means.
-  const peerMessage = [...messages]
+  const isMine = (address: string | null | undefined) =>
+    !!address && ownAddresses.has(address.toLowerCase());
+  const peerMessage = [...messages].reverse().find((m) => m.from_address && !isMine(m.from_address));
+  // A thread the user only sent into names its peer in the recipients
+  const peerFromRecipients = [...messages]
     .reverse()
-    .find((m) => !m.from_address || !ownAddresses.has(m.from_address.toLowerCase()));
-  const peerAddress = pinnedContact?.email ?? peerMessage?.from_address ?? null;
-  const peerName = pinnedContact?.name ?? peerMessage?.from_name ?? null;
+    .flatMap((m) => extractEmailAddresses(m.to_addresses))
+    .find((address) => !isMine(address)) ?? null;
+  // A pinned contact must never override this with the user's own address —
+  // that pulls every mail addressed to the account into "earlier with".
+  const pinnedPeer = pinnedContact && !isMine(pinnedContact.email) ? pinnedContact : null;
+  const peerAddress = pinnedPeer?.email ?? peerMessage?.from_address ?? peerFromRecipients;
+  const peerName = pinnedPeer?.name ?? (peerMessage ? peerMessage.from_name : null);
 
   return (
     <div className="flex h-full @container relative">
@@ -521,7 +530,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
 
           {/* The rest of the correspondence with this person, so the whole
               history is one scroll rather than a sidebar full of links */}
-          {threadAccountId && peerAddress && (
+          {threadAccountId && peerAddress && ownAddresses.size > 0 && (
             <PastConversations
               accountId={threadAccountId}
               email={peerAddress}

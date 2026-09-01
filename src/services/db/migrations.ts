@@ -796,6 +796,15 @@ const MIGRATIONS = [
       ALTER TABLE messages ADD COLUMN read_receipt_last_at INTEGER;
     `,
   },
+  {
+    version: 27,
+    description: "Read receipts: mark the receipts themselves so lists can hide them",
+    sql: `
+      ALTER TABLE messages ADD COLUMN is_read_receipt INTEGER NOT NULL DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_messages_is_read_receipt
+        ON messages(account_id, is_read_receipt);
+    `,
+  },
 ];
 
 /**

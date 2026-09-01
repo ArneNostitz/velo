@@ -42,6 +42,8 @@ export function PastConversations({
   allowlistedSenders,
 }: PastConversationsProps) {
   useTimeFormat();
+  // A Set identity changes on every render of the parent; the addresses do not
+  const ownAddressKey = [...ownAddresses].sort().join(",");
   const [threads, setThreads] = useState<DbThread[]>([]);
   const [messagesByThread, setMessagesByThread] = useState<Map<string, DbMessage[]>>(
     () => new Map(),
@@ -58,13 +60,14 @@ export function PastConversations({
         accountId,
         email,
         currentThreadId,
+        [...ownAddresses],
         PAGE_SIZE,
         offset,
       );
       const msgs = await getMessagesForThreads(accountId, rows.map((r) => r.id));
       return { rows, msgs };
     },
-    [accountId, email, currentThreadId],
+    [accountId, email, currentThreadId, ownAddressKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const mergeMessages = useCallback((msgs: DbMessage[]) => {

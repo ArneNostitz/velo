@@ -32,6 +32,8 @@ export interface DbMessage {
   read_receipt_status: ReadReceiptStatus | null;
   read_receipt_count: number;
   read_receipt_last_at: number | null;
+  /** 1 when the message is itself an MDN — machine chatter, not mail. */
+  is_read_receipt: number;
 }
 
 /**
@@ -47,7 +49,9 @@ export async function getMessagesForThread(
 ): Promise<DbMessage[]> {
   const db = await getDb();
   return db.select<DbMessage[]>(
-    "SELECT * FROM messages WHERE account_id = $1 AND thread_id = $2 ORDER BY date ASC",
+    `SELECT * FROM messages WHERE account_id = $1 AND thread_id = $2
+       AND is_read_receipt = 0
+     ORDER BY date ASC`,
     [accountId, threadId],
   );
 }
@@ -67,6 +71,7 @@ export async function getMessagesForThreads(
   const placeholders = threadIds.map((_, i) => `$${i + 2}`).join(", ");
   return db.select<DbMessage[]>(
     `SELECT * FROM messages WHERE account_id = $1 AND thread_id IN (${placeholders})
+       AND is_read_receipt = 0
      ORDER BY date ASC`,
     [accountId, ...threadIds],
   );

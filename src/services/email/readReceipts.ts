@@ -191,6 +191,41 @@ export function parseMdnOriginalMessageId(report: string): string | null {
 }
 
 /**
+ * Subjects the common clients give a receipt. Used only to recognise a
+ * receipt whose machine-readable part never reached the database — the
+ * report part is the real test.
+ */
+const RECEIPT_SUBJECTS = [
+  /\bread receipt\b/i,
+  /\breturn receipt\b/i,
+  /\bdisposition notification\b/i,
+  /Empfangsbest(ä|ae)tigung/i,
+  /Lesebest(ä|ae)tigung/i,
+  /Accus(é|e) de r(é|e)ception/i,
+  /Confirmaci(ó|o)n de lectura/i,
+  /Bevestiging van ontvangst/i,
+];
+
+/**
+ * Whether a stored message is itself a read receipt rather than mail a person
+ * wrote. A receipt is machine chatter about a message the user already has —
+ * it belongs in a badge, not in the conversation.
+ */
+export function looksLikeReadReceipt(message: {
+  subject: string | null;
+  body_text: string | null;
+  is_read_receipt?: number | null;
+}): boolean {
+  if (message.is_read_receipt === 1) return true;
+  if (!message.subject) return false;
+  if (!RECEIPT_SUBJECTS.some((p) => p.test(message.subject!))) return false;
+  // The subject alone is too weak — a person can write "read receipt" in one.
+  // Every client's boilerplate says the message was displayed, not read.
+  const body = message.body_text ?? "";
+  return /disposition|angezeigt|displayed|gelesen|affich|mostrado|weergegeven/i.test(body);
+}
+
+/**
  * Match incoming MDNs against the sent messages they acknowledge and bump
  * that message's opened counter. Each receipt is counted once — it is marked
  * "processed" afterwards, so re-syncing the same thread cannot double-count.
@@ -212,6 +247,11 @@ export async function processReadReceiptReports(
         "SELECT read_receipt_status FROM messages WHERE account_id = $1 AND id = $2",
         [accountId, receipt.id],
       );
+      // The receipt is machine chatter whether or not it can be attributed
+      await db.execute(
+        "UPDATE messages SET is_read_receipt = 1 WHERE account_id = $1 AND id = $2",
+        [accountId, receipt.id],
+      );
       if (rows[0]?.read_receipt_status === "processed") continue;
 
       const originalMessageId = parseMdnOriginalMessageId(receipt.mdnReport!);
@@ -231,4 +271,74 @@ export async function processReadReceiptReports(
       console.error("Failed to process read receipt:", err);
     }
   }
+}
+
+/**
+ * Flag receipts already sitting in the database and attribute them.
+ *
+ * Messages synced before receipts were understood kept no report part, and a
+ * receipt carries no In-Reply-To to thread it back, so the exact
+ * Original-Message-ID is gone. What remains is enough: a receipt is answered
+ * by whoever we asked, so it belongs to the most recent message we sent to
+ * that address which actually requested one.
+ *
+ * Runs once per sync; already-flagged receipts are skipped.
+ */
+export async function backfillStoredReadReceipts(accountId: string): Promise<number> {
+  const { getDb } = await import("@/services/db/connection");
+  const db = await getDb();
+
+  const candidates = await db.select<{
+    id: string;
+    subject: string | null;
+    body_text: string | null;
+    from_address: string | null;
+    date: number;
+    read_receipt_status: string | null;
+  }[]>(
+    `SELECT id, subject, body_text, from_address, date, read_receipt_status
+     FROM messages
+     WHERE account_id = $1 AND is_read_receipt = 0 AND subject IS NOT NULL`,
+    [accountId],
+  );
+
+  let flagged = 0;
+  for (const candidate of candidates) {
+    if (!looksLikeReadReceipt(candidate)) continue;
+    try {
+      await db.execute(
+        "UPDATE messages SET is_read_receipt = 1 WHERE account_id = $1 AND id = $2",
+        [accountId, candidate.id],
+      );
+      flagged++;
+
+      if (candidate.read_receipt_status === "processed") continue;
+
+      // Attribute it to the message we asked this person to confirm
+      const original = await db.select<{ id: string }[]>(
+        `SELECT id FROM messages
+         WHERE account_id = $1
+           AND disposition_notification_to IS NOT NULL
+           AND disposition_notification_to <> ''
+           AND LOWER(COALESCE(to_addresses, '')) LIKE $2
+           AND date <= $3
+         ORDER BY date DESC LIMIT 1`,
+        [accountId, `%${(candidate.from_address ?? "").toLowerCase()}%`, candidate.date],
+      );
+      const originalId = original[0]?.id;
+      if (originalId) {
+        await db.execute(
+          `UPDATE messages
+           SET read_receipt_count = read_receipt_count + 1,
+               read_receipt_last_at = MAX(COALESCE(read_receipt_last_at, 0), $1)
+           WHERE account_id = $2 AND id = $3`,
+          [candidate.date, accountId, originalId],
+        );
+      }
+      await setReadReceiptStatus(accountId, candidate.id, "processed");
+    } catch (err) {
+      console.error("Failed to backfill read receipt:", err);
+    }
+  }
+  return flagged;
 }
