@@ -48,6 +48,8 @@ pub struct ImapMessage {
     pub list_unsubscribe: Option<String>,
     pub list_unsubscribe_post: Option<String>,
     pub auth_results: Option<String>,
+    pub disposition_notification_to: Option<String>,
+    pub mdn_report: Option<String>,
     pub attachments: Vec<ImapAttachment>,
 }
 

@@ -25,6 +25,38 @@ describe("parseGmailMessage", () => {
     expect(read.isRead).toBe(true);
   });
 
+  it("should extract Message-ID and Disposition-Notification-To headers", () => {
+    const msg = createMockGmailMessage();
+    msg.payload.headers.push(
+      { name: "Message-ID", value: "<abc@example.com>" },
+      { name: "Disposition-Notification-To", value: "John Doe <john@example.com>" },
+    );
+    const parsed = parseGmailMessage(msg);
+    expect(parsed.messageIdHeader).toBe("<abc@example.com>");
+    expect(parsed.dispositionNotificationTo).toBe("John Doe <john@example.com>");
+
+    const without = parseGmailMessage(createMockGmailMessage());
+    expect(without.messageIdHeader).toBeNull();
+    expect(without.dispositionNotificationTo).toBeNull();
+  });
+
+  it("should extract the MDN report part from a read receipt", () => {
+    const msg = createMockGmailMessage();
+    const report = "Final-Recipient: rfc822;a@b.c\r\nOriginal-Message-ID: <orig@b.c>\r\nDisposition: manual-action/MDN-sent-manually; displayed";
+    msg.payload.mimeType = "multipart/report";
+    msg.payload.parts!.push({
+      partId: "2",
+      mimeType: "message/disposition-notification",
+      filename: "",
+      headers: [],
+      body: { size: report.length, data: btoa(report).replace(/\+/g, "-").replace(/\//g, "_") },
+    });
+    const parsed = parseGmailMessage(msg);
+    expect(parsed.mdnReport).toContain("Original-Message-ID: <orig@b.c>");
+
+    expect(parseGmailMessage(createMockGmailMessage()).mdnReport).toBeNull();
+  });
+
   it("should detect starred status from STARRED label", () => {
     const starred = parseGmailMessage(
       createMockGmailMessage({ labelIds: ["INBOX", "STARRED"] }),

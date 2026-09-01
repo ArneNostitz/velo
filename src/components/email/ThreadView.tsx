@@ -486,6 +486,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
               email={primarySender}
               name={primarySenderName}
               accountId={threadAccountId}
+              threadId={thread.id}
               onClose={toggleContactSidebar}
             />
           </div>

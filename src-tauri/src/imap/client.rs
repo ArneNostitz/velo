@@ -1653,6 +1653,27 @@ fn parse_message(
         message.header(mail_parser::HeaderName::Other("Authentication-Results".into())),
     );
 
+    // Disposition-Notification-To header (read receipt request, RFC 8098)
+    let disposition_notification_to = extract_header_text(
+        message.header(mail_parser::HeaderName::Other("Disposition-Notification-To".into())),
+    );
+
+    // If this message IS a read receipt, capture the raw text of its
+    // message/disposition-notification part so the frontend can match it to
+    // the original sent message.
+    let mdn_report = message.parts.iter().find_map(|part| {
+        let ct = part.content_type()?;
+        if ct.ctype().eq_ignore_ascii_case("message")
+            && ct
+                .subtype()
+                .is_some_and(|s| s.eq_ignore_ascii_case("disposition-notification"))
+        {
+            Some(String::from_utf8_lossy(part.contents()).to_string())
+        } else {
+            None
+        }
+    });
+
     // Build a map from mail-parser part index → IMAP MIME section path.
     // IMAP numbers children of multipart containers starting at 1 (e.g. "1", "2", "1.2.3").
     // mail-parser stores all parts flat in a Vec, with Multipart variants holding child indices.
@@ -1730,6 +1751,8 @@ fn parse_message(
         list_unsubscribe,
         list_unsubscribe_post,
         auth_results,
+        disposition_notification_to,
+        mdn_report,
         attachments,
     })
 }

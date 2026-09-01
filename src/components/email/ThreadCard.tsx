@@ -8,7 +8,7 @@ import { useUIStore } from "@/stores/uiStore";
 import { useActiveLabel } from "@/hooks/useRouteNavigation";
 import { formatRelativeDate } from "@/utils/date";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
-import { Paperclip, Star, Check, Pin, BellRing, VolumeX } from "lucide-react";
+import { Paperclip, Star, Check, Pin, BellRing, VolumeX, CheckSquare } from "lucide-react";
 import type { DragData } from "@/components/dnd/DndProvider";
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -26,9 +26,10 @@ interface ThreadCardProps {
   category?: string;
   showCategoryBadge?: boolean;
   hasFollowUp?: boolean;
+  hasTask?: boolean;
 }
 
-export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick, onContextMenu, category, showCategoryBadge, hasFollowUp }: ThreadCardProps) {
+export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick, onContextMenu, category, showCategoryBadge, hasFollowUp, hasTask }: ThreadCardProps) {
   const isMultiSelected = useThreadStore((s) => s.selectedThreadIds.has(thread.id));
   const isRemoving = useThreadStore((s) => s.removingThreadIds.has(thread.id));
   const hasMultiSelect = useThreadStore((s) => s.selectedThreadIds.size > 0);
@@ -169,6 +170,11 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
             {hasFollowUp && (
               <span className="shrink-0 text-accent" title="Follow-up reminder set">
                 <BellRing size={12} />
+              </span>
+            )}
+            {hasTask && (
+              <span className="shrink-0 text-accent" title="Has an open task">
+                <CheckSquare size={12} />
               </span>
             )}
             {thread.isMuted && (

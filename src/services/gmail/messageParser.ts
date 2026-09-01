@@ -34,6 +34,10 @@ export interface ParsedMessage {
   listUnsubscribe: string | null;
   listUnsubscribePost: string | null;
   authResults: string | null;
+  messageIdHeader: string | null;
+  dispositionNotificationTo: string | null;
+  /** Raw text of a message/disposition-notification part, when this message is an MDN. */
+  mdnReport: string | null;
 }
 
 export function parseGmailMessage(msg: GmailMessage): ParsedMessage {
@@ -70,6 +74,9 @@ export function parseGmailMessage(msg: GmailMessage): ParsedMessage {
     listUnsubscribe: getHeader(headers, "List-Unsubscribe"),
     listUnsubscribePost: getHeader(headers, "List-Unsubscribe-Post"),
     authResults: authResult ? JSON.stringify(authResult) : null,
+    messageIdHeader: getHeader(headers, "Message-ID"),
+    dispositionNotificationTo: getHeader(headers, "Disposition-Notification-To"),
+    mdnReport: extractMdnReport(msg.payload),
   };
 }
 
@@ -96,6 +103,26 @@ function parseEmailAddress(raw: string | null): {
 
   // Bare email: "email@example.com"
   return { name: null, address: raw.trim() };
+}
+
+/**
+ * Find the machine-readable part of an incoming read receipt
+ * (message/disposition-notification inside a multipart/report).
+ */
+function extractMdnReport(part: GmailMessagePart): string | null {
+  if (
+    part.mimeType.toLowerCase() === "message/disposition-notification" &&
+    part.body.data
+  ) {
+    return decodeBase64Url(part.body.data);
+  }
+  if (part.parts) {
+    for (const child of part.parts) {
+      const result = extractMdnReport(child);
+      if (result) return result;
+    }
+  }
+  return null;
 }
 
 function extractBody(
