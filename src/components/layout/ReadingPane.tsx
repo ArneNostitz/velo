@@ -24,7 +24,9 @@ export function ReadingPane() {
 
   return (
     <div className="flex-1 bg-bg-primary/50 overflow-hidden glass-panel">
-      <ThreadView thread={selectedThread} />
+      {/* Keyed so switching threads resets per-thread state — an open inline
+          reply with text in it must not follow you to the next thread */}
+      <ThreadView key={selectedThread.id} thread={selectedThread} />
     </div>
   );
 }

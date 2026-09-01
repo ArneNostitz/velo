@@ -46,6 +46,12 @@ export interface ComposerState {
   signatureHtml: string;
   signatureId: string | null;
   requestReadReceipt: boolean;
+  /**
+   * Bumped every time the composer is opened. The editor instance outlives a
+   * single message, so it needs a signal to reload — `isOpen` alone misses
+   * hitting Reply while the composer is already open.
+   */
+  composeSession: number;
 
   openComposer: (opts?: {
     mode?: ComposerMode;
@@ -109,9 +115,10 @@ export const useComposerStore = create<ComposerState>((set) => ({
   signatureHtml: "",
   signatureId: null,
   requestReadReceipt: false,
+  composeSession: 0,
 
   openComposer: (opts) =>
-    set({
+    set((state) => ({
       isOpen: true,
       mode: opts?.mode ?? "new",
       to: opts?.to ?? [],
@@ -133,7 +140,8 @@ export const useComposerStore = create<ComposerState>((set) => ({
       signatureHtml: "",
       signatureId: null,
       requestReadReceipt: false,
-    }),
+      composeSession: state.composeSession + 1,
+    })),
   closeComposer: () =>
     set({
       isOpen: false,
