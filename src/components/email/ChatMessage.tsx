@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Maximize2, Minimize2, CheckCheck } from "lucide-react";
 import { formatFullDate } from "@/utils/date";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
-import { trimMessageBody } from "@/utils/messageTrim";
+import { trimMessageBody, previewText } from "@/utils/messageTrim";
 import { EmailRenderer } from "./EmailRenderer";
 import { InlineAttachmentPreview } from "./InlineAttachmentPreview";
 import { AttachmentList, useAttachmentViewer, getAttachmentsForMessage } from "./AttachmentList";
@@ -86,6 +86,16 @@ export const ChatMessage = memo(function ChatMessage({
   const bodyHtml = showFull ? message.body_html : trimmed.html;
   const bodyText = showFull ? message.body_text : trimmed.text;
 
+  // A message that is nothing but the mail it quotes — a bare forward, or a
+  // reply whose only content was the quote. Showing the quoted newsletter
+  // here would bury the conversation; "View full" still has it.
+  const forwardOnly = trimmed.empty && trimmed.trimmed;
+  // The stored snippet comes from the untrimmed mail, so a folded message
+  // would otherwise preview the very quote the trim removed
+  const preview = forwardOnly
+    ? "Forwarded an email"
+    : previewText(trimmed) || message.snippet || "(No message)";
+
   return (
     <div
       className={`border-b border-border-secondary last:border-b-0 py-3 pl-4 pr-4 ${
@@ -133,11 +143,14 @@ export const ChatMessage = memo(function ChatMessage({
           className="w-full flex items-center gap-1 text-left text-xs text-text-tertiary hover:text-text-secondary transition-colors"
         >
           <ChevronRight size={12} className="shrink-0" />
-          <span className="truncate">{message.snippet || "(No preview)"}</span>
+          <span className={`truncate ${forwardOnly ? "italic" : ""}`}>{preview}</span>
         </button>
       ) : (
         <>
-          {blockImages != null ? (
+          {forwardOnly && !showFull ? (
+            // Attachments still render below — a forward usually carries them
+            <div className="text-sm text-text-tertiary italic">Forwarded an email</div>
+          ) : blockImages != null ? (
             <EmailRenderer
               html={bodyHtml}
               text={bodyText}
