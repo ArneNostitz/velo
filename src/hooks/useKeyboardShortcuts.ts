@@ -7,6 +7,7 @@ import { useShortcutStore } from "@/stores/shortcutStore";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 import { navigateToLabel, navigateToThread, navigateBack, getActiveLabel, getSelectedThreadId } from "@/router/navigate";
 import { archiveThread, trashThread, permanentDeleteThread, starThread, spamThread } from "@/services/emailActions";
+import { confirmDelete } from "@/utils/confirmDelete";
 import { deleteThread as deleteThreadFromDb, pinThread as pinThreadDb, unpinThread as unpinThreadDb, muteThread as muteThreadDb, unmuteThread as unmuteThreadDb } from "@/services/db/threads";
 import { deleteDraftsForThread } from "@/services/gmail/draftDeletion";
 import { getGmailClient } from "@/services/gmail/tokenManager";
@@ -340,6 +341,7 @@ async function executeAction(actionId: string): Promise<void> {
       const multiDeleteIds = useThreadStore.getState().selectedThreadIds;
       if (multiDeleteIds.size > 0 && activeAccountId) {
         const ids = [...multiDeleteIds];
+        if (!(await confirmDelete(ids.length, isTrashView))) break;
         for (const id of ids) {
           const acc = accountFor(id);
           if (!acc) continue;
@@ -359,6 +361,7 @@ async function executeAction(actionId: string): Promise<void> {
           }
         }
       } else if (selectedId && activeAccountId) {
+        if (isTrashView && !(await confirmDelete(1, true))) break;
         if (isTrashView) {
           await permanentDeleteThread(activeAccountId, selectedId, []);
           await deleteThreadFromDb(activeAccountId, selectedId);
