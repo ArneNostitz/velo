@@ -219,6 +219,8 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
         bodyHtml: draftMsg.body_html ?? draftMsg.body_text ?? "",
         threadId: thread.id,
         draftId,
+        // Reopen the draft under the identity it was written from
+        fromEmail: draftMsg.from_address,
       });
     } catch (err) {
       console.error("Failed to open draft:", err);

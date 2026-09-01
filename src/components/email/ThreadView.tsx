@@ -13,6 +13,7 @@ import { getAllowlistedSenders } from "@/services/db/imageAllowlist";
 import { VolumeX } from "lucide-react";
 import { escapeHtml, sanitizeHtml } from "@/utils/sanitize";
 import { isNoReplyAddress } from "@/utils/noReply";
+import { recipientHeadersFromMessages } from "@/utils/resolveFromAddress";
 import { ThreadSummary } from "./ThreadSummary";
 import { SmartReplySuggestions } from "./SmartReplySuggestions";
 import { InlineReply } from "./InlineReply";
@@ -146,8 +147,9 @@ export function ThreadView({ thread }: ThreadViewProps) {
       bodyHtml: buildQuote(lastMessage),
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
+      originalRecipients: recipientHeadersFromMessages(messages),
     });
-  }, [lastMessage, openComposer]);
+  }, [lastMessage, messages, openComposer]);
 
   const handleReplyAll = useCallback(() => {
     if (!lastMessage) return;
@@ -169,8 +171,9 @@ export function ThreadView({ thread }: ThreadViewProps) {
       bodyHtml: buildQuote(lastMessage),
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
+      originalRecipients: recipientHeadersFromMessages(messages),
     });
-  }, [lastMessage, openComposer]);
+  }, [lastMessage, messages, openComposer]);
 
   const handleForward = useCallback(() => {
     if (!lastMessage) return;
@@ -181,8 +184,9 @@ export function ThreadView({ thread }: ThreadViewProps) {
       bodyHtml: buildForwardQuote(lastMessage),
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
+      originalRecipients: recipientHeadersFromMessages(messages),
     });
-  }, [lastMessage, openComposer]);
+  }, [lastMessage, messages, openComposer]);
 
   const handlePrint = useCallback(() => {
     if (messages.length === 0) return;

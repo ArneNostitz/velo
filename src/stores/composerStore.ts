@@ -22,6 +22,12 @@ export interface ComposerState {
   bodyHtml: string;
   threadId: string | null;
   inReplyToMessageId: string | null;
+  /**
+   * Raw To/Cc headers of the message(s) being replied to or forwarded, newest
+   * first. Drives the From default: a reply goes out from the address the mail
+   * was delivered to, not the account's default alias.
+   */
+  originalRecipients: string[];
   showCcBcc: boolean;
   draftId: string | null;
   undoSendTimer: ReturnType<typeof setTimeout> | null;
@@ -44,6 +50,8 @@ export interface ComposerState {
     bodyHtml?: string;
     threadId?: string | null;
     inReplyToMessageId?: string | null;
+    originalRecipients?: string[];
+    fromEmail?: string | null;
     draftId?: string | null;
   }) => void;
   closeComposer: () => void;
@@ -78,6 +86,7 @@ export const useComposerStore = create<ComposerState>((set) => ({
   bodyHtml: "",
   threadId: null,
   inReplyToMessageId: null,
+  originalRecipients: [],
   showCcBcc: false,
   draftId: null,
   undoSendTimer: null,
@@ -102,10 +111,11 @@ export const useComposerStore = create<ComposerState>((set) => ({
       bodyHtml: opts?.bodyHtml ?? "",
       threadId: opts?.threadId ?? null,
       inReplyToMessageId: opts?.inReplyToMessageId ?? null,
+      originalRecipients: opts?.originalRecipients ?? [],
       showCcBcc: (opts?.cc?.length ?? 0) > 0 || (opts?.bcc?.length ?? 0) > 0,
       draftId: opts?.draftId ?? null,
       viewMode: "modal",
-      fromEmail: null,
+      fromEmail: opts?.fromEmail ?? null,
       attachments: [],
       lastSavedAt: null,
       isSaving: false,
@@ -124,6 +134,7 @@ export const useComposerStore = create<ComposerState>((set) => ({
       bodyHtml: "",
       threadId: null,
       inReplyToMessageId: null,
+      originalRecipients: [],
       showCcBcc: false,
       draftId: null,
       viewMode: "modal",

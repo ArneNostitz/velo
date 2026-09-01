@@ -1,43 +1,54 @@
 import type { SendAsAlias } from "@/services/db/sendAsAliases";
+import { extractEmailAddresses, normalizeEmail } from "@/utils/emailUtils";
+
+/** The recipient fields of a message, as stored on the messages table. */
+export interface MessageRecipients {
+  to_addresses?: string | null;
+  cc_addresses?: string | null;
+}
+
+/**
+ * The To/Cc headers of a thread, newest message first.
+ *
+ * Reply identity is resolved against this list in order, so the address the
+ * most recent message reached the user at wins over an older one.
+ */
+export function recipientHeadersFromMessages(
+  messages: MessageRecipients[],
+): string[] {
+  const headers: string[] = [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (!message) continue;
+    if (message.to_addresses) headers.push(message.to_addresses);
+    if (message.cc_addresses) headers.push(message.cc_addresses);
+  }
+  return headers;
+}
 
 /**
  * Resolve which send-as alias to use as the "From" address.
  *
- * When replying: checks if any alias email matches an address in the
- * To or CC fields of the original message. If found, uses that alias
- * so the reply comes from the address the message was originally sent to.
+ * `recipientHeaders` are the raw To/Cc headers of the message(s) being replied
+ * to or forwarded, most recent first. The reply goes out from the address the
+ * message was delivered to, so the first alias appearing in those headers wins.
  *
  * Falls back to the default alias (isDefault), then primary alias.
  * Returns null if no aliases are available.
  */
 export function resolveFromAddress(
   aliases: SendAsAlias[],
-  toAddresses: string | null,
-  ccAddresses: string | null,
+  recipientHeaders: (string | null | undefined)[],
 ): SendAsAlias | null {
   if (aliases.length === 0) return null;
 
-  // Collect all addresses from To and CC into a normalized set
-  const recipientEmails = new Set<string>();
-  if (toAddresses) {
-    for (const addr of toAddresses.split(",")) {
-      const trimmed = addr.trim().toLowerCase();
-      if (trimmed) recipientEmails.add(trimmed);
+  // Headers are ordered by preference, and so are the addresses within one
+  // header — the first alias hit is the one the message was addressed to.
+  for (const header of recipientHeaders) {
+    for (const address of extractEmailAddresses(header)) {
+      const match = aliases.find((a) => normalizeEmail(a.email) === address);
+      if (match) return match;
     }
-  }
-  if (ccAddresses) {
-    for (const addr of ccAddresses.split(",")) {
-      const trimmed = addr.trim().toLowerCase();
-      if (trimmed) recipientEmails.add(trimmed);
-    }
-  }
-
-  // Check if any alias matches a recipient address
-  if (recipientEmails.size > 0) {
-    const match = aliases.find((a) =>
-      recipientEmails.has(a.email.toLowerCase()),
-    );
-    if (match) return match;
   }
 
   // Fall back to default alias
