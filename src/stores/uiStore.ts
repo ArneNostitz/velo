@@ -65,6 +65,15 @@ interface UIState {
   isOnline: boolean;
   pendingOpsCount: number;
   isSyncingFolder: string | null;
+  /** Whole-account sync, surfaced as a ring around the account avatar */
+  syncState: "idle" | "syncing" | "error";
+  syncMessage: string | null;
+  /**
+   * Contact the sidebar stays on while the user clicks through that person's
+   * past conversations. Without it the sidebar would follow each opened
+   * thread's sender and the list of conversations would vanish on first click.
+   */
+  pinnedContact: { email: string; name: string | null } | null;
   settingsOpen: boolean;
   settingsTab: SettingsTab;
   /** Set when something asked for the add-account flow; SettingsPage consumes it */
@@ -94,6 +103,9 @@ interface UIState {
   setOnline: (online: boolean) => void;
   setPendingOpsCount: (count: number) => void;
   setSyncingFolder: (folder: string | null) => void;
+  setSyncState: (state: "idle" | "syncing" | "error", message?: string | null) => void;
+  pinContact: (contact: { email: string; name: string | null }) => void;
+  clearPinnedContact: () => void;
   openSettings: (tab?: string) => void;
   closeSettings: () => void;
   toggleSettings: (tab?: string) => void;
@@ -123,6 +135,9 @@ export const useUIStore = create<UIState>((set) => ({
   isOnline: true,
   pendingOpsCount: 0,
   isSyncingFolder: null,
+  syncState: "idle",
+  syncMessage: null,
+  pinnedContact: null,
   settingsOpen: false,
   settingsTab: "general",
   settingsAddAccountPending: false,
@@ -211,6 +226,9 @@ export const useUIStore = create<UIState>((set) => ({
   setOnline: (isOnline) => set({ isOnline }),
   setPendingOpsCount: (pendingOpsCount) => set({ pendingOpsCount }),
   setSyncingFolder: (isSyncingFolder) => set({ isSyncingFolder }),
+  setSyncState: (syncState, syncMessage = null) => set({ syncState, syncMessage }),
+  pinContact: (pinnedContact) => set({ pinnedContact }),
+  clearPinnedContact: () => set({ pinnedContact: null }),
   openSettings: (tab) =>
     set(isSettingsTab(tab) ? { settingsOpen: true, settingsTab: tab } : { settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),

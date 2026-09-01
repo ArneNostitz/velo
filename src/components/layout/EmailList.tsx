@@ -6,6 +6,7 @@ import { SearchBar } from "../search/SearchBar";
 import { EmailListSkeleton } from "../ui/Skeleton";
 import { useThreadStore, type Thread } from "@/stores/threadStore";
 import { useAccountStore, listedAccountIds } from "@/stores/accountStore";
+import { collectOwnAddresses } from "@/services/accounts/ownAddresses";
 import { useUIStore } from "@/stores/uiStore";
 import { useActiveLabel, useSelectedThreadId, useActiveCategory } from "@/hooks/useRouteNavigation";
 import { navigateToThread, navigateToLabel } from "@/router/navigate";
@@ -63,6 +64,18 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     [accounts, activeAccountId, unifiedInbox],
   );
   const accountScopeKey = accountIds.join(",");
+
+  // Addresses belonging to the user, so the list can show who replied rather
+  // than the user's own address on threads they started.
+  const [ownAddresses, setOwnAddresses] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    collectOwnAddresses(accounts, accountIds).then((addresses) => {
+      if (!cancelled) setOwnAddresses(addresses);
+    });
+    return () => { cancelled = true; };
+  }, [accounts, accountScopeKey]);
+  const ownAddressKey = ownAddresses.join(",");
   const activeLabel = useActiveLabel();
   const readFilter = useUIStore((s) => s.readFilter);
   const setReadFilter = useUIStore((s) => s.setReadFilter);
@@ -153,6 +166,8 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   }, [activeAccountId, openComposer]);
 
   const handleThreadClick = useCallback((thread: Thread) => {
+    // Choosing from the list means following this thread's sender again
+    useUIStore.getState().clearPinnedContact();
     if (activeLabel === "drafts") {
       handleDraftClick(thread);
     } else {
@@ -259,8 +274,10 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
           isMuted: t.is_muted === 1,
           hasAttachments: t.has_attachments === 1,
           labelIds,
-          fromName: t.from_name,
-          fromAddress: t.from_address,
+          // Prefer whoever replied over the user's own address on a thread
+          // they started — the peer is null only when nobody else has written
+          fromName: t.peer_address ? (t.peer_name ?? null) : t.from_name,
+          fromAddress: t.peer_address ?? t.from_address,
         };
       }),
     );
@@ -300,6 +317,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
             activeCategory,
             PAGE_SIZE,
             0,
+            ownAddresses,
           );
         } else {
           const gmailLabelId = LABEL_MAP[activeLabel] ?? activeLabel;
@@ -308,6 +326,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
             gmailLabelId || undefined,
             PAGE_SIZE,
             0,
+            ownAddresses,
           );
         }
 
@@ -320,7 +339,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     } finally {
       setLoading(false);
     }
-  }, [activeAccountId, accountScopeKey, activeLabel, activeCategory, isSmartFolder, activeSmartFolder, setThreads, setLoading, mapDbThreads, clearSearch]);
+  }, [activeAccountId, accountScopeKey, ownAddressKey, activeLabel, activeCategory, isSmartFolder, activeSmartFolder, setThreads, setLoading, mapDbThreads, clearSearch]);
 
   const loadMore = useCallback(async () => {
     if (accountIds.length === 0 || loadingMore || !hasMore) return;
@@ -335,6 +354,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
           activeCategory,
           PAGE_SIZE,
           offset,
+          ownAddresses,
         );
       } else {
         const gmailLabelId = LABEL_MAP[activeLabel] ?? activeLabel;
@@ -343,6 +363,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
           gmailLabelId || undefined,
           PAGE_SIZE,
           offset,
+          ownAddresses,
         );
       }
 
@@ -356,7 +377,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     } finally {
       setLoadingMore(false);
     }
-  }, [accountScopeKey, activeLabel, activeCategory, threads, loadingMore, hasMore, setThreads, mapDbThreads]);
+  }, [accountScopeKey, ownAddressKey, activeLabel, activeCategory, threads, loadingMore, hasMore, setThreads, mapDbThreads]);
 
   useEffect(() => {
     loadThreads();

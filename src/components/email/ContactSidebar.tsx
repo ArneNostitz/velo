@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Mail, Clock, X, Send, Copy, Star, UserPlus, Check, PenLine,
-  Paperclip, Building2, ChevronDown, ChevronRight,
+  Paperclip, Building2, ChevronDown, ChevronRight, Pin,
 } from "lucide-react";
 import {
   getContactByEmail, getContactStats, getRecentThreadsWithContact,
@@ -12,6 +12,7 @@ import {
 import { isVipSender, addVipSender, removeVipSender } from "@/services/db/notificationVips";
 import { fetchAndCacheGravatarUrl } from "@/services/contacts/gravatar";
 import { useThreadStore } from "@/stores/threadStore";
+import { useUIStore } from "@/stores/uiStore";
 import { useComposerStore } from "@/stores/composerStore";
 import { getThreadById, getThreadLabelIds } from "@/services/db/threads";
 import { navigateToThread } from "@/router/navigate";
@@ -50,7 +51,10 @@ export function ContactSidebar({ email, name, accountId, onClose }: ContactSideb
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleThreadClick = useCallback(async (threadId: string) => {
-    const { threads, threadMap, setThreads } = useThreadStore.getState();
+    // Stay on this person while their conversations are browsed
+    useUIStore.getState().pinContact({ email, name: name ?? null });
+
+    const { threadMap, cacheThread } = useThreadStore.getState();
     if (threadMap.has(threadId)) {
       navigateToThread(threadId);
       return;
@@ -74,9 +78,11 @@ export function ContactSidebar({ email, name, accountId, onClose }: ContactSideb
       fromName: dbThread.from_name,
       fromAddress: dbThread.from_address,
     };
-    setThreads([...threads, mapped]);
+    // Cache it rather than appending to the list: browsing someone's past
+    // conversations should not rearrange the mailbox you are looking at.
+    cacheThread(mapped);
     navigateToThread(threadId);
-  }, [accountId]);
+  }, [accountId, email, name]);
 
   useEffect(() => {
     if (!email) return;
@@ -190,13 +196,29 @@ export function ContactSidebar({ email, name, accountId, onClose }: ContactSideb
 
   const displayName = contact?.display_name ?? name ?? email.split("@")[0];
   const initial = (displayName?.[0] ?? "?").toUpperCase();
+  const pinnedContact = useUIStore((s) => s.pinnedContact);
+  const clearPinnedContact = useUIStore((s) => s.clearPinnedContact);
+  const isPinned = pinnedContact?.email === email;
+
   const domain = email.includes("@") ? email.split("@")[1] : null;
 
   return (
     <div className="w-72 h-full border-l border-border-primary bg-bg-secondary overflow-y-auto shrink-0">
       <div className="p-4">
-        {/* Close button */}
-        <div className="flex justify-end -mt-1 -mr-1 mb-1">
+        {/* Pin state + close */}
+        <div className="flex items-center justify-between gap-2 -mt-1 -mr-1 mb-1 min-h-[1.5rem]">
+          {isPinned ? (
+            <button
+              onClick={() => clearPinnedContact()}
+              title="Stop following this contact and go back to the open message's sender"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.625rem] text-accent bg-accent/10 hover:bg-accent/20 transition-colors"
+            >
+              <Pin size={10} />
+              Pinned
+            </button>
+          ) : (
+            <span />
+          )}
           <button
             onClick={onClose}
             title="Close contact sidebar"

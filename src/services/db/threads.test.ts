@@ -166,3 +166,58 @@ describe("threads service - unified inbox queries", () => {
     expect(mockDb.select).not.toHaveBeenCalled();
   });
 });
+
+
+describe("threads service - naming the other party", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getDb).mockResolvedValue(mockDb as unknown as Awaited<ReturnType<typeof getDb>>);
+    mockDb.select.mockResolvedValue([]);
+  });
+
+  function lastSelect(): { sql: string; params: unknown[] } {
+    const call = mockDb.select.mock.calls.at(-1)!;
+    return { sql: call[0] as string, params: call[1] as unknown[] };
+  }
+
+  it("does not join for the other party when no own addresses are known", async () => {
+    await getThreadsForAccounts(["a"], "INBOX", 50, 0, []);
+    const { sql, params } = lastSelect();
+    expect(sql).not.toContain("peer_address");
+    expect(params).toEqual(["a", "INBOX", 50, 0]);
+  });
+
+  it("selects the last message that is not from the user", async () => {
+    await getThreadsForAccounts(["a"], "INBOX", 50, 0, ["me@x.com", "alias@y.com"]);
+    const { sql, params } = lastSelect();
+    expect(sql).toContain("peer_address");
+    expect(sql).toContain("NOT IN ($3, $4)");
+    expect(sql).toContain("LIMIT $5 OFFSET $6");
+    expect(params).toEqual(["a", "INBOX", "me@x.com", "alias@y.com", 50, 0]);
+  });
+
+  it("compares addresses case-insensitively", async () => {
+    await getThreadsForAccounts(["a"], undefined, 50, 0, ["Me@X.com"]);
+    const { sql, params } = lastSelect();
+    expect(sql).toContain("LOWER(COALESCE(m3.from_address, ''))");
+    expect(params).toContain("me@x.com");
+  });
+
+  it("numbers placeholders correctly for the category query", async () => {
+    await getThreadsForCategoryAcrossAccounts(["a", "b"], "Promotions", 25, 5, ["me@x.com"]);
+    const { sql, params } = lastSelect();
+    expect(sql).toContain("t.account_id IN ($1, $2)");
+    expect(sql).toContain("tc.category = $3");
+    expect(sql).toContain("NOT IN ($4)");
+    expect(sql).toContain("LIMIT $5 OFFSET $6");
+    expect(params).toEqual(["a", "b", "Promotions", "me@x.com", 25, 5]);
+  });
+
+  it("numbers placeholders correctly for the Primary query", async () => {
+    await getThreadsForCategoryAcrossAccounts(["a"], "Primary", 50, 0, ["me@x.com"]);
+    const { sql, params } = lastSelect();
+    expect(sql).toContain("NOT IN ($2)");
+    expect(sql).toContain("LIMIT $3 OFFSET $4");
+    expect(params).toEqual(["a", "me@x.com", 50, 0]);
+  });
+});

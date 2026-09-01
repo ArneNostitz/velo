@@ -43,6 +43,13 @@ interface ThreadState {
   /** Threads currently playing their exit animation */
   removingThreadIds: Set<string>;
   /**
+   * Threads that can be opened without being in the list — following a link
+   * from the contact sidebar, say. Kept apart from `threadMap` so reloading
+   * the list neither drops them nor disturbs what the user is browsing.
+   */
+  cachedThreads: Map<string, Thread>;
+  cacheThread: (thread: Thread) => void;
+  /**
    * Fade a thread out, then drop it. The row is removed from the model only
    * after the animation, so an archive or move reads as the row leaving rather
    * than the list snapping shut.
@@ -61,12 +68,15 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
   searchQuery: "",
   searchThreadIds: null,
   removingThreadIds: new Set<string>(),
+  cachedThreads: new Map<string, Thread>(),
 
   setThreads: (threads) =>
     set({
       threads,
       threadMap: new Map(threads.map((t) => [t.id, t])),
-      // A reload replaces the list wholesale — nothing is mid-exit any more
+      // A reload replaces the list wholesale — nothing is mid-exit any more.
+      // cachedThreads deliberately survives: a thread opened from the contact
+      // sidebar is not part of the list and must keep rendering.
       removingThreadIds: new Set<string>(),
     }),
   selectThread: (selectedThreadId) => set({ selectedThreadId, selectedThreadIds: new Set() }),
@@ -123,6 +133,12 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       const existing = threadMap.get(id);
       if (existing) threadMap.set(id, { ...existing, ...updates });
       return { threads, threadMap };
+    }),
+  cacheThread: (thread) =>
+    set((state) => {
+      const cachedThreads = new Map(state.cachedThreads);
+      cachedThreads.set(thread.id, thread);
+      return { cachedThreads };
     }),
   beginThreadRemoval: (ids) => {
     const list = Array.isArray(ids) ? ids : [ids];
