@@ -11,6 +11,9 @@ import { buildRawEmail } from "@/utils/emailBuilder";
 import { upsertContact } from "@/services/db/contacts";
 import { getSetting } from "@/services/db/settings";
 import { getDefaultSignature } from "@/services/db/signatures";
+import { getAliasesForAccount, mapDbAlias, type SendAsAlias } from "@/services/db/sendAsAliases";
+import { resolveFromAddress, recipientHeadersFromMessages } from "@/utils/resolveFromAddress";
+import { extractEmailAddresses, normalizeEmail } from "@/utils/emailUtils";
 import {
   isAutoDraftEnabled,
   generateAutoDraft,
@@ -36,12 +39,15 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
   const [signatureHtml, setSignatureHtml] = useState("");
   const [autoDraftLoading, setAutoDraftLoading] = useState(false);
   const [hasAutoDraft, setHasAutoDraft] = useState(false);
+  const [aliases, setAliases] = useState<SendAsAlias[]>([]);
+  const [fromEmail, setFromEmail] = useState<string | null>(null);
   const accounts = useAccountStore((s) => s.accounts);
   const activeAccount = accounts.find((a) => a.id === accountId);
   const openComposer = useComposerStore((s) => s.openComposer);
   const containerRef = useRef<HTMLDivElement>(null);
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoDraftAbortRef = useRef(false);
+  const messagesRef = useRef(messages);
 
   const lastMessage = messages[messages.length - 1];
 
@@ -103,6 +109,31 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
     });
   }, [accountId]);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Pick the identity to reply from: the address this thread was delivered to,
+  // falling back to the account's default alias. Re-resolved per thread only,
+  // so a manual pick in the header survives a message reload.
+  useEffect(() => {
+    let cancelled = false;
+    setFromEmail(null);
+    getAliasesForAccount(accountId).then((dbAliases) => {
+      if (cancelled) return;
+      const mapped = dbAliases.map(mapDbAlias);
+      setAliases(mapped);
+      const resolved = resolveFromAddress(
+        mapped,
+        recipientHeadersFromMessages(messagesRef.current),
+      );
+      setFromEmail(resolved?.email ?? null);
+    }).catch((err) => {
+      console.error("Failed to load send-as aliases:", err);
+    });
+    return () => { cancelled = true; };
+  }, [accountId, thread.id]);
+
   // Listen for inline reply events from keyboard shortcuts
   useEffect(() => {
     const handler = (e: Event) => {
@@ -139,19 +170,28 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
     if (lastMessage.to_addresses) {
       lastMessage.to_addresses.split(",").forEach((a) => allTo.add(a.trim()));
     }
-    // Remove self from recipients
-    if (activeAccount?.email) allTo.delete(activeAccount.email);
+    // Remove self from recipients — the account address and every send-as
+    // alias, so a reply-all sent from an alias does not loop back to it.
+    const own = new Set<string>();
+    if (activeAccount?.email) own.add(normalizeEmail(activeAccount.email));
+    for (const alias of aliases) own.add(normalizeEmail(alias.email));
+    const isOwn = (address: string) =>
+      extractEmailAddresses(address).some((a) => own.has(a));
+
+    for (const address of [...allTo]) {
+      if (isOwn(address)) allTo.delete(address);
+    }
 
     const ccList: string[] = [];
     if (lastMessage.cc_addresses) {
       lastMessage.cc_addresses.split(",").forEach((a) => {
         const trimmed = a.trim();
-        if (trimmed && trimmed !== activeAccount?.email) ccList.push(trimmed);
+        if (trimmed && !isOwn(trimmed)) ccList.push(trimmed);
       });
     }
 
     return { to: Array.from(allTo), cc: ccList };
-  }, [lastMessage, mode, activeAccount?.email]);
+  }, [lastMessage, mode, activeAccount?.email, aliases]);
 
   const getSubject = useCallback((): string => {
     const sub = lastMessage?.subject ?? "";
@@ -172,7 +212,7 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
       }
 
       const raw = buildRawEmail({
-        from: activeAccount.email,
+        from: fromEmail ?? activeAccount.email,
         to,
         cc: cc.length > 0 ? cc : undefined,
         subject: getSubject(),
@@ -219,7 +259,7 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
     } finally {
       setSending(false);
     }
-  }, [activeAccount, editor, sending, getRecipients, getSubject, signatureHtml, lastMessage, thread.id, accountId, mode, onSent]);
+  }, [activeAccount, editor, sending, getRecipients, getSubject, signatureHtml, lastMessage, thread.id, accountId, mode, onSent, fromEmail]);
 
   const handleExpandToComposer = useCallback(() => {
     if (!editor || !lastMessage) return;
@@ -234,12 +274,14 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
       bodyHtml,
       threadId: thread.id,
       inReplyToMessageId: lastMessage.id,
+      originalRecipients: recipientHeadersFromMessages(messages),
+      fromEmail,
     });
 
     // Reset inline state
     editor.commands.setContent("");
     setMode(null);
-  }, [editor, lastMessage, getRecipients, getSubject, mode, thread.id, openComposer]);
+  }, [editor, lastMessage, messages, getRecipients, getSubject, mode, thread.id, openComposer, fromEmail]);
 
   const handleRegenerateDraft = useCallback(async () => {
     if (!editor || !mode || mode === "forward") return;
@@ -367,6 +409,22 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
             <span className="text-[0.6875rem] text-text-tertiary truncate max-w-[200px]">
               to {to.join(", ")}
             </span>
+          )}
+          {aliases.length > 1 && (
+            <label className="flex items-center gap-1 text-[0.6875rem] text-text-tertiary">
+              from
+              <select
+                value={fromEmail ?? activeAccount?.email ?? ""}
+                onChange={(e) => setFromEmail(e.target.value)}
+                className="bg-transparent text-[0.6875rem] text-text-secondary outline-none cursor-pointer hover:text-text-primary rounded border-none max-w-[180px]"
+              >
+                {aliases.map((alias) => (
+                  <option key={alias.id} value={alias.email}>
+                    {alias.email}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
         </div>
         <button

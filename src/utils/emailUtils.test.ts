@@ -1,4 +1,4 @@
-import { normalizeEmail } from "./emailUtils";
+import { normalizeEmail, extractEmailAddresses } from "./emailUtils";
 
 describe("normalizeEmail", () => {
   it("lowercases an email address", () => {
@@ -23,5 +23,43 @@ describe("normalizeEmail", () => {
 
   it("handles mixed-case local and domain parts", () => {
     expect(normalizeEmail("John.Doe@Gmail.Com")).toBe("john.doe@gmail.com");
+  });
+});
+
+describe("extractEmailAddresses", () => {
+  it("returns nothing for empty input", () => {
+    expect(extractEmailAddresses(null)).toEqual([]);
+    expect(extractEmailAddresses(undefined)).toEqual([]);
+    expect(extractEmailAddresses("")).toEqual([]);
+  });
+
+  it("splits a plain address list", () => {
+    expect(extractEmailAddresses("a@example.com, b@example.com")).toEqual([
+      "a@example.com",
+      "b@example.com",
+    ]);
+  });
+
+  it("strips display names", () => {
+    expect(extractEmailAddresses("Arne Nostitz-Rieneck <arne@diracting.com>")).toEqual([
+      "arne@diracting.com",
+    ]);
+  });
+
+  it("keeps a quoted display name containing a comma in one address", () => {
+    expect(extractEmailAddresses('"Doe, John" <john@example.com>, b@example.com')).toEqual([
+      "john@example.com",
+      "b@example.com",
+    ]);
+  });
+
+  it("lowercases addresses", () => {
+    expect(extractEmailAddresses("Arne <Arne@Diracting.COM>")).toEqual(["arne@diracting.com"]);
+  });
+
+  it("skips entries without an address", () => {
+    expect(extractEmailAddresses("undisclosed-recipients:;, b@example.com")).toEqual([
+      "b@example.com",
+    ]);
   });
 });

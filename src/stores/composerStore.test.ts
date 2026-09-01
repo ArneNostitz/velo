@@ -60,6 +60,30 @@ describe("composerStore", () => {
     expect(state.inReplyToMessageId).toBe("msg-1");
   });
 
+  it("carries the original recipients and a preselected from address", () => {
+    useComposerStore.getState().openComposer({
+      mode: "reply",
+      to: ["peer@example.com"],
+      originalRecipients: ["arne@example.com", "team@example.com"],
+      fromEmail: "arne@example.com",
+    });
+    const state = useComposerStore.getState();
+    expect(state.originalRecipients).toEqual(["arne@example.com", "team@example.com"]);
+    expect(state.fromEmail).toBe("arne@example.com");
+  });
+
+  it("clears the original recipients on the next compose", () => {
+    useComposerStore.getState().openComposer({
+      mode: "reply",
+      originalRecipients: ["arne@example.com"],
+      fromEmail: "arne@example.com",
+    });
+    useComposerStore.getState().openComposer({ mode: "new" });
+    const state = useComposerStore.getState();
+    expect(state.originalRecipients).toEqual([]);
+    expect(state.fromEmail).toBeNull();
+  });
+
   it("opens with cc shows cc/bcc fields", () => {
     useComposerStore.getState().openComposer({
       mode: "replyAll",
@@ -83,6 +107,7 @@ describe("composerStore", () => {
     expect(state.to).toEqual([]);
     expect(state.subject).toBe("");
     expect(state.threadId).toBeNull();
+    expect(state.originalRecipients).toEqual([]);
   });
 
   it("updates individual fields", () => {

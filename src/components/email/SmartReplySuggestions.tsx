@@ -4,6 +4,7 @@ import { isAiAvailable } from "@/services/ai/providerManager";
 import { generateSmartReplies } from "@/services/ai/aiService";
 import { deleteAiCache } from "@/services/db/aiCache";
 import { useComposerStore } from "@/stores/composerStore";
+import { recipientHeadersFromMessages } from "@/utils/resolveFromAddress";
 import type { DbMessage } from "@/services/db/messages";
 
 interface SmartReplySuggestionsProps {
@@ -74,6 +75,7 @@ export function SmartReplySuggestions({ threadId, accountId, messages, noReply }
       bodyHtml: `<p>${replyText}</p>`,
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
+      originalRecipients: recipientHeadersFromMessages(messages),
     });
   }, [messages, openComposer]);
 

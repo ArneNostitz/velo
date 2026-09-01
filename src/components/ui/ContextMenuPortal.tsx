@@ -43,6 +43,7 @@ import { triggerSync } from "@/services/gmail/syncManager";
 import { useUIStore } from "@/stores/uiStore";
 import { setThreadCategory, ALL_CATEGORIES } from "@/services/db/threadCategories";
 import { formatDateTime } from "@/utils/date";
+import { recipientHeadersFromMessages } from "@/utils/resolveFromAddress";
 
 function buildQuote(msg: { from_name: string | null; from_address: string | null; date: string | number; body_html: string | null; body_text: string | null }): string {
   const date = formatDateTime(msg.date);
@@ -254,6 +255,7 @@ function ThreadMenu({
       bodyHtml: buildQuote(lastMessage),
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
+      originalRecipients: recipientHeadersFromMessages(messages),
     });
   };
 
@@ -279,6 +281,7 @@ function ThreadMenu({
       bodyHtml: buildQuote(lastMessage),
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
+      originalRecipients: recipientHeadersFromMessages(messages),
     });
   };
 
@@ -293,6 +296,7 @@ function ThreadMenu({
       bodyHtml: buildForwardQuote(lastMessage),
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
+      originalRecipients: recipientHeadersFromMessages(messages),
     });
   };
 
@@ -632,6 +636,7 @@ function MessageMenu({
       bodyHtml: buildQuote(msg),
       threadId,
       inReplyToMessageId: messageId,
+      originalRecipients: [toAddresses, ccAddresses].filter((h): h is string => !!h),
     });
   };
 
@@ -654,6 +659,7 @@ function MessageMenu({
       bodyHtml: buildQuote(msg),
       threadId,
       inReplyToMessageId: messageId,
+      originalRecipients: [toAddresses, ccAddresses].filter((h): h is string => !!h),
     });
   };
 
@@ -665,6 +671,7 @@ function MessageMenu({
       bodyHtml: buildForwardQuote(msg),
       threadId,
       inReplyToMessageId: messageId,
+      originalRecipients: [toAddresses, ccAddresses].filter((h): h is string => !!h),
     });
   };
 

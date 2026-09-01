@@ -166,7 +166,9 @@ export function Composer() {
       setAliases(mapped);
       if (!store.fromEmail && mapped.length > 0) {
         if (store.mode === "reply" || store.mode === "replyAll" || store.mode === "forward") {
-          const resolved = resolveFromAddress(mapped, store.to.join(", "), store.cc.join(", "));
+          // Reply from the address the mail was delivered to, falling back to
+          // the account's default alias when none of ours was addressed.
+          const resolved = resolveFromAddress(mapped, store.originalRecipients);
           if (resolved) store.setFromEmail(resolved.email);
         } else {
           // The identity picked in the account switcher wins over the account's
