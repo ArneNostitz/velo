@@ -300,6 +300,19 @@ export function Sidebar({ collapsed, onAddAccount }: SidebarProps) {
     };
   }, [activeAccountId, loadLabels, refreshSmartFolderCounts]);
 
+  // Keep counts moving during a long initial sync. Unlike the completion
+  // handler this must not clear the folder-sync indicator — the sync is
+  // still running.
+  useEffect(() => {
+    if (!activeAccountId) return;
+    const handler = () => {
+      loadLabels(activeAccountId);
+      refreshSmartFolderCounts(activeAccountId);
+    };
+    window.addEventListener("velo-sync-progress", handler);
+    return () => window.removeEventListener("velo-sync-progress", handler);
+  }, [activeAccountId, loadLabels, refreshSmartFolderCounts]);
+
   const handleDeleteLabel = useCallback(async (labelId: string) => {
     if (!activeAccountId) return;
     try {

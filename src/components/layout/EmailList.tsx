@@ -466,6 +466,18 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     };
   }, [loadThreads, activeAccountId, activeLabel]);
 
+  // A long initial sync stores threads as it goes; surface them while it runs
+  // rather than leaving the list empty. Skipped during a search, since reloading
+  // the label view would drop the user's results mid-typing.
+  useEffect(() => {
+    const handler = () => {
+      if (useThreadStore.getState().searchThreadIds !== null) return;
+      loadThreads();
+    };
+    window.addEventListener("velo-sync-progress", handler);
+    return () => window.removeEventListener("velo-sync-progress", handler);
+  }, [loadThreads]);
+
   // Infinite scroll: load more when near bottom
   useEffect(() => {
     const container = scrollContainerRef.current;

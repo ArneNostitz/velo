@@ -58,6 +58,9 @@ import {
 } from "./services/updateManager";
 import { fetchSendAsAliases } from "./services/gmail/sendAs";
 import { refreshAfterAccountAdded } from "./services/accounts/accountLifecycle";
+
+/** How often a long initial sync pushes what it has stored so far to the UI. */
+const INCREMENTAL_REFRESH_MS = 1_500;
 import { SettingsDialog } from "./components/settings/SettingsDialog";
 import { getGmailClient } from "./services/gmail/tokenManager";
 import { invoke } from "@tauri-apps/api/core";
@@ -102,6 +105,8 @@ export default function App() {
   const reduceMotion = useUIStore((s) => s.reduceMotion);
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const [showAddAccount, setShowAddAccount] = useState(false);
+  // Throttles the "show what has synced so far" refresh during a long initial sync
+  const lastIncrementalRefreshRef = useRef(0);
   const [initialized, setInitialized] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -391,6 +396,15 @@ export default function App() {
             setSyncStatus(
               `Syncing: ${progress.current}/${progress.total} messages`,
             );
+            // Threads are written to the DB as they arrive, so show them as they
+            // land instead of leaving the list empty until the whole sync ends.
+            // A separate event from velo-sync-done: this one must not disturb an
+            // active search or a scrolled-in page.
+            const now = Date.now();
+            if (now - lastIncrementalRefreshRef.current > INCREMENTAL_REFRESH_MS) {
+              lastIncrementalRefreshRef.current = now;
+              window.dispatchEvent(new Event("velo-sync-progress"));
+            }
           } else if (progress.phase === "labels") {
             setSyncStatus("Syncing labels...");
           } else if (progress.phase === "threads") {
@@ -400,6 +414,7 @@ export default function App() {
           setSyncStatus("Syncing...");
         }
       } else if (status === "done") {
+        lastIncrementalRefreshRef.current = 0;
         setSyncStatus("Sync complete");
         setTimeout(() => setSyncStatus(null), 2_000);
         window.dispatchEvent(new Event("velo-sync-done"));
@@ -413,6 +428,7 @@ export default function App() {
             .catch((err) => console.error("Backfill error:", err));
         }
       } else if (status === "error") {
+        lastIncrementalRefreshRef.current = 0;
         setSyncStatus(error ? `Sync failed: ${formatSyncError(error)}` : "Sync failed");
         // Still dispatch sync-done so the UI refreshes with any partially stored data
         window.dispatchEvent(new Event("velo-sync-done"));
