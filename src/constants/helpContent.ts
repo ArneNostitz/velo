@@ -231,7 +231,7 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         title: "Chat view",
         summary: "Read a thread as a back-and-forth conversation.",
         description:
-          "Chat view turns an open thread into a conversation: your messages sit on the right, the other person's on the left, each with their avatar, name, and timestamp in one line above the bubble. Every message is stripped down to what was actually written — the quoted mail being replied to, signatures, and forwarded headers are hidden, so you read the exchange instead of the same text five times over. Messages start expanded; \"Collapse all\" folds the whole thread down to one-line previews.",
+          "Chat view turns an open thread into a conversation while keeping it email: every message stays the full width of the pane, marked by a coloured rule down one edge — left for yours, right for theirs — with the avatar, name, and timestamp on one line above it. Each message is stripped down to what was actually written; the quoted mail being replied to, signatures, and forwarded headers are hidden, so you read the exchange instead of the same text five times over. Messages start expanded; \"Collapse all\" folds the whole thread down to one-line previews.",
         tips: [
           { text: "Toggle chat view from the button in the thread's action bar." },
           { text: "\"View full\" under a message brings back its quotes and signature." },
