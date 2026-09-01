@@ -13,7 +13,7 @@ import type { DbAttachment } from "@/services/db/attachments";
 
 interface ChatMessageProps {
   message: DbMessage;
-  /** Written by the user — draws on the right, in the accent colour. */
+  /** Written by the user — accent rule on the left, gutter on that side. */
   isMine: boolean;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -24,12 +24,14 @@ interface ChatMessageProps {
 }
 
 /**
- * One message as a chat bubble.
+ * One message in the conversation view.
  *
- * The body is trimmed to what the sender actually typed — the quoted mail
- * they replied to and their signature are the previous bubbles and the header
- * respectively, so repeating them turns a conversation into a wall. "View
- * full" puts the original back for the one message the reader cares about.
+ * Still an email, laid out at the full width of the pane — who wrote it is
+ * said by a rule down one edge and a 25px gutter on that side, not by
+ * squeezing the text into a column. The body is trimmed to what the sender
+ * actually typed: the mail they quoted is the message above and their
+ * signature is in the header, so repeating both turns a conversation into a
+ * wall. "View full" puts the original back for the message that needs it.
  */
 export const ChatMessage = memo(function ChatMessage({
   message,
@@ -52,7 +54,7 @@ export const ChatMessage = memo(function ChatMessage({
     getAttachmentsForMessage(message.account_id, message.id)
       .then(setAttachments)
       .catch(() => {
-        // Non-critical — the bubble still renders, just without attachments
+        // Non-critical — the message still renders, just without attachments
       });
   }, [collapsed, message.account_id, message.id]);
 
@@ -86,118 +88,113 @@ export const ChatMessage = memo(function ChatMessage({
 
   return (
     <div
-      className={`flex px-4 py-2 ${isMine ? "justify-end" : "justify-start"}`}
+      className={`border-b border-border-secondary last:border-b-0 py-3 pl-4 pr-4 ${
+        // The message keeps the full width of the pane — only a 25px gutter and
+        // a rule down one edge say who wrote it, so nothing gets squeezed into
+        // a column the way a chat bubble would
+        isMine
+          ? "ml-[25px] border-l-2 border-l-accent"
+          : "mr-[25px] border-r-2 border-r-border-primary"
+      } ${isSpam ? "bg-red-500/8 dark:bg-red-500/10" : isMine ? "bg-accent-light/40" : ""}`}
       onContextMenu={onContextMenu}
+      data-message-id={message.id}
     >
-      <div className={`min-w-0 max-w-[85%] @[900px]:max-w-[72%] ${isMine ? "items-end" : "items-start"} flex flex-col`}>
-        {/* Who and when, bundled — the avatar sits on the outside edge so the
-            two sides of the conversation read as two columns */}
-        <div className={`flex items-center gap-2 mb-1 ${isMine ? "flex-row-reverse" : ""}`}>
-          <SenderAvatar
-            email={message.from_address}
-            name={message.from_name}
-            isRead
-            className="w-6 h-6 text-[0.625rem] shrink-0"
-          />
-          <div className={`flex items-baseline gap-1.5 min-w-0 ${isMine ? "flex-row-reverse" : ""}`}>
-            <span className="text-xs font-medium text-text-primary truncate">
-              {isMine ? "You" : fromDisplay}
-            </span>
-            <span className="text-[0.625rem] text-text-tertiary whitespace-nowrap">
-              {formatFullDate(message.date)}
-            </span>
-            <AuthBadge authResults={message.auth_results} />
-            {openedCount > 0 && (
-              <span
-                className="inline-flex items-center gap-0.5 text-[0.625rem] px-1.5 py-px rounded-full bg-success/15 text-success shrink-0"
-                title="Read receipt received"
-              >
-                <CheckCheck size={10} />
-                {openedCount > 1 ? `${openedCount}×` : "Opened"}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div
-          className={`w-full rounded-2xl border px-3 py-2 ${
-            isSpam
-              ? "bg-red-500/10 border-red-500/30"
-              : isMine
-                ? "bg-accent-light border-accent/25 rounded-tr-sm"
-                : "bg-bg-secondary border-border-secondary rounded-tl-sm"
-          }`}
-        >
-          {collapsed ? (
-            <button
-              onClick={onToggleCollapse}
-              className="w-full flex items-center gap-1 text-left text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+      {/* Who and when, bundled into one line, turned towards the sender's side */}
+      <div className={`flex items-center gap-2 mb-2 ${isMine ? "flex-row-reverse" : ""}`}>
+        <SenderAvatar
+          email={message.from_address}
+          name={message.from_name}
+          isRead
+          className="w-6 h-6 text-[0.625rem] shrink-0"
+        />
+        <div className={`flex items-baseline gap-1.5 min-w-0 flex-1 ${isMine ? "flex-row-reverse" : ""}`}>
+          <span className="text-xs font-medium text-text-primary truncate">
+            {isMine ? "You" : fromDisplay}
+          </span>
+          <span className="text-[0.625rem] text-text-tertiary whitespace-nowrap">
+            {formatFullDate(message.date)}
+          </span>
+          <AuthBadge authResults={message.auth_results} />
+          {openedCount > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5 text-[0.625rem] px-1.5 py-px rounded-full bg-success/15 text-success shrink-0"
+              title="Read receipt received"
             >
-              <ChevronRight size={12} className="shrink-0" />
-              <span className="truncate">{message.snippet || "(No preview)"}</span>
-            </button>
-          ) : (
-            <>
-              {blockImages != null ? (
-                <EmailRenderer
-                  html={bodyHtml}
-                  text={bodyText}
-                  blockImages={blockImages}
-                  senderAddress={message.from_address}
-                  accountId={message.account_id}
-                  senderAllowlisted={senderAllowlisted}
-                  messageId={message.id}
-                  inlineAttachments={attachments.filter((a) => a.content_id)}
-                />
-              ) : (
-                <div className="py-4 text-center text-text-tertiary text-xs">Loading...</div>
-              )}
-
-              <InlineAttachmentPreview
-                accountId={message.account_id}
-                messageId={message.id}
-                attachments={attachments}
-                referencedCids={referencedCids}
-                onAttachmentClick={openAttachment}
-              />
-
-              <AttachmentList
-                accountId={message.account_id}
-                messageId={message.id}
-                attachments={attachments}
-                referencedCids={referencedCids}
-                onOpenAttachment={openAttachment}
-              />
-
-              {attachmentViewer}
-            </>
+              <CheckCheck size={10} />
+              {openedCount > 1 ? `${openedCount}\u00d7` : "Opened"}
+            </span>
           )}
         </div>
-
-        {/* Controls sit under the bubble so they never crowd the text */}
-        {!collapsed && (
-          <div className={`flex items-center gap-2 mt-1 ${isMine ? "flex-row-reverse" : ""}`}>
-            <button
-              onClick={onToggleCollapse}
-              className="flex items-center gap-0.5 text-[0.625rem] text-text-tertiary hover:text-text-secondary transition-colors"
-              title="Collapse this message"
-            >
-              <ChevronDown size={11} />
-              Collapse
-            </button>
-            {(trimmed.trimmed || showFull) && (
-              <button
-                onClick={() => setShowFull((v) => !v)}
-                className="flex items-center gap-0.5 text-[0.625rem] text-accent hover:underline"
-                title={showFull ? "Hide quotes and signature again" : "Show the original mail with quotes and signature"}
-              >
-                {showFull ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
-                {showFull ? "View trimmed" : "View full"}
-              </button>
-            )}
-          </div>
-        )}
       </div>
+
+      {collapsed ? (
+        <button
+          onClick={onToggleCollapse}
+          className="w-full flex items-center gap-1 text-left text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+        >
+          <ChevronRight size={12} className="shrink-0" />
+          <span className="truncate">{message.snippet || "(No preview)"}</span>
+        </button>
+      ) : (
+        <>
+          {blockImages != null ? (
+            <EmailRenderer
+              html={bodyHtml}
+              text={bodyText}
+              blockImages={blockImages}
+              senderAddress={message.from_address}
+              accountId={message.account_id}
+              senderAllowlisted={senderAllowlisted}
+              messageId={message.id}
+              inlineAttachments={attachments.filter((a) => a.content_id)}
+            />
+          ) : (
+            <div className="py-4 text-center text-text-tertiary text-xs">Loading...</div>
+          )}
+
+          <InlineAttachmentPreview
+            accountId={message.account_id}
+            messageId={message.id}
+            attachments={attachments}
+            referencedCids={referencedCids}
+            onAttachmentClick={openAttachment}
+          />
+
+          <AttachmentList
+            accountId={message.account_id}
+            messageId={message.id}
+            attachments={attachments}
+            referencedCids={referencedCids}
+            onOpenAttachment={openAttachment}
+          />
+
+          {attachmentViewer}
+        </>
+      )}
+
+      {/* Controls sit under the message so they never crowd the text */}
+      {!collapsed && (
+        <div className={`flex items-center gap-2 mt-2 ${isMine ? "flex-row-reverse" : ""}`}>
+          <button
+            onClick={onToggleCollapse}
+            className="flex items-center gap-0.5 text-[0.625rem] text-text-tertiary hover:text-text-secondary transition-colors"
+            title="Collapse this message"
+          >
+            <ChevronDown size={11} />
+            Collapse
+          </button>
+          {(trimmed.trimmed || showFull) && (
+            <button
+              onClick={() => setShowFull((v) => !v)}
+              className="flex items-center gap-0.5 text-[0.625rem] text-accent hover:underline"
+              title={showFull ? "Hide quotes and signature again" : "Show the original mail with quotes and signature"}
+            >
+              {showFull ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+              {showFull ? "View trimmed" : "View full"}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 });

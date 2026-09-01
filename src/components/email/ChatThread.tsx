@@ -5,7 +5,7 @@ import type { DbMessage } from "@/services/db/messages";
 
 interface ChatThreadProps {
   messages: DbMessage[];
-  /** Lowercased addresses belonging to the user — these draw on the right. */
+  /** Lowercased addresses belonging to the user — these take the left rule. */
   ownAddresses: Set<string>;
   blockImages?: boolean | null;
   allowlistedSenders?: Set<string>;
@@ -14,7 +14,7 @@ interface ChatThreadProps {
   /** Hides the collapse-all bar for nested lists that supply their own. */
   hideToolbar?: boolean;
   /**
-   * Start every bubble folded. Used for past conversations, where the point
+   * Start every message folded. Used for past conversations, where the point
    * is to scan a long history rather than read it end to end.
    */
   defaultCollapsed?: boolean;
@@ -25,12 +25,12 @@ export function isOwnMessage(message: DbMessage, ownAddresses: Set<string>): boo
 }
 
 /**
- * A thread rendered as a conversation: the user's messages on the right,
- * everyone else's on the left, each stripped down to the words that were
- * actually written.
+ * A thread rendered as a conversation: the user's messages ruled on the left,
+ * everyone else's on the right, each stripped down to the words that were
+ * actually written and each still the full width of the pane.
  *
- * Every bubble starts open — the point of the view is to read the exchange in
- * one pass — with a single control to fold them all away again.
+ * Every message starts open — the point of the view is to read the exchange
+ * in one pass — with a single control to fold them all away again.
  */
 export function ChatThread({
   messages,

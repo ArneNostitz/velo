@@ -3,8 +3,8 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ChatThread, isOwnMessage } from "./ChatThread";
 import type { DbMessage } from "@/services/db/messages";
 
-// The bubble body renders a sandboxed iframe and fetches attachments — neither
-// belongs in a test of the conversation layout
+// The message body renders a sandboxed iframe and fetches attachments —
+// neither belongs in a test of the conversation layout
 vi.mock("./EmailRenderer", () => ({
   EmailRenderer: ({ html, text }: { html: string | null; text: string | null }) => (
     <div data-testid="body">{html ?? text}</div>
@@ -81,11 +81,21 @@ describe("ChatThread", () => {
     makeMessage({ id: "m2", from_address: "me@example.com", from_name: "Me" }),
   ];
 
-  it("puts the user's messages on the right and theirs on the left", () => {
+  it("rules the user's messages on the left and theirs on the right", () => {
     const { container } = render(<ChatThread messages={messages} ownAddresses={own} blockImages={false} />);
-    const rows = container.querySelectorAll(".flex.px-4.py-2");
-    expect(rows[0]!.className).toContain("justify-start");
-    expect(rows[1]!.className).toContain("justify-end");
+    const rows = container.querySelectorAll("[data-message-id]");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.className).toContain("border-r-2");
+    expect(rows[0]!.className).toContain("mr-[25px]");
+    expect(rows[1]!.className).toContain("border-l-2");
+    expect(rows[1]!.className).toContain("ml-[25px]");
+  });
+
+  it("keeps every message at the full width of the pane", () => {
+    const { container } = render(<ChatThread messages={messages} ownAddresses={own} blockImages={false} />);
+    for (const row of container.querySelectorAll("[data-message-id]")) {
+      expect(row.className).not.toMatch(/max-w-\[/);
+    }
   });
 
   it("names the user's own messages 'You'", () => {
