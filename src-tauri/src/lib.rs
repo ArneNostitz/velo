@@ -7,6 +7,7 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::MacosLauncher;
 
 mod commands;
+mod files;
 mod imap;
 mod keychain;
 mod net;
@@ -97,6 +98,8 @@ pub fn run() {
             keychain::keychain_delete_key,
             keychain::keychain_available,
             net::unsubscribe_one_click,
+            files::save_attachment,
+            files::quicklook_attachment,
             set_tray_tooltip,
             close_splashscreen,
             open_devtools,

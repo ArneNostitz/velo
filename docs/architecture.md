@@ -95,7 +95,7 @@ velo/
 │   │   ├── bundles/          # Newsletter bundle manager
 │   │   ├── notifications/    # OS notification manager
 │   │   ├── contacts/         # Gravatar integration
-│   │   ├── attachments/      # Attachment cache manager, pre-cache manager
+│   │   ├── attachments/      # Attachment cache manager, pre-cache manager, save/Quick Look actions
 │   │   ├── unsubscribe/      # One-click unsubscribe (RFC 8058)
 │   │   ├── quickSteps/       # Quick step executor, types, defaults
 │   │   ├── queue/            # Offline queue processor
@@ -164,14 +164,14 @@ All business logic lives in `src/services/` as plain async functions (except `Gm
 | `bundles/` | Newsletter bundling with delivery schedules |
 | `notifications/` | OS notifications with VIP filtering |
 | `contacts/` | Gravatar integration |
-| `attachments/` | Local attachment caching, pre-cache recent attachments |
+| `attachments/` | Local attachment caching, pre-cache recent attachments, save-to-disk + Quick Look actions |
 | `unsubscribe/` | One-click unsubscribe (RFC 8058) |
 | `quickSteps/` | Custom action chains with executor engine |
 | `queue/` | Offline queue processor with exponential backoff |
 | `tasks/` | Task recurrence manager |
 | `smartLabels/` | AI-powered auto-labeling with two-phase matching (criteria + AI) |
 
-**Root-level services:** `emailActions.ts` (centralized offline-aware email actions), `badgeManager.ts` (taskbar badge), `deepLinkHandler.ts` (mailto: protocol), `globalShortcut.ts` (system-wide compose)
+**Root-level services:** `emailActions.ts` (centralized offline-aware email actions), `badgeManager.ts` (taskbar badge), `deepLinkHandler.ts` (mailto: protocol), `globalShortcut.ts` (system-wide compose), `refreshMail.ts` (manual mailbox refresh)
 
 ## UI Layer
 

@@ -9,6 +9,7 @@ import { useActiveLabel } from "@/hooks/useRouteNavigation";
 import { formatRelativeDate } from "@/utils/date";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { Paperclip, Star, Check, Pin, BellRing, VolumeX, CheckSquare } from "lucide-react";
+import { SenderAvatar } from "./SenderAvatar";
 import type { DragData } from "@/components/dnd/DndProvider";
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -81,11 +82,6 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
   const handleContextMenu = onContextMenu
     ? (e: React.MouseEvent) => onContextMenu(e, thread.id)
     : undefined;
-  const initial = (
-    thread.fromName?.[0] ??
-    thread.fromAddress?.[0] ??
-    "?"
-  ).toUpperCase();
 
   return (
     <button
@@ -120,15 +116,32 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
       )}
 
       <div className="flex items-start gap-3">
-        {/* Avatar */}
-        <div
-          className={`rounded-full flex items-center justify-center shrink-0 font-medium text-white ${
-            emailDensity === "compact" ? "w-7 h-7 text-xs" : emailDensity === "spacious" ? "w-10 h-10 text-sm" : "w-9 h-9 text-sm"
-          } ${
-            isMultiSelected ? "bg-accent" : thread.isRead ? "bg-text-tertiary" : "bg-accent"
-          }`}
-        >
-          {isMultiSelected ? <Check size={emailDensity === "compact" ? 14 : 16} /> : initial}
+        {/* Avatar (sender photo → domain logo → initial) with unread dot below */}
+        <div className="relative shrink-0">
+          {isMultiSelected ? (
+            <div
+              className={`rounded-full flex items-center justify-center font-medium text-white bg-accent ${
+                emailDensity === "compact" ? "w-7 h-7 text-xs" : emailDensity === "spacious" ? "w-10 h-10 text-sm" : "w-9 h-9 text-sm"
+              }`}
+            >
+              <Check size={emailDensity === "compact" ? 14 : 16} />
+            </div>
+          ) : (
+            <SenderAvatar
+              email={thread.fromAddress}
+              name={thread.fromName}
+              isRead={thread.isRead}
+              className={
+                emailDensity === "compact" ? "w-7 h-7 text-xs" : emailDensity === "spacious" ? "w-10 h-10 text-sm" : "w-9 h-9 text-sm"
+              }
+            />
+          )}
+          {!thread.isRead && !isMultiSelected && (
+            <span
+              aria-hidden="true"
+              className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-1.5 h-1.5 rounded-full bg-accent"
+            />
+          )}
         </div>
 
         {/* Content */}

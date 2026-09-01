@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Mail, Clock, X, Send, Copy, Star, UserPlus, Check, PenLine,
   Paperclip, Building2, ChevronDown, ChevronRight, Pin,
@@ -20,7 +20,26 @@ import { formatRelativeDate } from "@/utils/date";
 import { formatFileSize, getFileIcon } from "@/utils/fileTypeHelpers";
 import { AuthBadge } from "./AuthBadge";
 import { ThreadFilesSection } from "./ThreadFilesSection";
+import { AttachmentPreview, AttachmentSaveButton, attachmentRef } from "./AttachmentList";
+import { quickLookAttachments } from "@/services/attachments/attachmentActions";
+import type { DbAttachment } from "@/services/db/attachments";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
+
+/** Shared-files rows come from the contacts query; the attachment tools want the attachments-table shape. */
+function toDbAttachment(att: ContactAttachment): DbAttachment {
+  return {
+    id: att.id,
+    message_id: att.message_id,
+    account_id: att.account_id,
+    filename: att.filename,
+    mime_type: att.mime_type,
+    size: att.size,
+    gmail_attachment_id: att.gmail_attachment_id,
+    content_id: null,
+    is_inline: 0,
+    local_path: null,
+  };
+}
 
 interface ContactSidebarProps {
   email: string;
@@ -41,6 +60,12 @@ export function ContactSidebar({ email, name, accountId, threadId, onClose }: Co
   const [notes, setNotes] = useState("");
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [attachments, setAttachments] = useState<ContactAttachment[]>([]);
+  const [filePreviewIndex, setFilePreviewIndex] = useState<number | null>(null);
+  // The files ←/→ can move through in the preview: every fetchable shared file
+  const openableFiles = useMemo(
+    () => attachments.filter((a) => a.gmail_attachment_id).map(toDbAttachment),
+    [attachments],
+  );
   const [sameDomainContacts, setSameDomainContacts] = useState<SameDomainContact[]>([]);
   const [authResults, setAuthResults] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
@@ -391,24 +416,66 @@ export function ContactSidebar({ email, name, accountId, threadId, onClose }: Co
               Shared Files
             </h4>
             <div className="space-y-1">
-              {attachments.map((att, i) => (
-                <div
-                  key={`${att.filename}-${att.date}-${i}`}
-                  className="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-bg-hover transition-colors"
-                >
-                  <span className="shrink-0">{getFileIcon(att.mime_type)}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-text-secondary truncate">{att.filename}</div>
-                    <div className="text-text-tertiary text-[0.625rem]">
-                      {att.size != null && formatFileSize(att.size)}
-                      {att.size != null && " \u00B7 "}
-                      {formatRelativeDate(att.date)}
-                    </div>
+              {attachments.map((att) => {
+                const dbAtt = toDbAttachment(att);
+                return (
+                  <div
+                    key={att.id}
+                    className="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-bg-hover transition-colors group"
+                  >
+                    <button
+                      onClick={async () => {
+                        const idx = openableFiles.findIndex((f) => f.id === att.id);
+                        if (idx < 0) return;
+                        // Quick Look on macOS with all shared files
+                        // (←/→ moves through them); in-app preview as fallback
+                        try {
+                          if (
+                            await quickLookAttachments(
+                              openableFiles.map((f) => attachmentRef(f.account_id, f)),
+                              idx,
+                            )
+                          ) {
+                            return;
+                          }
+                        } catch (err) {
+                          console.error("Failed to open attachment:", err);
+                        }
+                        setFilePreviewIndex(idx);
+                      }}
+                      disabled={!att.gmail_attachment_id}
+                      title={att.gmail_attachment_id ? "Preview" : "File content not available"}
+                      className="flex items-center gap-2 min-w-0 flex-1 text-left disabled:cursor-default"
+                    >
+                      <span className="shrink-0">{getFileIcon(att.mime_type)}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-text-secondary truncate">{att.filename}</div>
+                        <div className="text-text-tertiary text-[0.625rem]">
+                          {att.size != null && formatFileSize(att.size)}
+                          {att.size != null && " \u00B7 "}
+                          {formatRelativeDate(att.date)}
+                        </div>
+                      </div>
+                    </button>
+                    <AttachmentSaveButton
+                      accountId={att.account_id}
+                      attachment={dbAtt}
+                      size={12}
+                      className="p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                    />
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
+        )}
+
+        {filePreviewIndex !== null && openableFiles.length > 0 && (
+          <AttachmentPreview
+            attachments={openableFiles}
+            startIndex={filePreviewIndex}
+            onClose={() => setFilePreviewIndex(null)}
+          />
         )}
 
         {/* Same-Domain Contacts */}

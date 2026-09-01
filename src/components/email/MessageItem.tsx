@@ -3,7 +3,7 @@ import { formatFullDate } from "@/utils/date";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { EmailRenderer } from "./EmailRenderer";
 import { InlineAttachmentPreview } from "./InlineAttachmentPreview";
-import { AttachmentList, getAttachmentsForMessage } from "./AttachmentList";
+import { AttachmentList, useAttachmentViewer, getAttachmentsForMessage } from "./AttachmentList";
 import type { DbMessage } from "@/services/db/messages";
 import type { DbAttachment } from "@/services/db/attachments";
 import { MailMinus, CheckCheck } from "lucide-react";
@@ -123,6 +123,14 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
     return cids;
   }, [message.body_html]);
 
+  // One viewer for the whole message: inline image/PDF previews and the
+  // attachment chips open into the same Quick Look / preview set
+  const { openAttachment, viewer: attachmentViewer } = useAttachmentViewer(
+    message.account_id,
+    attachments,
+    referencedCids,
+  );
+
   const fromDisplay = message.from_name ?? message.from_address ?? "Unknown";
 
   // "Opened" marker: read receipts received for a message the user sent
@@ -229,7 +237,7 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
             messageId={message.id}
             attachments={attachments}
             referencedCids={referencedCids}
-            onAttachmentClick={() => {}}
+            onAttachmentClick={openAttachment}
           />
 
           <AttachmentList
@@ -237,7 +245,10 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
             messageId={message.id}
             attachments={attachments}
             referencedCids={referencedCids}
+            onOpenAttachment={openAttachment}
           />
+
+          {attachmentViewer}
         </div>
       )}
     </div>

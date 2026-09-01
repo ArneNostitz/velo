@@ -1,45 +1,43 @@
 import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "@tauri-apps/plugin-fs";
-import { Paperclip, Download, Eye } from "lucide-react";
+import { Paperclip, Download } from "lucide-react";
 import { getAttachmentsForThread, type DbAttachment } from "@/services/db/attachments";
-import { getEmailProvider } from "@/services/email/providerFactory";
-import { formatFileSize, getFileIcon, canPreview } from "@/utils/fileTypeHelpers";
-import { AttachmentPreview } from "./AttachmentList";
+import {
+  quickLookAttachments,
+  saveAttachmentToFolder,
+} from "@/services/attachments/attachmentActions";
+import { formatFileSize, getFileIcon } from "@/utils/fileTypeHelpers";
+import { AttachmentPreview, AttachmentSaveButton, attachmentRef } from "./AttachmentList";
 
 interface ThreadFilesSectionProps {
   accountId: string;
   threadId: string;
 }
 
-/** Strip path separators so a hostile filename cannot escape the chosen folder. */
-function safeFilename(name: string | null, fallback: string): string {
-  const cleaned = (name ?? "").replace(/[/\\]/g, "_").trim();
-  return cleaned.length > 0 ? cleaned : fallback;
-}
-
-async function fetchAttachmentBytes(
-  accountId: string,
-  att: DbAttachment,
-): Promise<Uint8Array> {
-  const provider = await getEmailProvider(accountId);
-  const response = await provider.fetchAttachment(att.message_id, att.gmail_attachment_id!);
-  const base64 = response.data.replace(/-/g, "+").replace(/_/g, "/");
-  const binaryStr = atob(base64);
-  const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) {
-    bytes[i] = binaryStr.charCodeAt(i);
+/**
+ * Keep only the latest copy of duplicated files (same name + size). The rows
+ * arrive oldest-first, so walking from the end keeps the newest instance.
+ */
+export function dedupKeepLatest(all: DbAttachment[]): DbAttachment[] {
+  const seen = new Set<string>();
+  const kept: DbAttachment[] = [];
+  for (let i = all.length - 1; i >= 0; i--) {
+    const a = all[i]!;
+    const key = `${a.filename}:${a.size}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.unshift(a);
   }
-  return bytes;
+  return kept;
 }
 
 /**
  * "Files in this thread" — every attachment across the whole conversation,
- * with per-file preview and a save-all-into-folder action.
+ * with per-file Quick Look/preview and save, plus a save-all-into-folder action.
  */
 export function ThreadFilesSection({ accountId, threadId }: ThreadFilesSectionProps) {
   const [files, setFiles] = useState<DbAttachment[]>([]);
-  const [preview, setPreview] = useState<DbAttachment | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<
     | { phase: "idle" }
     | { phase: "saving"; done: number; total: number }
@@ -52,17 +50,15 @@ export function ThreadFilesSection({ accountId, threadId }: ThreadFilesSectionPr
     getAttachmentsForThread(accountId, threadId)
       .then((all) => {
         if (cancelled) return;
-        // Skip inline images without a filename, then dedup by name+size
-        const seen = new Set<string>();
+        // Skip inline images without a filename, then keep only the latest duplicate
         setFiles(
-          all.filter((a) => {
-            if (a.is_inline && !a.filename) return false;
-            if (!a.gmail_attachment_id) return false;
-            const key = `${a.filename}:${a.size}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          }),
+          dedupKeepLatest(
+            all.filter((a) => {
+              if (a.is_inline && !a.filename) return false;
+              if (!a.gmail_attachment_id) return false;
+              return true;
+            }),
+          ),
         );
       })
       .catch(() => {
@@ -83,9 +79,7 @@ export function ThreadFilesSection({ accountId, threadId }: ThreadFilesSectionPr
     for (let i = 0; i < files.length; i++) {
       const att = files[i]!;
       try {
-        const bytes = await fetchAttachmentBytes(accountId, att);
-        const name = safeFilename(att.filename, `attachment-${i + 1}`);
-        await writeFile(`${dir}/${name}`, bytes);
+        await saveAttachmentToFolder(attachmentRef(accountId, att), dir);
       } catch (err) {
         console.error(`Failed to save ${att.filename}:`, err);
         failed++;
@@ -94,6 +88,21 @@ export function ThreadFilesSection({ accountId, threadId }: ThreadFilesSectionPr
     }
     setSaveState(failed === files.length ? { phase: "failed" } : { phase: "done", total: files.length - failed });
     setTimeout(() => setSaveState({ phase: "idle" }), 3000);
+  };
+
+  const handleOpen = async (att: DbAttachment) => {
+    const idx = files.findIndex((f) => f.id === att.id);
+    if (idx < 0) return;
+    // Quick Look on macOS with all thread files (←/→ moves through them);
+    // the in-app preview everywhere else (and as fallback)
+    try {
+      if (await quickLookAttachments(files.map((f) => attachmentRef(accountId, f)), idx)) {
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to open attachment:", err);
+    }
+    setPreviewIndex(idx);
   };
 
   return (
@@ -121,30 +130,38 @@ export function ThreadFilesSection({ accountId, threadId }: ThreadFilesSectionPr
       </div>
       <div className="space-y-1">
         {files.map((att) => (
-          <button
+          <div
             key={att.id}
-            onClick={() => setPreview(att)}
-            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-bg-hover transition-colors text-left group"
-            title={canPreview(att.mime_type, att.filename) ? "Preview" : "Open details"}
+            className="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-bg-hover transition-colors group"
           >
-            <span className="shrink-0">{getFileIcon(att.mime_type)}</span>
-            <div className="min-w-0 flex-1">
-              <div className="text-text-secondary truncate">{att.filename ?? "Unnamed"}</div>
-              {att.size != null && (
-                <div className="text-text-tertiary text-[0.625rem]">{formatFileSize(att.size)}</div>
-              )}
-            </div>
-            <Eye size={11} className="shrink-0 text-text-tertiary opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
+            <button
+              onClick={() => handleOpen(att)}
+              title="Preview"
+              className="flex items-center gap-2 min-w-0 flex-1 text-left"
+            >
+              <span className="shrink-0">{getFileIcon(att.mime_type)}</span>
+              <div className="min-w-0 flex-1">
+                <div className="text-text-secondary truncate">{att.filename ?? "Unnamed"}</div>
+                {att.size != null && (
+                  <div className="text-text-tertiary text-[0.625rem]">{formatFileSize(att.size)}</div>
+                )}
+              </div>
+            </button>
+            <AttachmentSaveButton
+              accountId={accountId}
+              attachment={att}
+              size={12}
+              className="p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+            />
+          </div>
         ))}
       </div>
 
-      {preview && (
+      {previewIndex !== null && (
         <AttachmentPreview
-          attachment={preview}
-          accountId={accountId}
-          messageId={preview.message_id}
-          onClose={() => setPreview(null)}
+          attachments={files}
+          startIndex={previewIndex}
+          onClose={() => setPreviewIndex(null)}
         />
       )}
     </div>

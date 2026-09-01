@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useAccountStore, mailAccounts, type Account } from "@/stores/accountStore";
-import { ChevronDown, Check, Plus, UserPlus, Layers } from "lucide-react";
+import { ChevronDown, Check, Plus, UserPlus, Layers, RefreshCw } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useUIStore } from "@/stores/uiStore";
 import { accountColor } from "@/constants/accountColors";
 import { getAliasesForAccount, mapDbAlias, type SendAsAlias } from "@/services/db/sendAsAliases";
+import { refreshMail } from "@/services/refreshMail";
 import { AtSign } from "lucide-react";
 
 interface AccountSwitcherProps {
@@ -28,6 +29,9 @@ export function AccountSwitcher({
   // Send-as addresses per account, so the dropdown can offer them as identities
   const [aliasesByAccount, setAliasesByAccount] = useState<Record<string, SendAsAlias[]>>({});
   const [open, setOpen] = useState(false);
+  // Custom hover states — the system tooltip is too slow, ours pops immediately
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [avatarHover, setAvatarHover] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const syncState = useUIStore((s) => s.syncState);
   const syncMessage = useUIStore((s) => s.syncMessage);
@@ -84,6 +88,12 @@ export function AccountSwitcher({
     setOpen(false);
   }, [onAddAccount]);
 
+  const handleRefresh = useCallback((e: React.SyntheticEvent) => {
+    // The avatar sits inside the dropdown trigger — refresh must not open it
+    e.stopPropagation();
+    refreshMail();
+  }, []);
+
   // No accounts — prompt to add
   if (accounts.length === 0) {
     return (
@@ -108,13 +118,41 @@ export function AccountSwitcher({
       {/* Trigger button */}
       <button
         onClick={() => setOpen((v) => !v)}
+        onMouseEnter={() => setTooltipVisible(true)}
+        onMouseLeave={() => setTooltipVisible(false)}
         className={`flex items-center w-full rounded-lg p-1.5 hover:bg-sidebar-hover transition-colors ${
           collapsed ? "justify-center" : "gap-2.5"
         } ${open ? "bg-sidebar-hover" : ""}`}
       >
-        <SyncRing state={syncState} message={syncMessage}>
-          {unifiedInbox ? <UnifiedAvatar /> : <ActiveAvatar account={activeAccount} />}
-        </SyncRing>
+        {/* Hovering the avatar turns it into a refresh button */}
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label="Refresh mail (F5)"
+          onClick={handleRefresh}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleRefresh(e);
+            }
+          }}
+          onMouseEnter={() => setAvatarHover(true)}
+          onMouseLeave={() => setAvatarHover(false)}
+          className="shrink-0 cursor-pointer"
+        >
+          {avatarHover ? (
+            <span className="w-8 h-8 rounded-full bg-accent/15 text-accent flex items-center justify-center shrink-0">
+              <RefreshCw
+                size={15}
+                className={syncState === "syncing" ? "animate-spin" : ""}
+              />
+            </span>
+          ) : (
+            <SyncRing state={syncState}>
+              {unifiedInbox ? <UnifiedAvatar /> : <ActiveAvatar account={activeAccount} />}
+            </SyncRing>
+          )}
+        </span>
         {!collapsed && (unifiedInbox || activeAccount) && (
           <>
             <div className="flex-1 min-w-0 text-left">
@@ -138,6 +176,39 @@ export function AccountSwitcher({
           </>
         )}
       </button>
+
+      {/* Immediate tooltip — no system-tooltip delay */}
+      {tooltipVisible && !open && (
+        <div
+          role="tooltip"
+          className={`absolute z-50 px-3 py-2 rounded-lg border border-border-primary bg-bg-primary shadow-lg glass-panel pointer-events-none w-56 ${
+            collapsed ? "left-full ml-1 top-2" : "left-2 top-full -mt-1"
+          }`}
+        >
+          <div className="text-xs font-medium text-text-primary truncate">
+            {unifiedInbox
+              ? "All Inboxes"
+              : activeAccount?.displayName || activeAccount?.email || "No account"}
+          </div>
+          <div className="text-[0.6875rem] text-text-secondary truncate">
+            {unifiedInbox
+              ? `${mailAccounts(accounts).length} accounts`
+              : (activeAliasEmail ?? activeAccount?.email ?? "")}
+          </div>
+          {syncState !== "idle" && (
+            <div
+              className={`text-[0.6875rem] mt-1 truncate ${
+                syncState === "error" ? "text-danger" : "text-accent"
+              }`}
+            >
+              {syncMessage ?? (syncState === "error" ? "Sync failed" : "Syncing...")}
+            </div>
+          )}
+          <div className="text-[0.625rem] text-text-tertiary mt-1">
+            Click avatar to refresh · F5
+          </div>
+        </div>
+      )}
 
       {/* Dropdown */}
       {open && (
@@ -274,17 +345,15 @@ export function AccountSwitcher({
  */
 function SyncRing({
   state,
-  message,
   children,
 }: {
   state: "idle" | "syncing" | "error";
-  message: string | null;
   children: React.ReactNode;
 }) {
   if (state === "idle") return <>{children}</>;
 
   return (
-    <div className="relative shrink-0" title={message ?? undefined}>
+    <div className="relative shrink-0">
       {children}
       <span
         aria-hidden="true"
@@ -292,7 +361,7 @@ function SyncRing({
           state === "error" ? "border-danger/70" : "border-t-accent animate-spin"
         }`}
       />
-      <span className="sr-only">{message ?? "Syncing"}</span>
+      <span className="sr-only">{state === "error" ? "Sync failed" : "Syncing"}</span>
     </div>
   );
 }

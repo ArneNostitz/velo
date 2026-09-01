@@ -63,6 +63,7 @@ import {
   Tags,
   FolderInput,
   CheckCheck,
+  Download,
 } from "lucide-react";
 
 // ---------- Types ----------
@@ -220,6 +221,36 @@ export const HELP_CATEGORIES: HelpCategory[] = [
           { text: "Go back to the list", shortcut: "Escape" },
           { text: "Pop out a thread into its own window from the action bar." },
           { text: "Inline reply lets you respond to a specific message without leaving the thread." },
+        ],
+      },
+      {
+        id: "attachment-download",
+        icon: Download,
+        title: "Download & Quick Look attachments",
+        summary: "Save files with one click or preview them instantly.",
+        description:
+          "Every attachment — in a message, in the \"Files in this thread\" list, and in the contact sidebar's Shared Files — has a download button. A plain click saves the file straight into your Downloads folder (configurable in Settings), while ⌘-click lets you pick a folder. Clicking the file name opens it in macOS Quick Look; on other platforms (or when Quick Look can't show it) the built-in preview opens instead. Duplicate files in a conversation are collapsed so you only see the latest copy.",
+        tips: [
+          { text: "Click the download icon to save to your Downloads folder." },
+          { text: "⌘-click the download icon to choose a different folder." },
+          { text: "Click a file name — or an inline image/PDF preview — for an instant Quick Look (macOS)." },
+          { text: "With a file open, ←/→ moves through all the mail's attachments." },
+          { text: "Change the default downloads folder under Settings → General → Storage." },
+          { text: "Files are never overwritten — a copy gets \" (1)\" added to its name." },
+        ],
+        relatedSettingsTab: "general",
+      },
+      {
+        id: "sender-avatars",
+        icon: UserCircle,
+        title: "Sender avatars & unread dot",
+        summary: "Real sender photos and logos in the email list.",
+        description:
+          "The email list shows each sender's real identity: their Gravatar profile photo when they have one, their company's logo for business senders, and a colored initial as fallback. Unread conversations additionally show a small accent-colored dot below the avatar, so unread mail stands out at a glance even when a photo replaces the colored circle.",
+        tips: [
+          { text: "Photos come from Gravatar; logos from the sender's domain." },
+          { text: "Personal addresses (Gmail, Outlook, GMX, ...) show initials instead of the provider's logo." },
+          { text: "The dot below an avatar means the conversation has unread messages." },
         ],
       },
       {
@@ -473,6 +504,8 @@ export const HELP_CATEGORIES: HelpCategory[] = [
           { text: "before:2024-06-01 / after:2024-01-01 — date range filters" },
           { text: "label:work — filter by label" },
           { text: "Combine freely: from:jane subject:report has:attachment after:2024-01-01" },
+          { text: "Results come from your whole mailbox — every account when the unified inbox is on." },
+          { text: "Select a thread and click the person icon next to the search box to see every email from that sender; click it again to go back." },
         ],
       },
       {
@@ -1201,6 +1234,21 @@ export const HELP_CATEGORIES: HelpCategory[] = [
     label: "Accounts & System",
     icon: UserCircle,
     cards: [
+      {
+        id: "manual-refresh",
+        icon: RefreshCw,
+        title: "Refresh mail & account tooltip",
+        summary: "Force a sync from the account avatar or with F5.",
+        description:
+          "Hover the account avatar at the top of the sidebar and it turns into a refresh button — click it to check for new mail in every mailbox the current list shows, without waiting for the next background sync. Hovering the account switcher also pops an instant tooltip with the account name, address, and live sync status; a spinning ring around the avatar shows a sync in progress and turns red when a sync fails.",
+        tips: [
+          { text: "Refresh mail", shortcut: "F5" },
+          { text: "Hover the avatar, then click the refresh icon to sync now." },
+          { text: "In the unified inbox, refresh checks all accounts at once." },
+          { text: "The tooltip appears immediately — no hover delay." },
+        ],
+        relatedSettingsTab: "shortcuts",
+      },
       {
         id: "multi-account",
         icon: Users,

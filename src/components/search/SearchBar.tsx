@@ -9,6 +9,7 @@ import { Search, X, FolderPlus } from "lucide-react";
 export function SearchBar() {
   const searchQuery = useThreadStore((s) => s.searchQuery);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const unifiedInbox = useAccountStore((s) => s.unifiedInbox);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -33,7 +34,9 @@ export function SearchBar() {
 
       debounceRef.current = setTimeout(async () => {
         try {
-          const hits = await searchMessages(value, activeAccountId ?? undefined, 100);
+          // The unified list spans every mailbox, so the search must too
+          const scope = unifiedInbox ? undefined : activeAccountId ?? undefined;
+          const hits = await searchMessages(value, scope, 200);
           const threadIds = new Set(hits.map((h) => h.thread_id));
           useThreadStore.getState().setSearch(value, threadIds);
         } catch {
@@ -41,7 +44,7 @@ export function SearchBar() {
         }
       }, 200);
     },
-    [activeAccountId],
+    [activeAccountId, unifiedInbox],
   );
 
   const handleClear = useCallback(() => {

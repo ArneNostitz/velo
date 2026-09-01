@@ -161,6 +161,8 @@ export function SettingsPage() {
   const [newVipEmail, setNewVipEmail] = useState("");
   const [requestReadReceipts, setRequestReadReceipts] = useState(false);
   const [readReceiptResponse, setReadReceiptResponse] = useState<"ask" | "always" | "never">("ask");
+  // null = system Downloads folder
+  const [downloadDirSetting, setDownloadDirSetting] = useState<string | null>(null);
 
   // Load settings from DB
   useEffect(() => {
@@ -187,6 +189,7 @@ export function SettingsPage() {
       if (receiptResponse === "always" || receiptResponse === "never") {
         setReadReceiptResponse(receiptResponse);
       }
+      setDownloadDirSetting(await getSetting("download_dir"));
 
       // Load autostart state
       try {
@@ -621,6 +624,41 @@ export function SettingsPage() {
                   </Section>
 
                   <Section title="Storage">
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0 mr-4">
+                        <span className="text-sm text-text-secondary">Downloads folder</span>
+                        <p className="text-xs text-text-tertiary mt-0.5 truncate">
+                          {downloadDirSetting ?? "System Downloads folder"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {downloadDirSetting && (
+                          <Button
+                            variant="secondary"
+                            onClick={async () => {
+                              setDownloadDirSetting(null);
+                              await setSetting("download_dir", "");
+                            }}
+                            className="bg-bg-tertiary text-text-primary border border-border-primary"
+                          >
+                            Reset
+                          </Button>
+                        )}
+                        <Button
+                          variant="secondary"
+                          onClick={async () => {
+                            const { open } = await import("@tauri-apps/plugin-dialog");
+                            const dir = await open({ directory: true, multiple: false, title: "Choose downloads folder" });
+                            if (!dir || Array.isArray(dir)) return;
+                            setDownloadDirSetting(dir);
+                            await setSetting("download_dir", dir);
+                          }}
+                          className="bg-bg-tertiary text-text-primary border border-border-primary"
+                        >
+                          Choose...
+                        </Button>
+                      </div>
+                    </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-sm text-text-secondary">Attachment cache</span>

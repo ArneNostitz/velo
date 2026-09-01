@@ -12,6 +12,10 @@ export interface DbContact {
 }
 
 export interface ContactAttachment {
+  id: string;
+  message_id: string;
+  account_id: string;
+  gmail_attachment_id: string | null;
   filename: string;
   mime_type: string | null;
   size: number | null;
@@ -175,7 +179,8 @@ export async function updateContactNotes(
 }
 
 /**
- * Get recent non-inline attachments from a contact.
+ * Get recent non-inline attachments from a contact. Duplicates (same
+ * filename + size) collapse to the latest copy only.
  */
 export async function getAttachmentsFromContact(
   email: string,
@@ -183,11 +188,19 @@ export async function getAttachmentsFromContact(
 ): Promise<ContactAttachment[]> {
   const db = await getDb();
   return db.select<ContactAttachment[]>(
-    `SELECT a.filename, a.mime_type, a.size, m.date
-     FROM attachments a
-     INNER JOIN messages m ON m.account_id = a.account_id AND m.id = a.message_id
-     WHERE m.from_address = $1 AND a.is_inline = 0 AND a.filename IS NOT NULL
-     ORDER BY m.date DESC
+    `SELECT id, message_id, account_id, gmail_attachment_id, filename, mime_type, size, date FROM (
+       SELECT a.id, a.message_id, a.account_id, a.gmail_attachment_id,
+              a.filename, a.mime_type, a.size, m.date,
+              ROW_NUMBER() OVER (
+                PARTITION BY a.filename, COALESCE(a.size, -1)
+                ORDER BY m.date DESC
+              ) AS rn
+       FROM attachments a
+       INNER JOIN messages m ON m.account_id = a.account_id AND m.id = a.message_id
+       WHERE m.from_address = $1 AND a.is_inline = 0 AND a.filename IS NOT NULL
+     )
+     WHERE rn = 1
+     ORDER BY date DESC
      LIMIT $2`,
     [normalizeEmail(email), limit],
   );
