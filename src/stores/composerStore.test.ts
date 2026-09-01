@@ -122,6 +122,18 @@ describe("composerStore", () => {
     expect(state.draftId).toBe("draft-1");
   });
 
+  it("bumps the compose session on every open", () => {
+    const before = useComposerStore.getState().composeSession;
+    useComposerStore.getState().openComposer({ mode: "new" });
+    const afterFirst = useComposerStore.getState().composeSession;
+    // Replying while the composer is already open still counts as a new message
+    useComposerStore.getState().openComposer({ mode: "reply", bodyHtml: "<p>quote</p>" });
+    const afterSecond = useComposerStore.getState().composeSession;
+
+    expect(afterFirst).toBe(before + 1);
+    expect(afterSecond).toBe(afterFirst + 1);
+  });
+
   it("opens with cc shows cc/bcc fields", () => {
     useComposerStore.getState().openComposer({
       mode: "replyAll",

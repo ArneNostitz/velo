@@ -58,6 +58,7 @@ export function Composer() {
   const setViewMode = useComposerStore((s) => s.setViewMode);
   const addAttachment = useComposerStore((s) => s.addAttachment);
   const requestReadReceipt = useComposerStore((s) => s.requestReadReceipt);
+  const composeSession = useComposerStore((s) => s.composeSession);
   const setRequestReadReceipt = useComposerStore((s) => s.setRequestReadReceipt);
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
@@ -147,6 +148,21 @@ export function Composer() {
       },
     },
   });
+
+  // The editor instance outlives any single message — the composer component
+  // stays mounted and only its overlay unmounts. Without this, opening a new
+  // compose or reply keeps whatever was typed last, and a reply's quoted body
+  // never reaches the editor at all.
+  useEffect(() => {
+    if (!editor || !isOpen) return;
+    const body = useComposerStore.getState().bodyHtml;
+    editor.commands.setContent(body || "");
+    // Text goes above the quote in a reply, at the end in a new message
+    editor.commands.focus(body ? "start" : "end");
+    // Panels belong to the message that opened them
+    setShowAiAssist(false);
+    setShowSchedule(false);
+  }, [editor, isOpen, composeSession]);
 
   // Every address the user can send from, across all mailboxes
   useEffect(() => {

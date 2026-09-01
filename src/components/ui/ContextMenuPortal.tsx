@@ -63,16 +63,18 @@ export function ContextMenuPortal() {
   const position = useContextMenuStore((s) => s.position);
   const data = useContextMenuStore((s) => s.data);
   const closeMenu = useContextMenuStore((s) => s.closeMenu);
-  const [snoozeTarget, setSnoozeTarget] = useState<{ threadIds: string[]; accountId: string } | null>(null);
+  const [snoozeTarget, setSnoozeTarget] = useState<
+    { threads: { id: string; accountId: string }[] } | null
+  >(null);
 
   if (!menuType) {
     if (snoozeTarget) {
       return (
         <SnoozeDialog
           onSnooze={async (until) => {
-            for (const id of snoozeTarget.threadIds) {
-              await snoozeThread(snoozeTarget.accountId, id, until);
-              useThreadStore.getState().removeThread(id);
+            for (const target of snoozeTarget.threads) {
+              await snoozeThread(target.accountId, target.id, until);
+              useThreadStore.getState().removeThread(target.id);
             }
             setSnoozeTarget(null);
           }}
@@ -105,9 +107,9 @@ export function ContextMenuPortal() {
       {snoozeTarget && (
         <SnoozeDialog
           onSnooze={async (until) => {
-            for (const id of snoozeTarget.threadIds) {
-              await snoozeThread(snoozeTarget.accountId, id, until);
-              useThreadStore.getState().removeThread(id);
+            for (const target of snoozeTarget.threads) {
+              await snoozeThread(target.accountId, target.id, until);
+              useThreadStore.getState().removeThread(target.id);
             }
             setSnoozeTarget(null);
           }}
@@ -203,7 +205,7 @@ function ThreadMenu({
   position: { x: number; y: number };
   data: Record<string, unknown>;
   onClose: () => void;
-  onSnooze: (target: { threadIds: string[]; accountId: string }) => void;
+  onSnooze: (target: { threads: { id: string; accountId: string }[] }) => void;
 }) {
   const threadId = data["threadId"] as string;
   const threads = useThreadStore((s) => s.threads);
@@ -233,8 +235,12 @@ function ThreadMenu({
     return <ContextMenu items={[]} position={position} onClose={onClose} />;
   }
 
-  // A unified list spans mailboxes — act on the thread's own account
+  // A unified list spans mailboxes — act on each thread's own account, not
+  // whichever mailbox the sidebar happens to have selected. A multi-selection
+  // can span accounts too.
   const threadAccountId = thread.accountId || activeAccountId;
+  const accountFor = (id: string): string =>
+    threads.find((t) => t.id === id)?.accountId || activeAccountId;
 
   const isTrashView = activeLabel === "trash";
   const isDraftsView = activeLabel === "drafts";
@@ -308,25 +314,26 @@ function ThreadMenu({
 
   const handleArchive = async () => {
     for (const id of targetIds) {
-      await archiveThread(activeAccountId, id, []);
+      await archiveThread(accountFor(id), id, []);
     }
   };
 
   const handleDelete = async () => {
     for (const id of targetIds) {
+      const accountId = accountFor(id);
       if (isTrashView) {
-        await permanentDeleteThread(activeAccountId, id, []);
-        await deleteThreadFromDb(activeAccountId, id);
+        await permanentDeleteThread(accountId, id, []);
+        await deleteThreadFromDb(accountId, id);
       } else if (isDraftsView) {
         useThreadStore.getState().removeThread(id);
         try {
-          const client = await getGmailClient(activeAccountId);
-          await deleteDraftsForThread(client, activeAccountId, id);
+          const client = await getGmailClient(accountId);
+          await deleteDraftsForThread(client, accountId, id);
         } catch (err) {
           console.error("Failed to delete drafts:", err);
         }
       } else {
-        await trashThread(activeAccountId, id, []);
+        await trashThread(accountId, id, []);
       }
     }
   };
@@ -335,7 +342,7 @@ function ThreadMenu({
     for (const id of targetIds) {
       const t = threads.find((th) => th.id === id);
       if (!t) continue;
-      await markThreadRead(activeAccountId, id, [], !t.isRead);
+      await markThreadRead(accountFor(id), id, [], !t.isRead);
     }
   };
 
@@ -343,7 +350,7 @@ function ThreadMenu({
     for (const id of targetIds) {
       const t = threads.find((th) => th.id === id);
       if (!t) continue;
-      await starThread(activeAccountId, id, [], !t.isStarred);
+      await starThread(accountFor(id), id, [], !t.isStarred);
     }
   };
 
@@ -354,21 +361,23 @@ function ThreadMenu({
       const newPinned = !t.isPinned;
       useThreadStore.getState().updateThread(id, { isPinned: newPinned });
       if (newPinned) {
-        await pinThreadDb(activeAccountId, id);
+        await pinThreadDb(accountFor(id), id);
       } else {
-        await unpinThreadDb(activeAccountId, id);
+        await unpinThreadDb(accountFor(id), id);
       }
     }
   };
 
   const handleSpam = async () => {
     for (const id of targetIds) {
-      await spamThread(activeAccountId, id, [], !isSpamView);
+      await spamThread(accountFor(id), id, [], !isSpamView);
     }
   };
 
   const handleSnooze = () => {
-    onSnooze({ threadIds: [...targetIds], accountId: activeAccountId });
+    onSnooze({
+      threads: targetIds.map((id) => ({ id, accountId: accountFor(id) })),
+    });
   };
 
   const handleToggleMute = async () => {
@@ -377,10 +386,10 @@ function ThreadMenu({
       if (!t) continue;
       const newMuted = !t.isMuted;
       if (newMuted) {
-        await muteThreadDb(activeAccountId, id);
-        await archiveThread(activeAccountId, id, []);
+        await muteThreadDb(accountFor(id), id);
+        await archiveThread(accountFor(id), id, []);
       } else {
-        await unmuteThreadDb(activeAccountId, id);
+        await unmuteThreadDb(accountFor(id), id);
         useThreadStore.getState().updateThread(id, { isMuted: false });
       }
     }
@@ -418,12 +427,12 @@ function ThreadMenu({
       if (!t) continue;
       const hasLabel = t.labelIds.includes(labelId);
       if (hasLabel) {
-        await removeThreadLabel(activeAccountId, id, labelId);
+        await removeThreadLabel(accountFor(id), id, labelId);
         useThreadStore.getState().updateThread(id, {
           labelIds: t.labelIds.filter((l) => l !== labelId),
         });
       } else {
-        await addThreadLabel(activeAccountId, id, labelId);
+        await addThreadLabel(accountFor(id), id, labelId);
         useThreadStore.getState().updateThread(id, {
           labelIds: [...t.labelIds, labelId],
         });
@@ -553,7 +562,7 @@ function ThreadMenu({
         label: cat,
         action: async () => {
           for (const id of targetIds) {
-            await setThreadCategory(activeAccountId, id, cat, true);
+            await setThreadCategory(accountFor(id), id, cat, true);
           }
           window.dispatchEvent(new Event("velo-sync-done"));
         },
@@ -588,7 +597,15 @@ function ThreadMenu({
                     sortOrder: qs.sort_order,
                     createdAt: qs.created_at,
                   };
-                  await executeQuickStep(step, [...targetIds], activeAccountId);
+                  // A selection can span mailboxes — run the step once per account
+                  const byAccount = new Map<string, string[]>();
+                  for (const id of targetIds) {
+                    const acc = accountFor(id);
+                    byAccount.set(acc, [...(byAccount.get(acc) ?? []), id]);
+                  }
+                  for (const [acc, ids] of byAccount) {
+                    await executeQuickStep(step, ids, acc);
+                  }
                 },
               };
             }),

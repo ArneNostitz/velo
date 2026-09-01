@@ -26,7 +26,8 @@ async function saveDraft(): Promise<void> {
 
   try {
     const raw = buildRawEmail({
-      from: account.email,
+      // The chosen identity, so reopening the draft keeps the sender
+      from: state.fromEmail ?? account.email,
       to: state.to.length > 0 ? state.to : [""],
       subject: state.subject,
       htmlBody: state.bodyHtml,
