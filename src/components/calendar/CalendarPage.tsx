@@ -12,10 +12,43 @@ import { EventCreateModal } from "./EventCreateModal";
 import { EventDetailModal } from "./EventDetailModal";
 import { CalendarList } from "./CalendarList";
 import { CalendarReauthBanner } from "./CalendarReauthBanner";
+import { CalendarAccountPicker } from "./CalendarAccountPicker";
 
 export function CalendarPage() {
-  const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const mailAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
+  const calendarAccountId = useAccountStore((s) => s.calendarAccountId);
+  const setCalendarAccountId = useAccountStore((s) => s.setCalendarAccountId);
+
+  // Which accounts actually have a calendar. Capability depends on stored
+  // CalDAV fields for IMAP accounts, so it has to be read from the database
+  // rather than inferred from the account list alone.
+  const [calendarCapableIds, setCalendarCapableIds] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const flags = await Promise.all(
+        accounts.map(async (a) => [a.id, await hasCalendarSupport(a.id)] as const),
+      );
+      if (!cancelled) {
+        setCalendarCapableIds(flags.filter(([, ok]) => ok).map(([id]) => id));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [accounts]);
+
+  const calendarAccounts = accounts.filter((a) => calendarCapableIds.includes(a.id));
+
+  // Prefer the explicit choice, then the mail account, then whatever has a
+  // calendar — so the page is useful before the user picks anything.
+  const activeAccountId =
+    (calendarAccountId && calendarCapableIds.includes(calendarAccountId)
+      ? calendarAccountId
+      : null) ??
+    (mailAccountId && calendarCapableIds.includes(mailAccountId) ? mailAccountId : null) ??
+    calendarAccounts[0]?.id ??
+    null;
+
   const activeAccount = accounts.find((a) => a.id === activeAccountId) ?? null;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<CalendarView>("month");
@@ -254,25 +287,45 @@ export function CalendarPage() {
 
   if (!activeAccountId) {
     return (
-      <div className="flex-1 flex items-center justify-center text-text-tertiary text-sm">
-        Connect an account to use Calendar
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-tertiary text-sm">
+        <p>No account with a calendar yet.</p>
+        <p className="text-xs">
+          Google accounts bring their calendar along; anything else needs CalDAV.
+        </p>
+        <CalendarAccountPicker
+          accounts={calendarAccounts}
+          selectedId={null}
+          onSelect={setCalendarAccountId}
+        />
       </div>
     );
   }
 
   if (!hasCalendar) {
     return (
-      <div className="flex-1 flex items-center justify-center text-text-tertiary text-sm">
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-tertiary text-sm">
         <div className="text-center">
           <p>Calendar is not configured for this account.</p>
           <p className="mt-1 text-xs">For IMAP accounts, configure CalDAV in Settings.</p>
         </div>
+        <CalendarAccountPicker
+          accounts={calendarAccounts}
+          selectedId={activeAccountId}
+          onSelect={setCalendarAccountId}
+        />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col flex-1 min-w-0 overflow-hidden bg-bg-primary">
+      <div className="flex items-center gap-2 px-3 pt-2">
+        <CalendarAccountPicker
+          accounts={calendarAccounts}
+          selectedId={activeAccountId}
+          onSelect={setCalendarAccountId}
+        />
+      </div>
       <CalendarToolbar
         currentDate={currentDate}
         view={view}

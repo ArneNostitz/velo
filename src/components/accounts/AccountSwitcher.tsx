@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useAccountStore, mailAccounts, type Account } from "@/stores/accountStore";
-import { ChevronDown, Check, Plus, UserPlus, Calendar, Layers } from "lucide-react";
+import { ChevronDown, Check, Plus, UserPlus, Layers } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { accountColor } from "@/constants/accountColors";
 import { getAliasesForAccount, mapDbAlias, type SendAsAlias } from "@/services/db/sendAsAliases";
@@ -171,12 +171,15 @@ export function AccountSwitcher({
               <div className="border-t border-border-primary my-1" />
             </>
           )}
-          {accounts.length > 1 && (
+          {mailAccounts(accounts).length > 1 && (
             <div className="px-3 py-1.5 text-[0.625rem] font-medium text-text-tertiary uppercase tracking-wider">
               Accounts
             </div>
           )}
           {accounts.map((account, accountIndex) => {
+            // A CalDAV account has no mailbox to switch to — it is picked on
+            // the Calendar page instead
+            if (account.provider === "caldav") return null;
             const isActive = !unifiedInbox && account.id === activeAccountId;
             const color = accountColor(account.color, accountIndex);
             return (
@@ -196,11 +199,8 @@ export function AccountSwitcher({
                   aria-hidden="true"
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate leading-tight flex items-center gap-1.5">
+                  <div className="text-sm font-medium truncate leading-tight">
                     {account.displayName || account.email.split("@")[0]}
-                    {account.provider === "caldav" && (
-                      <Calendar size={12} className="shrink-0 text-text-tertiary" />
-                    )}
                   </div>
                   <div className="text-xs text-text-secondary truncate leading-tight">
                     {account.email}
@@ -215,7 +215,7 @@ export function AccountSwitcher({
 
           {/* Send-as addresses, offered as identities to send from. These come
               from the account's Gmail settings — Velo cannot invent them. */}
-          {accounts.flatMap((account) => {
+          {mailAccounts(accounts).flatMap((account) => {
             const extras = (aliasesByAccount[account.id] ?? []).filter(
               (alias) => alias.email !== account.email,
             );

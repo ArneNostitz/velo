@@ -320,6 +320,11 @@ export default function App() {
         useAccountStore.getState().setAccounts(mapped, savedAccountId);
 
         // Restore the unified inbox choice, but only while it still applies
+        const savedCalendarAccount = await getSetting("calendar_account_id");
+        if (savedCalendarAccount) {
+          useAccountStore.getState().restoreCalendarAccountId(savedCalendarAccount);
+        }
+
         const savedAlias = await getSetting("active_alias_email");
         if (savedAlias) {
           useAccountStore.getState().restoreActiveIdentity(savedAlias);

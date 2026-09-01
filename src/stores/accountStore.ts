@@ -27,12 +27,20 @@ interface AccountState {
    * the account, so this always belongs to `activeAccountId`.
    */
   activeAliasEmail: string | null;
+  /**
+   * Account whose calendars the Calendar page shows. Separate from
+   * `activeAccountId` so a calendar can be read without switching mailbox —
+   * and so a CalDAV account, which has no mailbox at all, can be selected.
+   */
+  calendarAccountId: string | null;
   setAccounts: (accounts: Account[], restoredId?: string | null) => void;
   setActiveAccount: (id: string) => void;
   setUnifiedInbox: (unified: boolean) => void;
   setAccountColor: (id: string, color: string) => void;
   setActiveIdentity: (accountId: string, aliasEmail: string | null) => void;
   restoreActiveIdentity: (aliasEmail: string | null) => void;
+  setCalendarAccountId: (id: string | null) => void;
+  restoreCalendarAccountId: (id: string | null) => void;
   restoreUnifiedInbox: (unified: boolean) => void;
   addAccount: (account: Account) => void;
   removeAccount: (id: string) => void;
@@ -67,6 +75,7 @@ export const useAccountStore = create<AccountState>((set) => ({
   activeAccountId: null,
   unifiedInbox: false,
   activeAliasEmail: null,
+  calendarAccountId: null,
 
   setAccounts: (accounts, restoredId) => {
     const activeId = (restoredId && accounts.some((a) => a.id === restoredId))
@@ -102,6 +111,14 @@ export const useAccountStore = create<AccountState>((set) => ({
   /** Apply a persisted value on startup without writing it back. */
   restoreActiveIdentity: (activeAliasEmail) => set({ activeAliasEmail }),
 
+  setCalendarAccountId: (calendarAccountId) => {
+    setSetting("calendar_account_id", calendarAccountId ?? "").catch(() => {});
+    set({ calendarAccountId });
+  },
+
+  /** Apply a persisted value on startup without writing it back. */
+  restoreCalendarAccountId: (calendarAccountId) => set({ calendarAccountId }),
+
   setAccountColor: (id, color) =>
     set((state) => ({
       accounts: state.accounts.map((a) => (a.id === id ? { ...a, color } : a)),
@@ -132,6 +149,9 @@ export const useAccountStore = create<AccountState>((set) => ({
             : state.activeAccountId,
         // Nothing left to unify
         unifiedInbox: accounts.length > 1 ? state.unifiedInbox : false,
+        // Fall back to picking a calendar again if this one is gone
+        calendarAccountId:
+          state.calendarAccountId === id ? null : state.calendarAccountId,
       };
     }),
 }));

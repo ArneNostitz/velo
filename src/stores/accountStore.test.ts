@@ -29,6 +29,7 @@ describe("accountStore", () => {
       activeAccountId: null,
       unifiedInbox: false,
       activeAliasEmail: null,
+      calendarAccountId: null,
     });
   });
 
@@ -154,6 +155,48 @@ describe("accountStore", () => {
       useAccountStore.getState().setAccounts([mockAccount, mockAccount2]);
       useAccountStore.getState().restoreUnifiedInbox(true);
       expect(useAccountStore.getState().unifiedInbox).toBe(true);
+    });
+  });
+
+  describe("calendar account", () => {
+    it("is unset by default, so the page picks one itself", () => {
+      expect(useAccountStore.getState().calendarAccountId).toBeNull();
+    });
+
+    it("is chosen independently of the mail account", () => {
+      useAccountStore.getState().setAccounts([mockAccount, mockAccount2]);
+      useAccountStore.getState().setCalendarAccountId("acc-2");
+
+      const state = useAccountStore.getState();
+      expect(state.calendarAccountId).toBe("acc-2");
+      // Reading another calendar must not move the inbox
+      expect(state.activeAccountId).toBe("acc-1");
+    });
+
+    it("survives a mail account switch", () => {
+      useAccountStore.getState().setAccounts([mockAccount, mockAccount2]);
+      useAccountStore.getState().setCalendarAccountId("acc-2");
+      useAccountStore.getState().setActiveAccount("acc-2");
+      expect(useAccountStore.getState().calendarAccountId).toBe("acc-2");
+    });
+
+    it("resets when the chosen account is removed", () => {
+      useAccountStore.getState().setAccounts([mockAccount, mockAccount2]);
+      useAccountStore.getState().setCalendarAccountId("acc-2");
+      useAccountStore.getState().removeAccount("acc-2");
+      expect(useAccountStore.getState().calendarAccountId).toBeNull();
+    });
+
+    it("is left alone when a different account is removed", () => {
+      useAccountStore.getState().setAccounts([mockAccount, mockAccount2]);
+      useAccountStore.getState().setCalendarAccountId("acc-2");
+      useAccountStore.getState().removeAccount("acc-1");
+      expect(useAccountStore.getState().calendarAccountId).toBe("acc-2");
+    });
+
+    it("restores a persisted choice", () => {
+      useAccountStore.getState().restoreCalendarAccountId("acc-9");
+      expect(useAccountStore.getState().calendarAccountId).toBe("acc-9");
     });
   });
 
