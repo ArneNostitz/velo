@@ -37,9 +37,12 @@ import {
 
 const PAGE_SIZE = 50;
 
-// Map sidebar labels to Gmail label IDs
-const LABEL_MAP: Record<string, string> = {
+// Map sidebar labels to Gmail label IDs. An array is one list drawn from
+// several labels — the combined view reads a correspondence in order rather
+// than making the user alternate between Inbox and Sent.
+const LABEL_MAP: Record<string, string | string[]> = {
   inbox: "INBOX",
+  conversations: ["INBOX", "SENT"],
   starred: "STARRED",
   sent: "SENT",
   drafts: "DRAFT",
@@ -462,7 +465,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
           const gmailLabelId = LABEL_MAP[activeLabel] ?? activeLabel;
           dbThreads = await getThreadsForAccounts(
             accountIds,
-            gmailLabelId || undefined,
+            gmailLabelId.length === 0 ? undefined : gmailLabelId,
             PAGE_SIZE,
             0,
             ownAddresses,
@@ -499,7 +502,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
         const gmailLabelId = LABEL_MAP[activeLabel] ?? activeLabel;
         dbThreads = await getThreadsForAccounts(
           accountIds,
-          gmailLabelId || undefined,
+          gmailLabelId.length === 0 ? undefined : gmailLabelId,
           PAGE_SIZE,
           offset,
           ownAddresses,

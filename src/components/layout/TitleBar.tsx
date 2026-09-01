@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Square, X, Copy } from "lucide-react";
+import { Minus, Square, X, Copy, ArrowLeft, ArrowRight } from "lucide-react";
+import { useHistoryNav } from "@/hooks/useHistoryNav";
 
 const isMac = navigator.userAgent.includes("Macintosh");
 
 export function TitleBar() {
   const [maximized, setMaximized] = useState(false);
+  const { back, forward, canGoBack } = useHistoryNav();
 
   useEffect(() => {
     const appWindow = getCurrentWindow();
@@ -34,6 +36,26 @@ export function TitleBar() {
         <span data-tauri-drag-region className="text-xs font-semibold text-sidebar-text tracking-wide">
           Velo
         </span>
+
+        {/* Step back to the message you were reading before following a link
+            into a past conversation. Two-finger swipe does the same. */}
+        <div className="flex items-center gap-0.5 ml-2">
+          <button
+            onClick={back}
+            disabled={!canGoBack}
+            title="Back (swipe right with two fingers)"
+            className="p-1 rounded text-sidebar-text/70 hover:bg-sidebar-hover disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+          >
+            <ArrowLeft size={14} />
+          </button>
+          <button
+            onClick={forward}
+            title="Forward (swipe left with two fingers)"
+            className="p-1 rounded text-sidebar-text/70 hover:bg-sidebar-hover transition-colors"
+          >
+            <ArrowRight size={14} />
+          </button>
+        </div>
       </div>
 
       {/* Window controls — right side (hidden on macOS, uses native traffic lights) */}

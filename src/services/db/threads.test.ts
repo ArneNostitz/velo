@@ -126,7 +126,7 @@ describe("threads service - unified inbox queries", () => {
     await getThreadsForAccounts(["a", "b"], "INBOX", 10, 0);
     const { sql, params } = lastSelect();
     expect(sql).toContain("t.account_id IN ($1, $2)");
-    expect(sql).toContain("tl.label_id = $3");
+    expect(sql).toContain("tl.label_id IN ($3)");
     expect(sql).toContain("LIMIT $4 OFFSET $5");
     expect(params).toEqual(["a", "b", "INBOX", 10, 0]);
   });
@@ -302,5 +302,46 @@ describe("threads service - hiding receipt-only threads", () => {
   it("keeps them out of a category list", async () => {
     await getThreadsForCategoryAcrossAccounts(["a"], "Primary", 50, 0, []);
     expect(mockDb.select.mock.calls.at(-1)![0]).toContain("mr.is_read_receipt = 0");
+  });
+});
+
+describe("threads service - combined Inbox + Sent view", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getDb).mockResolvedValue(mockDb as unknown as Awaited<ReturnType<typeof getDb>>);
+    mockDb.select.mockResolvedValue([]);
+  });
+
+  function lastSelect(): { sql: string; params: unknown[] } {
+    const call = mockDb.select.mock.calls.at(-1)!;
+    return { sql: call[0] as string, params: call[1] as unknown[] };
+  }
+
+  it("draws one date-ordered list from several labels", async () => {
+    await getThreadsForAccounts(["a"], ["INBOX", "SENT"], 50, 0, []);
+    const { sql, params } = lastSelect();
+    expect(sql).toContain("tl.label_id IN ($2, $3)");
+    expect(sql).toContain("ORDER BY t.is_pinned DESC, t.last_message_at DESC");
+    expect(params).toEqual(["a", "INBOX", "SENT", 50, 0]);
+  });
+
+  it("still takes a single label as a plain string", async () => {
+    await getThreadsForAccounts(["a"], "INBOX", 50, 0, []);
+    const { sql, params } = lastSelect();
+    expect(sql).toContain("tl.label_id IN ($2)");
+    expect(params).toEqual(["a", "INBOX", 50, 0]);
+  });
+
+  it("numbers the peer parameters after the labels", async () => {
+    await getThreadsForAccounts(["a"], ["INBOX", "SENT"], 50, 0, ["me@x.com"]);
+    const { sql, params } = lastSelect();
+    expect(sql).toContain("NOT IN ($4)");
+    expect(sql).toContain("LIMIT $5 OFFSET $6");
+    expect(params).toEqual(["a", "INBOX", "SENT", "me@x.com", 50, 0]);
+  });
+
+  it("falls back to no label filter when given none", async () => {
+    await getThreadsForAccounts(["a"], undefined, 50, 0, []);
+    expect(lastSelect().sql).not.toContain("tl.label_id");
   });
 });
