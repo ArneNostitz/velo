@@ -44,6 +44,7 @@ import { useUIStore } from "@/stores/uiStore";
 import { setThreadCategory, ALL_CATEGORIES } from "@/services/db/threadCategories";
 import { formatDateTime } from "@/utils/date";
 import { recipientHeadersFromMessages } from "@/utils/resolveFromAddress";
+import { confirmDelete } from "@/utils/confirmDelete";
 
 function buildQuote(msg: { from_name: string | null; from_address: string | null; date: string | number; body_html: string | null; body_text: string | null }): string {
   const date = formatDateTime(msg.date);
@@ -319,6 +320,7 @@ function ThreadMenu({
   };
 
   const handleDelete = async () => {
+    if (!(await confirmDelete(targetIds.length, isTrashView))) return;
     for (const id of targetIds) {
       const accountId = accountFor(id);
       if (isTrashView) {

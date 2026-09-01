@@ -29,6 +29,16 @@ interface ThreadState {
   isLoading: boolean;
   searchQuery: string;
   searchThreadIds: Set<string> | null; // null = no active search
+  /**
+   * Ids of the rows the list is actually showing, in display order.
+   *
+   * `threads` is the loaded page of the current label, which is NOT what the
+   * user sees: search results come from elsewhere, and read filters, bundles
+   * and held threads all remove rows. Every selection works off this list, so
+   * "select all" can never reach a thread that is not on screen.
+   */
+  visibleThreadIds: string[];
+  setVisibleThreadIds: (ids: string[]) => void;
   setThreads: (threads: Thread[]) => void;
   selectThread: (id: string | null) => void;
   toggleThreadSelection: (id: string) => void;
@@ -67,6 +77,7 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
   isLoading: false,
   searchQuery: "",
   searchThreadIds: null,
+  visibleThreadIds: [],
   removingThreadIds: new Set<string>(),
   cachedThreads: new Map<string, Thread>(),
 
@@ -78,6 +89,16 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       // cachedThreads deliberately survives: a thread opened from the contact
       // sidebar is not part of the list and must keep rendering.
       removingThreadIds: new Set<string>(),
+    }),
+  setVisibleThreadIds: (ids) =>
+    set((state) => {
+      // A selection must never outlive the rows it was made on, or a later
+      // bulk action would hit threads the user cannot see
+      const visible = new Set(ids);
+      const selectedThreadIds = new Set(
+        [...state.selectedThreadIds].filter((id) => visible.has(id)),
+      );
+      return { visibleThreadIds: ids, selectedThreadIds };
     }),
   selectThread: (selectedThreadId) => set({ selectedThreadId, selectedThreadIds: new Set() }),
   toggleThreadSelection: (id) =>
@@ -92,33 +113,34 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
     }),
   selectThreadRange: (id) => {
     const state = get();
-    const threads = state.threads;
+    const visible = state.visibleThreadIds;
     // Find the anchor: last selected thread or the currently viewed thread
     const anchor = state.selectedThreadId ?? [...state.selectedThreadIds].pop();
     if (!anchor) {
       set({ selectedThreadIds: new Set([id]) });
       return;
     }
-    const anchorIdx = threads.findIndex((t) => t.id === anchor);
-    const targetIdx = threads.findIndex((t) => t.id === id);
+    const anchorIdx = visible.indexOf(anchor);
+    const targetIdx = visible.indexOf(id);
     if (anchorIdx === -1 || targetIdx === -1) return;
     const start = Math.min(anchorIdx, targetIdx);
     const end = Math.max(anchorIdx, targetIdx);
-    const rangeIds = threads.slice(start, end + 1).map((t) => t.id);
+    const rangeIds = visible.slice(start, end + 1);
     set((s) => ({
       selectedThreadIds: new Set([...s.selectedThreadIds, ...rangeIds]),
     }));
   },
   clearMultiSelect: () => set({ selectedThreadIds: new Set() }),
   selectAll: () => {
-    const threads = get().threads;
-    set({ selectedThreadIds: new Set(threads.map((t) => t.id)) });
+    // Only what is on screen — in a search that is the hits, not the label
+    // page sitting behind them
+    set({ selectedThreadIds: new Set(get().visibleThreadIds) });
   },
   selectAllFromHere: () => {
-    const { threads, selectedThreadId } = get();
-    const idx = threads.findIndex((t) => t.id === selectedThreadId);
+    const { visibleThreadIds, selectedThreadId } = get();
+    const idx = selectedThreadId ? visibleThreadIds.indexOf(selectedThreadId) : -1;
     const startIdx = idx === -1 ? 0 : idx;
-    const ids = threads.slice(startIdx).map((t) => t.id);
+    const ids = visibleThreadIds.slice(startIdx);
     set((s) => ({
       selectedThreadIds: new Set([...s.selectedThreadIds, ...ids]),
     }));

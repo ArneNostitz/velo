@@ -16,6 +16,8 @@ import { getActiveFollowUpThreadIds } from "@/services/db/followUpReminders";
 import { getTaskThreadIds } from "@/services/db/tasks";
 import { getBundleRules, getHeldThreadIds, getBundleSummaries, type DbBundleRule } from "@/services/db/bundleRules";
 import { getGmailClient } from "@/services/gmail/tokenManager";
+import { archiveThread, trashThread, permanentDeleteThread, spamThread } from "@/services/emailActions";
+import { confirmDelete } from "@/utils/confirmDelete";
 import { useLabelStore } from "@/stores/labelStore";
 import { useSmartFolderStore } from "@/stores/smartFolderStore";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
@@ -54,7 +56,6 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   const isLoading = useThreadStore((s) => s.isLoading);
   const setThreads = useThreadStore((s) => s.setThreads);
   const setLoading = useThreadStore((s) => s.setLoading);
-  const removeThreads = useThreadStore((s) => s.removeThreads);
   const clearMultiSelect = useThreadStore((s) => s.clearMultiSelect);
   const selectAll = useThreadStore((s) => s.selectAll);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
@@ -246,53 +247,68 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     }
   }, [activeLabel, handleDraftClick]);
 
+  // A selection can span mailboxes in a unified list, so each thread goes
+  // through its own account — and through emailActions, which handles the
+  // optimistic row removal, the local DB write and the offline queue.
+  const accountForThread = useCallback(
+    (id: string): string | null =>
+      useThreadStore.getState().threadMap.get(id)?.accountId
+      ?? useThreadStore.getState().cachedThreads.get(id)?.accountId
+      ?? activeAccountId,
+    [activeAccountId],
+  );
+
   const handleBulkDelete = async () => {
-    if (!activeAccountId || multiSelectCount === 0) return;
+    if (multiSelectCount === 0) return;
     const isTrashView = activeLabel === "trash";
     const ids = [...selectedThreadIds];
-    removeThreads(ids);
-    try {
-      const client = await getGmailClient(activeAccountId);
-      await Promise.all(ids.map(async (id) => {
+    if (!(await confirmDelete(ids.length, isTrashView))) return;
+    for (const id of ids) {
+      const accountId = accountForThread(id);
+      if (!accountId) continue;
+      try {
         if (isTrashView) {
-          await client.deleteThread(id);
-          await deleteThreadFromDb(activeAccountId, id);
+          await permanentDeleteThread(accountId, id, []);
+          await deleteThreadFromDb(accountId, id);
         } else {
-          await client.modifyThread(id, ["TRASH"], ["INBOX"]);
+          await trashThread(accountId, id, []);
         }
-      }));
-    } catch (err) {
-      console.error("Bulk delete failed:", err);
+      } catch (err) {
+        console.error("Bulk delete failed:", err);
+      }
     }
+    clearMultiSelect();
   };
 
   const handleBulkArchive = async () => {
-    if (!activeAccountId || multiSelectCount === 0) return;
+    if (multiSelectCount === 0) return;
     const ids = [...selectedThreadIds];
-    removeThreads(ids);
-    try {
-      const client = await getGmailClient(activeAccountId);
-      await Promise.all(ids.map((id) => client.modifyThread(id, undefined, ["INBOX"])));
-    } catch (err) {
-      console.error("Bulk archive failed:", err);
+    for (const id of ids) {
+      const accountId = accountForThread(id);
+      if (!accountId) continue;
+      try {
+        await archiveThread(accountId, id, []);
+      } catch (err) {
+        console.error("Bulk archive failed:", err);
+      }
     }
+    clearMultiSelect();
   };
 
   const handleBulkSpam = async () => {
-    if (!activeAccountId || multiSelectCount === 0) return;
+    if (multiSelectCount === 0) return;
     const ids = [...selectedThreadIds];
     const isSpamView = activeLabel === "spam";
-    removeThreads(ids);
-    try {
-      const client = await getGmailClient(activeAccountId);
-      await Promise.all(ids.map((id) =>
-        isSpamView
-          ? client.modifyThread(id, ["INBOX"], ["SPAM"])
-          : client.modifyThread(id, ["SPAM"], ["INBOX"]),
-      ));
-    } catch (err) {
-      console.error("Bulk spam failed:", err);
+    for (const id of ids) {
+      const accountId = accountForThread(id);
+      if (!accountId) continue;
+      try {
+        await spamThread(accountId, id, [], !isSpamView);
+      } catch (err) {
+        console.error("Bulk spam failed:", err);
+      }
     }
+    clearMultiSelect();
   };
 
   const searchThreadIds = useThreadStore((s) => s.searchThreadIds);
@@ -383,6 +399,14 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       return true;
     });
   }, [filteredThreads, searchThreadIds, activeLabel, activeCategory, categoryMap, bundledCategorySet, heldThreadIds]);
+
+  // Selection is made against what is on screen, so the store has to know
+  // which rows those are — search hits and filtered views included
+  const setVisibleThreadIds = useThreadStore((s) => s.setVisibleThreadIds);
+  const visibleIdKey = visibleThreads.map((t) => t.id).join(",");
+  useEffect(() => {
+    setVisibleThreadIds(visibleIdKey ? visibleIdKey.split(",") : []);
+  }, [visibleIdKey, setVisibleThreadIds]);
 
   const clearSearch = useThreadStore((s) => s.clearSearch);
 
@@ -765,7 +789,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
             <span className="text-xs font-medium text-text-primary">
               {multiSelectCount} selected
             </span>
-            {multiSelectCount < filteredThreads.length && (
+            {multiSelectCount < visibleThreads.length && (
               <button
                 onClick={selectAll}
                 className="text-xs text-accent hover:text-accent-hover transition-colors"

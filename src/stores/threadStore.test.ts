@@ -42,6 +42,7 @@ describe("threadStore", () => {
       threadMap: new Map(),
       selectedThreadId: null,
       selectedThreadIds: new Set(),
+      visibleThreadIds: [],
       isLoading: false,
     });
   });
@@ -77,6 +78,7 @@ describe("threadStore", () => {
 
   it("should select all threads", () => {
     useThreadStore.getState().setThreads([mockThread, mockThread2]);
+    useThreadStore.getState().setVisibleThreadIds(["thread-1", "thread-2"]);
     useThreadStore.getState().selectAll();
     const state = useThreadStore.getState();
     expect(state.selectedThreadIds.size).toBe(2);
@@ -91,6 +93,7 @@ describe("threadStore", () => {
       subject: "Third Thread",
     };
     useThreadStore.getState().setThreads([mockThread, mockThread2, mockThread3]);
+    useThreadStore.getState().setVisibleThreadIds(["thread-1", "thread-2", "thread-3"]);
     useThreadStore.getState().selectThread("thread-2");
     useThreadStore.getState().selectAllFromHere();
     const state = useThreadStore.getState();
@@ -103,6 +106,7 @@ describe("threadStore", () => {
 
   it("should select all from beginning when no thread is selected", () => {
     useThreadStore.getState().setThreads([mockThread, mockThread2]);
+    useThreadStore.getState().setVisibleThreadIds(["thread-1", "thread-2"]);
     useThreadStore.getState().selectAllFromHere();
     const state = useThreadStore.getState();
     expect(state.selectedThreadIds.size).toBe(2);
@@ -115,6 +119,7 @@ describe("threadStore", () => {
       subject: "Third Thread",
     };
     useThreadStore.getState().setThreads([mockThread, mockThread2, mockThread3]);
+    useThreadStore.getState().setVisibleThreadIds(["thread-1", "thread-2", "thread-3"]);
     // Select thread-2 as the current thread
     useThreadStore.getState().selectThread("thread-2");
     // Manually add thread-1 to multi-select (after selectThread since it clears multiselect)
@@ -124,6 +129,49 @@ describe("threadStore", () => {
     const state = useThreadStore.getState();
     // Should have thread-1 (from toggle) + thread-2, thread-3 (from selectAllFromHere)
     expect(state.selectedThreadIds.size).toBe(3);
+  });
+
+  describe("selection follows the visible rows", () => {
+    it("selects only what is on screen, not the loaded page behind it", () => {
+      // A search shows three hits while the inbox page stays loaded underneath
+      useThreadStore.getState().setThreads([mockThread, mockThread2]);
+      useThreadStore.getState().setVisibleThreadIds(["thread-2"]);
+      useThreadStore.getState().selectAll();
+      const state = useThreadStore.getState();
+      expect([...state.selectedThreadIds]).toEqual(["thread-2"]);
+    });
+
+    it("selects nothing when no rows are on screen", () => {
+      useThreadStore.getState().setThreads([mockThread, mockThread2]);
+      useThreadStore.getState().setVisibleThreadIds([]);
+      useThreadStore.getState().selectAll();
+      expect(useThreadStore.getState().selectedThreadIds.size).toBe(0);
+    });
+
+    it("drops selected threads that leave the visible list", () => {
+      useThreadStore.getState().setThreads([mockThread, mockThread2]);
+      useThreadStore.getState().setVisibleThreadIds(["thread-1", "thread-2"]);
+      useThreadStore.getState().selectAll();
+      // Searching narrows the list; the hidden thread must leave the selection
+      useThreadStore.getState().setVisibleThreadIds(["thread-1"]);
+      expect([...useThreadStore.getState().selectedThreadIds]).toEqual(["thread-1"]);
+    });
+
+    it("ranges over the visible order", () => {
+      useThreadStore.getState().setThreads([mockThread, mockThread2]);
+      useThreadStore.getState().setVisibleThreadIds(["thread-2", "thread-1"]);
+      useThreadStore.getState().selectThread("thread-2");
+      useThreadStore.getState().selectThreadRange("thread-1");
+      expect(useThreadStore.getState().selectedThreadIds.size).toBe(2);
+    });
+
+    it("ignores a range anchored outside the visible list", () => {
+      useThreadStore.getState().setThreads([mockThread, mockThread2]);
+      useThreadStore.getState().setVisibleThreadIds(["thread-1"]);
+      useThreadStore.getState().selectThread("thread-2");
+      useThreadStore.getState().selectThreadRange("thread-1");
+      expect(useThreadStore.getState().selectedThreadIds.size).toBe(0);
+    });
   });
 
   describe("threadMap", () => {
