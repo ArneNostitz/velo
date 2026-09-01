@@ -35,6 +35,13 @@ export interface ParsedMessage {
   listUnsubscribePost: string | null;
   authResults: string | null;
   messageIdHeader: string | null;
+  /**
+   * Threading headers. Gmail groups mail into its own threads, but these are
+   * what lets Velo relate messages Gmail split — a ticket system replying
+   * under a new subject, say — and they are the only link an IMAP account has.
+   */
+  inReplyToHeader: string | null;
+  referencesHeader: string | null;
   dispositionNotificationTo: string | null;
   /** Raw text of a message/disposition-notification part, when this message is an MDN. */
   mdnReport: string | null;
@@ -75,6 +82,8 @@ export function parseGmailMessage(msg: GmailMessage): ParsedMessage {
     listUnsubscribePost: getHeader(headers, "List-Unsubscribe-Post"),
     authResults: authResult ? JSON.stringify(authResult) : null,
     messageIdHeader: getHeader(headers, "Message-ID"),
+    inReplyToHeader: getHeader(headers, "In-Reply-To"),
+    referencesHeader: getHeader(headers, "References"),
     dispositionNotificationTo: getHeader(headers, "Disposition-Notification-To"),
     mdnReport: extractMdnReport(msg.payload),
   };

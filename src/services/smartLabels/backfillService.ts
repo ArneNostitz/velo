@@ -73,6 +73,8 @@ export async function backfillSmartLabels(
       authResults: null,
       messageIdHeader: null,
       dispositionNotificationTo: null,
+      inReplyToHeader: null,
+      referencesHeader: null,
       mdnReport: null,
     }));
 
