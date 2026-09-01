@@ -238,3 +238,33 @@ describe("threadStore - animated removal", () => {
     expect(useThreadStore.getState().removingThreadIds.size).toBe(0);
   });
 });
+
+
+describe("threadStore - detached thread cache", () => {
+  beforeEach(() => {
+    useThreadStore.setState({
+      threads: [mockThread],
+      threadMap: new Map([[mockThread.id, mockThread]]),
+      cachedThreads: new Map(),
+    });
+  });
+
+  it("caches a thread without adding it to the list", () => {
+    const other = { ...mockThread, id: "other-thread" };
+    useThreadStore.getState().cacheThread(other);
+
+    // Browsing a contact's past conversations must not rearrange the mailbox
+    expect(useThreadStore.getState().threads).toHaveLength(1);
+    expect(useThreadStore.getState().threads[0]!.id).toBe("thread-1");
+    expect(useThreadStore.getState().cachedThreads.get("other-thread")).toEqual(other);
+  });
+
+  it("survives a list reload", () => {
+    const other = { ...mockThread, id: "other-thread" };
+    useThreadStore.getState().cacheThread(other);
+    // A sync-driven reload replaces threads and threadMap
+    useThreadStore.getState().setThreads([mockThread]);
+
+    expect(useThreadStore.getState().cachedThreads.get("other-thread")).toEqual(other);
+  });
+});

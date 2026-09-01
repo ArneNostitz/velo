@@ -365,6 +365,11 @@ export function ThreadView({ thread }: ThreadViewProps) {
     }
   }, [messages, thread.subject]);
 
+  // While a contact is pinned the sidebar stays with them, so clicking through
+  // their past conversations does not swap it out from under the user.
+  // Must sit above the early return below — hooks cannot be conditional.
+  const pinnedContact = useUIStore((s) => s.pinnedContact);
+
   if (loading) {
     return (
       <div className="flex flex-col h-full">
@@ -379,8 +384,8 @@ export function ThreadView({ thread }: ThreadViewProps) {
   const noReply = isNoReplyAddress(lastMessage?.reply_to ?? lastMessage?.from_address);
 
   // Get the primary sender for the contact sidebar
-  const primarySender = lastMessage?.from_address ?? null;
-  const primarySenderName = lastMessage?.from_name ?? null;
+  const primarySender = pinnedContact?.email ?? lastMessage?.from_address ?? null;
+  const primarySenderName = pinnedContact?.name ?? lastMessage?.from_name ?? null;
 
   return (
     <div className="flex h-full @container relative">

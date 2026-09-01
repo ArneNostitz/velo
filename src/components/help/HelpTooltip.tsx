@@ -20,6 +20,13 @@ export function HelpTooltip({ contextId, size = 14 }: HelpTooltipProps) {
     return () => { clearTimeout(closeTimeout.current); };
   }, []);
 
+  // Declared before the early return below — a hook cannot be conditional, and
+  // `tip` can appear or disappear between renders.
+  const handleLearnMore = useCallback(() => {
+    setOpen(false);
+    if (tip) navigateToHelp(tip.helpTopic);
+  }, [tip]);
+
   if (!tip) return null;
 
   const show = () => {
@@ -30,11 +37,6 @@ export function HelpTooltip({ contextId, size = 14 }: HelpTooltipProps) {
   const hide = () => {
     closeTimeout.current = setTimeout(() => setOpen(false), 150);
   };
-
-  const handleLearnMore = useCallback(() => {
-    setOpen(false);
-    navigateToHelp(tip.helpTopic);
-  }, [tip.helpTopic]);
 
   const rect = iconRef.current?.getBoundingClientRect();
 

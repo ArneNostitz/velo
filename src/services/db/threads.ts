@@ -17,6 +17,12 @@ export interface DbThread {
   is_muted: number;
   from_name: string | null;
   from_address: string | null;
+  /**
+   * Latest message from someone other than the user. Null when the whole
+   * thread is the user's own mail (a sent message with no reply yet).
+   */
+  peer_name?: string | null;
+  peer_address?: string | null;
 }
 
 export async function getThreadsForAccount(
@@ -95,6 +101,35 @@ function inClause(count: number, startIndex = 1): { placeholders: string; nextIn
 }
 
 /**
+ * SQL that resolves the last message from someone other than the user, so the
+ * list can name whoever replied instead of echoing the user's own address back
+ * at them on a thread they started.
+ *
+ * Returns empty strings when there are no addresses to compare against, which
+ * leaves the plain "last sender" behaviour intact.
+ */
+function peerJoin(
+  ownAddresses: string[],
+  startIndex: number,
+): { select: string; join: string; params: string[]; nextIndex: number } {
+  if (ownAddresses.length === 0) {
+    return { select: "", join: "", params: [], nextIndex: startIndex };
+  }
+  const placeholders = ownAddresses
+    .map((_, i) => `$${startIndex + i}`)
+    .join(", ");
+  return {
+    select: ", pm.from_name AS peer_name, pm.from_address AS peer_address",
+    join: `LEFT JOIN messages pm ON pm.account_id = t.account_id AND pm.thread_id = t.id
+       AND pm.date = (SELECT MAX(m3.date) FROM messages m3
+                      WHERE m3.account_id = t.account_id AND m3.thread_id = t.id
+                        AND LOWER(COALESCE(m3.from_address, '')) NOT IN (${placeholders}))`,
+    params: ownAddresses.map((a) => a.toLowerCase()),
+    nextIndex: startIndex + ownAddresses.length,
+  };
+}
+
+/**
  * Threads across several accounts, newest first — the unified inbox.
  *
  * Ordering is global rather than per-account, so a single list interleaves
@@ -105,33 +140,38 @@ export async function getThreadsForAccounts(
   labelId?: string,
   limit = 50,
   offset = 0,
+  ownAddresses: string[] = [],
 ): Promise<DbThread[]> {
   if (accountIds.length === 0) return [];
   const db = await getDb();
   const { placeholders, nextIndex } = inClause(accountIds.length);
 
   if (labelId) {
+    const peer = peerJoin(ownAddresses, nextIndex + 1);
     return db.select<DbThread[]>(
-      `SELECT t.*, m.from_name, m.from_address FROM threads t
+      `SELECT t.*, m.from_name, m.from_address${peer.select} FROM threads t
        INNER JOIN thread_labels tl ON tl.account_id = t.account_id AND tl.thread_id = t.id
        LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
          AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
+       ${peer.join}
        WHERE t.account_id IN (${placeholders}) AND tl.label_id = $${nextIndex}
        GROUP BY t.account_id, t.id
        ORDER BY t.is_pinned DESC, t.last_message_at DESC
-       LIMIT $${nextIndex + 1} OFFSET $${nextIndex + 2}`,
-      [...accountIds, labelId, limit, offset],
+       LIMIT $${peer.nextIndex} OFFSET $${peer.nextIndex + 1}`,
+      [...accountIds, labelId, ...peer.params, limit, offset],
     );
   }
 
+  const peer = peerJoin(ownAddresses, nextIndex);
   return db.select<DbThread[]>(
-    `SELECT t.*, m.from_name, m.from_address FROM threads t
+    `SELECT t.*, m.from_name, m.from_address${peer.select} FROM threads t
      LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
        AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
+     ${peer.join}
      WHERE t.account_id IN (${placeholders})
      ORDER BY t.is_pinned DESC, t.last_message_at DESC
-     LIMIT $${nextIndex} OFFSET $${nextIndex + 1}`,
-    [...accountIds, limit, offset],
+     LIMIT $${peer.nextIndex} OFFSET $${peer.nextIndex + 1}`,
+    [...accountIds, ...peer.params, limit, offset],
   );
 }
 
@@ -141,6 +181,7 @@ export async function getThreadsForCategoryAcrossAccounts(
   category: string,
   limit = 50,
   offset = 0,
+  ownAddresses: string[] = [],
 ): Promise<DbThread[]> {
   if (accountIds.length === 0) return [];
   const db = await getDb();
@@ -148,32 +189,36 @@ export async function getThreadsForCategoryAcrossAccounts(
 
   if (category === "Primary") {
     // Primary includes threads with NULL category (uncategorized)
+    const peerPrimary = peerJoin(ownAddresses, nextIndex);
     return db.select<DbThread[]>(
-      `SELECT t.*, m.from_name, m.from_address FROM threads t
+      `SELECT t.*, m.from_name, m.from_address${peerPrimary.select} FROM threads t
        INNER JOIN thread_labels tl ON tl.account_id = t.account_id AND tl.thread_id = t.id
        LEFT JOIN thread_categories tc ON tc.account_id = t.account_id AND tc.thread_id = t.id
        LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
          AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
+       ${peerPrimary.join}
        WHERE t.account_id IN (${placeholders}) AND tl.label_id = 'INBOX'
          AND (tc.category IS NULL OR tc.category = 'Primary')
        GROUP BY t.account_id, t.id
        ORDER BY t.is_pinned DESC, t.last_message_at DESC
-       LIMIT $${nextIndex} OFFSET $${nextIndex + 1}`,
-      [...accountIds, limit, offset],
+       LIMIT $${peerPrimary.nextIndex} OFFSET $${peerPrimary.nextIndex + 1}`,
+      [...accountIds, ...peerPrimary.params, limit, offset],
     );
   }
 
+  const peer = peerJoin(ownAddresses, nextIndex + 1);
   return db.select<DbThread[]>(
-    `SELECT t.*, m.from_name, m.from_address FROM threads t
+    `SELECT t.*, m.from_name, m.from_address${peer.select} FROM threads t
      INNER JOIN thread_labels tl ON tl.account_id = t.account_id AND tl.thread_id = t.id
      INNER JOIN thread_categories tc ON tc.account_id = t.account_id AND tc.thread_id = t.id
      LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
        AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
+     ${peer.join}
      WHERE t.account_id IN (${placeholders}) AND tl.label_id = 'INBOX' AND tc.category = $${nextIndex}
      GROUP BY t.account_id, t.id
      ORDER BY t.is_pinned DESC, t.last_message_at DESC
-     LIMIT $${nextIndex + 1} OFFSET $${nextIndex + 2}`,
-    [...accountIds, category, limit, offset],
+     LIMIT $${peer.nextIndex} OFFSET $${peer.nextIndex + 1}`,
+    [...accountIds, category, ...peer.params, limit, offset],
   );
 }
 

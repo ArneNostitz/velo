@@ -96,7 +96,7 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
       onContextMenu={handleContextMenu}
       aria-label={`${thread.isRead ? "" : "Unread "}email from ${thread.fromName ?? thread.fromAddress ?? "Unknown"}: ${thread.subject ?? "(No subject)"}`}
       aria-selected={isSelected}
-      className={`w-full text-left border-b border-border-secondary group hover-lift press-scale ${
+      className={`relative w-full text-left border-b border-border-secondary group hover-lift press-scale ${
         isRemoving ? "thread-exit " : ""
       }${
         emailDensity === "compact" ? "px-3 py-1.5" : emailDensity === "spacious" ? "px-4 py-4" : "px-4 py-3"
@@ -110,6 +110,15 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
               : "hover:bg-bg-hover"
       } ${isSpam ? "bg-red-500/8 dark:bg-red-500/10" : ""}`}
     >
+      {/* Which mailbox this belongs to — only ambiguous in the unified list */}
+      {threadAccount && threadAccountColor && (
+        <span
+          className="absolute left-0 top-0 bottom-0 w-1"
+          style={{ backgroundColor: threadAccountColor.hex }}
+          title={threadAccount.email}
+        />
+      )}
+
       <div className="flex items-start gap-3">
         {/* Avatar */}
         <div
@@ -135,14 +144,6 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
             >
               {thread.fromName ?? thread.fromAddress ?? "Unknown"}
             </span>
-            {threadAccount && threadAccountColor && (
-              <span
-                className={`text-[0.625rem] px-1.5 py-0.5 rounded-full whitespace-nowrap shrink-0 max-w-[8rem] truncate ${threadAccountColor.pill}`}
-                title={threadAccount.email}
-              >
-                {threadAccount.email}
-              </span>
-            )}
             <span className="text-xs text-text-tertiary whitespace-nowrap shrink-0">
               {formatRelativeDate(thread.lastMessageAt)}
             </span>

@@ -6,7 +6,13 @@ import { ReadingPaneIllustration } from "../ui/illustrations";
 
 export function ReadingPane() {
   const selectedThreadId = useSelectedThreadId();
-  const selectedThread = useThreadStore((s) => selectedThreadId ? s.threadMap.get(selectedThreadId) ?? null : null);
+  // Falls back to the detached cache so a thread opened from the contact
+  // sidebar keeps rendering even as the list reloads underneath it.
+  const selectedThread = useThreadStore((s) =>
+    selectedThreadId
+      ? s.threadMap.get(selectedThreadId) ?? s.cachedThreads.get(selectedThreadId) ?? null
+      : null,
+  );
 
   if (!selectedThread) {
     return (

@@ -108,7 +108,20 @@ export default function App() {
   // Throttles the "show what has synced so far" refresh during a long initial sync
   const lastIncrementalRefreshRef = useRef(0);
   const [initialized, setInitialized] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  // Sync progress is shown as a ring around the account avatar in the sidebar
+  const setSyncState = useUIStore((s) => s.setSyncState);
+  const setSyncStatus = useCallback(
+    (message: string | null) => {
+      if (message === null) {
+        setSyncState("idle", null);
+      } else if (message.startsWith("Sync failed")) {
+        setSyncState("error", message);
+      } else {
+        setSyncState("syncing", message);
+      }
+    },
+    [setSyncState],
+  );
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [showAskInbox, setShowAskInbox] = useState(false);
@@ -565,17 +578,6 @@ export default function App() {
           <Outlet />
         </DndProvider>
       </div>
-
-      {/* Sync status bar */}
-      {syncStatus && (
-        <div
-          className={`fixed bottom-0 left-0 right-0 glass-panel text-white text-xs px-4 py-1.5 text-center z-40 animate-[slideUp_200ms_ease-out,fadeIn_200ms_ease-out] ${
-            syncStatus.startsWith("Sync failed") ? "bg-danger/90" : "bg-accent/90"
-          }`}
-        >
-          {syncStatus}
-        </div>
-      )}
 
       {showAddAccount && (
         <AddAccount

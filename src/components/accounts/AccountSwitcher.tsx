@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useAccountStore, mailAccounts, type Account } from "@/stores/accountStore";
 import { ChevronDown, Check, Plus, UserPlus, Layers } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { useUIStore } from "@/stores/uiStore";
 import { accountColor } from "@/constants/accountColors";
 import { getAliasesForAccount, mapDbAlias, type SendAsAlias } from "@/services/db/sendAsAliases";
 import { AtSign } from "lucide-react";
@@ -28,6 +29,8 @@ export function AccountSwitcher({
   const [aliasesByAccount, setAliasesByAccount] = useState<Record<string, SendAsAlias[]>>({});
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const syncState = useUIStore((s) => s.syncState);
+  const syncMessage = useUIStore((s) => s.syncMessage);
 
   useClickOutside(dropdownRef, () => setOpen(false));
 
@@ -109,7 +112,9 @@ export function AccountSwitcher({
           collapsed ? "justify-center" : "gap-2.5"
         } ${open ? "bg-sidebar-hover" : ""}`}
       >
-        {unifiedInbox ? <UnifiedAvatar /> : <ActiveAvatar account={activeAccount} />}
+        <SyncRing state={syncState} message={syncMessage}>
+          {unifiedInbox ? <UnifiedAvatar /> : <ActiveAvatar account={activeAccount} />}
+        </SyncRing>
         {!collapsed && (unifiedInbox || activeAccount) && (
           <>
             <div className="flex-1 min-w-0 text-left">
@@ -258,6 +263,36 @@ export function AccountSwitcher({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Wraps the account avatar in a ring that spins while mail is syncing and
+ * turns red when a sync fails — replaces the status bar that used to sit
+ * across the bottom of the window.
+ */
+function SyncRing({
+  state,
+  message,
+  children,
+}: {
+  state: "idle" | "syncing" | "error";
+  message: string | null;
+  children: React.ReactNode;
+}) {
+  if (state === "idle") return <>{children}</>;
+
+  return (
+    <div className="relative shrink-0" title={message ?? undefined}>
+      {children}
+      <span
+        aria-hidden="true"
+        className={`absolute -inset-1 rounded-full border-2 border-transparent ${
+          state === "error" ? "border-danger/70" : "border-t-accent animate-spin"
+        }`}
+      />
+      <span className="sr-only">{message ?? "Syncing"}</span>
     </div>
   );
 }
