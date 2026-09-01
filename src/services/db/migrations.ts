@@ -780,6 +780,22 @@ const MIGRATIONS = [
     description: "Per-account colour used to tell mailboxes apart",
     sql: `ALTER TABLE accounts ADD COLUMN color TEXT;`,
   },
+  {
+    version: 25,
+    description: "Read receipts: store MDN request header and response state",
+    sql: `
+      ALTER TABLE messages ADD COLUMN disposition_notification_to TEXT;
+      ALTER TABLE messages ADD COLUMN read_receipt_status TEXT;
+    `,
+  },
+  {
+    version: 26,
+    description: "Read receipts: count received MDNs on the original message",
+    sql: `
+      ALTER TABLE messages ADD COLUMN read_receipt_count INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE messages ADD COLUMN read_receipt_last_at INTEGER;
+    `,
+  },
 ];
 
 /**

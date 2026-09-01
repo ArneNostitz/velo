@@ -21,6 +21,7 @@ import {
 import { handleRecurringTaskCompletion } from "@/services/tasks/taskManager";
 import { TaskItem } from "./TaskItem";
 import { TaskQuickAdd } from "./TaskQuickAdd";
+import { TaskEmailSidebar } from "./TaskEmailSidebar";
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = {
   urgent: 0,
@@ -197,8 +198,18 @@ export function TasksPage() {
     await loadTasks();
   }, [selectedIds, loadTasks]);
 
+  // Email reference panel for the selected task, when it links to a thread
+  const selectedTask = selectedTaskId
+    ? tasks.find((t) => t.id === selectedTaskId) ?? null
+    : null;
+  const linkedEmail =
+    selectedTask?.thread_id && selectedTask.thread_account_id
+      ? { accountId: selectedTask.thread_account_id, threadId: selectedTask.thread_id }
+      : null;
+
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-bg-primary/50">
+    <div className="flex-1 flex min-w-0 overflow-hidden bg-bg-primary/50">
+    <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border-primary shrink-0 bg-bg-primary/60 backdrop-blur-sm">
         <div className="flex items-center gap-2">
@@ -331,6 +342,15 @@ export function TasksPage() {
           </div>
         )}
       </div>
+    </div>
+
+    {linkedEmail && (
+      <TaskEmailSidebar
+        accountId={linkedEmail.accountId}
+        threadId={linkedEmail.threadId}
+        onClose={() => setSelectedTaskId(null)}
+      />
+    )}
     </div>
   );
 }

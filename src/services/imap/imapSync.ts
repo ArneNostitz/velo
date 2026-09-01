@@ -183,6 +183,9 @@ export function imapMessageToParsedMessage(
     listUnsubscribe: msg.list_unsubscribe,
     listUnsubscribePost: msg.list_unsubscribe_post,
     authResults: msg.auth_results,
+    messageIdHeader: msg.message_id,
+    dispositionNotificationTo: msg.disposition_notification_to,
+    mdnReport: msg.mdn_report,
   };
 
   const threadable: ThreadableMessage = {
@@ -320,6 +323,7 @@ async function storeThreadsAndMessages(
             inReplyToHeader: imapMsg?.in_reply_to ?? null,
             imapUid: imapMsg?.uid ?? null,
             imapFolder: imapMsg?.folder ?? null,
+            dispositionNotificationTo: parsed.dispositionNotificationTo,
           });
 
           for (const att of parsed.attachments) {
@@ -340,6 +344,14 @@ async function storeThreadsAndMessages(
         }
       }
     });
+  }
+
+  // Count incoming read receipts against the sent messages they acknowledge
+  try {
+    const { processReadReceiptReports } = await import("@/services/email/readReceipts");
+    await processReadReceiptReports(accountId, storedMessages);
+  } catch (err) {
+    console.error("Read receipt processing failed:", err);
   }
 
   return storedMessages;
@@ -587,6 +599,7 @@ export async function imapInitialSync(
                 inReplyToHeader: msg.in_reply_to ?? null,
                 imapUid: msg.uid ?? null,
                 imapFolder: msg.folder ?? null,
+                dispositionNotificationTo: parsed.dispositionNotificationTo,
               });
 
               // Store attachments
@@ -605,6 +618,14 @@ export async function imapInitialSync(
               }
             }
           });
+
+          // Count incoming read receipts against the sent messages they acknowledge
+          try {
+            const { processReadReceiptReports } = await import("@/services/email/readReceipts");
+            await processReadReceiptReports(accountId, chunkParsed.map((c) => c.parsed));
+          } catch (err) {
+            console.error("Read receipt processing failed:", err);
+          }
         }
 
         // Keep only lightweight data in memory for threading

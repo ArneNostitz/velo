@@ -4,7 +4,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Image from "@tiptap/extension-image";
-import { Clock, Maximize2, Minimize2, ExternalLink } from "lucide-react";
+import { Clock, Maximize2, Minimize2, ExternalLink, CheckCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { AddressInput } from "./AddressInput";
@@ -57,6 +57,8 @@ export function Composer() {
   const setFromEmail = useComposerStore((s) => s.setFromEmail);
   const setViewMode = useComposerStore((s) => s.setViewMode);
   const addAttachment = useComposerStore((s) => s.addAttachment);
+  const requestReadReceipt = useComposerStore((s) => s.requestReadReceipt);
+  const setRequestReadReceipt = useComposerStore((s) => s.setRequestReadReceipt);
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
@@ -193,6 +195,18 @@ export function Composer() {
     return () => { stopAutoSave(); };
   }, [isOpen, activeAccountId]);
 
+  // Apply the "request read receipts by default" setting on open
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    getSetting("read_receipt_request_default").then((value) => {
+      if (!cancelled && value === "true") {
+        useComposerStore.getState().setRequestReadReceipt(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     dragCounterRef.current++;
@@ -259,6 +273,7 @@ export function Composer() {
       htmlBody: html,
       inReplyTo: state.inReplyToMessageId ?? undefined,
       threadId: state.threadId ?? undefined,
+      requestReadReceipt: state.requestReadReceipt || undefined,
       attachments: state.attachments.length > 0
         ? state.attachments.map((a) => ({
             filename: a.filename,
@@ -572,6 +587,21 @@ export function Composer() {
             )}
             <SignatureSelector />
             <TemplatePicker editor={editor} />
+            <button
+              onClick={() => setRequestReadReceipt(!requestReadReceipt)}
+              className={`p-1 rounded transition-colors ${
+                requestReadReceipt
+                  ? "text-accent hover:text-accent-hover"
+                  : "text-text-tertiary hover:text-text-primary"
+              }`}
+              title={
+                requestReadReceipt
+                  ? "Read receipt will be requested"
+                  : "Request read receipt"
+              }
+            >
+              <CheckCheck size={14} />
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <Button

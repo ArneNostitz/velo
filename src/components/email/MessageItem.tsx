@@ -6,10 +6,12 @@ import { InlineAttachmentPreview } from "./InlineAttachmentPreview";
 import { AttachmentList, getAttachmentsForMessage } from "./AttachmentList";
 import type { DbMessage } from "@/services/db/messages";
 import type { DbAttachment } from "@/services/db/attachments";
-import { MailMinus } from "lucide-react";
+import { MailMinus, CheckCheck } from "lucide-react";
+import { useAccountStore } from "@/stores/accountStore";
 import { AuthBadge } from "./AuthBadge";
 import { AuthWarningBanner } from "./AuthWarningBanner";
 import { PhishingBanner } from "./PhishingBanner";
+import { ReadReceiptBanner } from "./ReadReceiptBanner";
 import type { MessageScanResult } from "@/utils/phishingDetector";
 
 interface MessageItemProps {
@@ -123,6 +125,15 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
 
   const fromDisplay = message.from_name ?? message.from_address ?? "Unknown";
 
+  // "Opened" marker: read receipts received for a message the user sent
+  const accounts = useAccountStore((s) => s.accounts);
+  const accountEmail = accounts.find((a) => a.id === message.account_id)?.email;
+  const isOwnMessage =
+    !!accountEmail &&
+    !!message.from_address &&
+    message.from_address.toLowerCase() === accountEmail.toLowerCase();
+  const openedCount = isOwnMessage ? (message.read_receipt_count ?? 0) : 0;
+
   return (
     <div ref={ref} className={`border-b border-border-secondary last:border-b-0 ${isSpam ? "bg-red-500/8 dark:bg-red-500/10" : ""} ${focused ? "ring-2 ring-inset ring-accent/50" : ""}`} onContextMenu={onContextMenu}>
       {/* Header — always visible, click to expand/collapse */}
@@ -139,6 +150,15 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
               <span className="text-sm font-medium text-text-primary truncate flex items-center gap-1">
                 {fromDisplay}
                 <AuthBadge authResults={message.auth_results} />
+                {openedCount > 0 && (
+                  <span
+                    className="inline-flex items-center gap-0.5 text-[0.625rem] px-1.5 py-px rounded-full bg-success/15 text-success shrink-0"
+                    title={`Read receipt received${message.read_receipt_last_at ? ` — last ${formatFullDate(message.read_receipt_last_at)}` : ""}`}
+                  >
+                    <CheckCheck size={10} />
+                    {openedCount > 1 ? `Opened ${openedCount}×` : "Opened"}
+                  </span>
+                )}
               </span>
               {!expanded && (
                 <span className="text-xs text-text-tertiary truncate block">
@@ -174,6 +194,8 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
           {scanResult?.showBanner && (
             <PhishingBanner scanResult={scanResult} onTrustSender={handleTrustSender} />
           )}
+
+          {!isSpam && <ReadReceiptBanner message={message} />}
 
           {message.list_unsubscribe && (
             <UnsubscribeLink

@@ -28,7 +28,18 @@ export interface DbMessage {
   in_reply_to_header: string | null;
   imap_uid: number | null;
   imap_folder: string | null;
+  disposition_notification_to: string | null;
+  read_receipt_status: ReadReceiptStatus | null;
+  read_receipt_count: number;
+  read_receipt_last_at: number | null;
 }
+
+/**
+ * How a read-receipt request was handled: "sent"/"dismissed" for requests the
+ * user answered, "processed" for an incoming MDN already counted against the
+ * original sent message.
+ */
+export type ReadReceiptStatus = "sent" | "dismissed" | "processed";
 
 export async function getMessagesForThread(
   accountId: string,
@@ -68,11 +79,12 @@ export async function upsertMessage(msg: {
   inReplyToHeader?: string | null;
   imapUid?: number | null;
   imapFolder?: string | null;
+  dispositionNotificationTo?: string | null;
 }): Promise<void> {
   const db = await getDb();
   await db.execute(
-    `INSERT INTO messages (id, account_id, thread_id, from_address, from_name, to_addresses, cc_addresses, bcc_addresses, reply_to, subject, snippet, date, is_read, is_starred, body_html, body_text, body_cached, raw_size, internal_date, list_unsubscribe, list_unsubscribe_post, auth_results, message_id_header, references_header, in_reply_to_header, imap_uid, imap_folder)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+    `INSERT INTO messages (id, account_id, thread_id, from_address, from_name, to_addresses, cc_addresses, bcc_addresses, reply_to, subject, snippet, date, is_read, is_starred, body_html, body_text, body_cached, raw_size, internal_date, list_unsubscribe, list_unsubscribe_post, auth_results, message_id_header, references_header, in_reply_to_header, imap_uid, imap_folder, disposition_notification_to)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
      ON CONFLICT(account_id, id) DO UPDATE SET
        from_address = $4, from_name = $5, to_addresses = $6, cc_addresses = $7,
        bcc_addresses = $8, reply_to = $9, subject = $10, snippet = $11,
@@ -83,7 +95,8 @@ export async function upsertMessage(msg: {
        auth_results = $22, message_id_header = COALESCE($23, message_id_header),
        references_header = COALESCE($24, references_header),
        in_reply_to_header = COALESCE($25, in_reply_to_header),
-       imap_uid = COALESCE($26, imap_uid), imap_folder = COALESCE($27, imap_folder)`,
+       imap_uid = COALESCE($26, imap_uid), imap_folder = COALESCE($27, imap_folder),
+       disposition_notification_to = COALESCE($28, disposition_notification_to)`,
     [
       msg.id,
       msg.accountId,
@@ -112,7 +125,24 @@ export async function upsertMessage(msg: {
       msg.inReplyToHeader ?? null,
       msg.imapUid ?? null,
       msg.imapFolder ?? null,
+      msg.dispositionNotificationTo ?? null,
     ],
+  );
+}
+
+/**
+ * Record how the user handled a read-receipt request, so the prompt is not
+ * shown again for the same message.
+ */
+export async function setReadReceiptStatus(
+  accountId: string,
+  messageId: string,
+  status: ReadReceiptStatus,
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "UPDATE messages SET read_receipt_status = $1 WHERE account_id = $2 AND id = $3",
+    [status, accountId, messageId],
   );
 }
 

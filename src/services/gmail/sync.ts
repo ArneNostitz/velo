@@ -133,6 +133,8 @@ async function processAndStoreThread(
       listUnsubscribe: parsed.listUnsubscribe,
       listUnsubscribePost: parsed.listUnsubscribePost,
       authResults: parsed.authResults,
+      messageIdHeader: parsed.messageIdHeader,
+      dispositionNotificationTo: parsed.dispositionNotificationTo,
     });
 
     await Promise.all(parsed.attachments.map((att) =>
@@ -149,6 +151,14 @@ async function processAndStoreThread(
       }),
     ));
   }));
+
+  // Count incoming read receipts against the sent messages they acknowledge
+  try {
+    const { processReadReceiptReports } = await import("@/services/email/readReceipts");
+    await processReadReceiptReports(accountId, parsedMessages);
+  } catch (err) {
+    console.error("Read receipt processing failed:", err);
+  }
 }
 
 /**

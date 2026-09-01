@@ -13,6 +13,24 @@ export interface DbAttachment {
   local_path: string | null;
 }
 
+/**
+ * All attachments across every message of a thread, oldest message first.
+ * Used by the "Files in this thread" sidebar section.
+ */
+export async function getAttachmentsForThread(
+  accountId: string,
+  threadId: string,
+): Promise<DbAttachment[]> {
+  const db = await getDb();
+  return db.select<DbAttachment[]>(
+    `SELECT a.* FROM attachments a
+     JOIN messages m ON m.account_id = a.account_id AND m.id = a.message_id
+     WHERE a.account_id = $1 AND m.thread_id = $2
+     ORDER BY m.date ASC`,
+    [accountId, threadId],
+  );
+}
+
 export async function upsertAttachment(att: {
   id: string;
   messageId: string;

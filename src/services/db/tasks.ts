@@ -49,6 +49,30 @@ export async function getTasksForAccount(
   );
 }
 
+/**
+ * Which of the given threads have at least one open task linked to them.
+ * Used to show the task marker in the email list.
+ */
+export async function getTaskThreadIds(
+  accountIds: string[],
+  threadIds: string[],
+): Promise<Set<string>> {
+  if (accountIds.length === 0 || threadIds.length === 0) return new Set();
+  const db = await getDb();
+  const accountPlaceholders = accountIds.map((_, i) => `$${i + 1}`).join(",");
+  const threadPlaceholders = threadIds
+    .map((_, i) => `$${accountIds.length + i + 1}`)
+    .join(",");
+  const rows = await db.select<{ thread_id: string }[]>(
+    `SELECT DISTINCT thread_id FROM tasks
+     WHERE is_completed = 0 AND thread_id IS NOT NULL
+       AND thread_account_id IN (${accountPlaceholders})
+       AND thread_id IN (${threadPlaceholders})`,
+    [...accountIds, ...threadIds],
+  );
+  return new Set(rows.map((r) => r.thread_id));
+}
+
 export async function getTaskById(id: string): Promise<DbTask | null> {
   const db = await getDb();
   const rows = await db.select<DbTask[]>(

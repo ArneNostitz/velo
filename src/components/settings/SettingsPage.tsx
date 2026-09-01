@@ -159,6 +159,8 @@ export function SettingsPage() {
   const [notifyCategories, setNotifyCategories] = useState<Set<string>>(() => new Set(["Primary"]));
   const [vipSenders, setVipSenders] = useState<{ email_address: string; display_name: string | null }[]>([]);
   const [newVipEmail, setNewVipEmail] = useState("");
+  const [requestReadReceipts, setRequestReadReceipts] = useState(false);
+  const [readReceiptResponse, setReadReceiptResponse] = useState<"ask" | "always" | "never">("ask");
 
   // Load settings from DB
   useEffect(() => {
@@ -179,6 +181,12 @@ export function SettingsPage() {
       if (phishingSens === "low" || phishingSens === "high") setPhishingSensitivity(phishingSens);
       const syncDays = await getSetting("sync_period_days");
       setSyncPeriodDays(syncDays ?? "365");
+      const receiptDefault = await getSetting("read_receipt_request_default");
+      setRequestReadReceipts(receiptDefault === "true");
+      const receiptResponse = await getSetting("read_receipt_response");
+      if (receiptResponse === "always" || receiptResponse === "never") {
+        setReadReceiptResponse(receiptResponse);
+      }
 
       // Load autostart state
       try {
@@ -269,6 +277,17 @@ export function SettingsPage() {
   const handleUndoDelayChange = useCallback(async (value: string) => {
     setUndoSendDelay(value);
     await setSetting("undo_send_delay_seconds", value);
+  }, []);
+
+  const handleRequestReadReceiptsToggle = useCallback(async () => {
+    const newVal = !requestReadReceipts;
+    setRequestReadReceipts(newVal);
+    await setSetting("read_receipt_request_default", newVal ? "true" : "false");
+  }, [requestReadReceipts]);
+
+  const handleReadReceiptResponseChange = useCallback(async (value: "ask" | "always" | "never") => {
+    setReadReceiptResponse(value);
+    await setSetting("read_receipt_response", value);
   }, []);
 
   const handleSaveApiSettings = useCallback(async () => {
@@ -783,6 +802,28 @@ export function SettingsPage() {
                       checked={sendAndArchive}
                       onToggle={() => setSendAndArchive(!sendAndArchive)}
                     />
+                  </Section>
+
+                  <Section title="Read receipts">
+                    <ToggleRow
+                      label="Request read receipts"
+                      description="Ask recipients to confirm when they open your emails. Their mail client decides whether to answer."
+                      checked={requestReadReceipts}
+                      onToggle={handleRequestReadReceiptsToggle}
+                    />
+                    <SettingRow label="When a receipt is requested">
+                      <select
+                        value={readReceiptResponse}
+                        onChange={(e) => {
+                          handleReadReceiptResponseChange(e.target.value as "ask" | "always" | "never");
+                        }}
+                        className="w-48 bg-bg-tertiary text-text-primary text-sm px-3 py-1.5 rounded-md border border-border-primary focus:border-accent outline-none"
+                      >
+                        <option value="ask">Ask me</option>
+                        <option value="always">Always send</option>
+                        <option value="never">Never send</option>
+                      </select>
+                    </SettingRow>
                   </Section>
 
                   <Section title="Behavior">

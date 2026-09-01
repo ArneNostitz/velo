@@ -18,9 +18,11 @@ export interface EmailDraft {
   references?: string;
   threadId?: string;
   attachments?: EmailAttachment[];
+  /** Ask the recipient's client for an MDN read receipt (RFC 8098). */
+  requestReadReceipt?: boolean;
 }
 
-function base64UrlEncode(str: string): string {
+export function base64UrlEncode(str: string): string {
   const bytes = new TextEncoder().encode(str);
   let binary = "";
   for (const b of bytes) {
@@ -121,6 +123,9 @@ export function buildRawEmail(draft: EmailDraft): string {
   }
   if (draft.references) {
     lines.push(`References: ${draft.references}`);
+  }
+  if (draft.requestReadReceipt) {
+    lines.push(`Disposition-Notification-To: ${draft.from}`);
   }
 
   const { html: processedHtml, images: inlineImages } = extractInlineImages(draft.htmlBody);

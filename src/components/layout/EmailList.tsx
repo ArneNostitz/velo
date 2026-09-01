@@ -13,6 +13,7 @@ import { navigateToThread, navigateToLabel } from "@/router/navigate";
 import { getThreadsForAccounts, getThreadsForCategoryAcrossAccounts, getThreadLabelIds, deleteThread as deleteThreadFromDb } from "@/services/db/threads";
 import { getCategoriesForThreads, getCategoryUnreadCounts } from "@/services/db/threadCategories";
 import { getActiveFollowUpThreadIds } from "@/services/db/followUpReminders";
+import { getTaskThreadIds } from "@/services/db/tasks";
 import { getBundleRules, getHeldThreadIds, getBundleSummaries, type DbBundleRule } from "@/services/db/bundleRules";
 import { getGmailClient } from "@/services/gmail/tokenManager";
 import { useLabelStore } from "@/stores/labelStore";
@@ -22,7 +23,8 @@ import { useComposerStore } from "@/stores/composerStore";
 import { getMessagesForThread } from "@/services/db/messages";
 import { getSmartFolderSearchQuery, mapSmartFolderRows, type SmartFolderRow } from "@/services/search/smartFolderQuery";
 import { getDb } from "@/services/db/connection";
-import { Archive, Trash2, X, Ban, Filter, ChevronRight, Package, FolderSearch } from "lucide-react";
+import { Archive, Trash2, X, Ban, Filter, ChevronRight, Package, FolderSearch, UserSearch, MailMinus, Check, AlertCircle } from "lucide-react";
+import { searchMessages } from "@/services/db/search";
 import { EmptyState } from "../ui/EmptyState";
 import {
   InboxClearIllustration,
@@ -103,6 +105,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   const [categoryMap, setCategoryMap] = useState<Map<string, string>>(() => new Map());
   const [categoryUnreadCounts, setCategoryUnreadCounts] = useState<Map<string, number>>(() => new Map());
   const [followUpThreadIds, setFollowUpThreadIds] = useState<Set<string>>(() => new Set());
+  const [taskThreadIds, setTaskThreadIds] = useState<Set<string>>(() => new Set());
   const [bundleRules, setBundleRules] = useState<DbBundleRule[]>([]);
   const [heldThreadIds, setHeldThreadIds] = useState<Set<string>>(() => new Set());
   const [expandedBundles, setExpandedBundles] = useState<Set<string>>(() => new Set());
@@ -113,6 +116,63 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
 
   const openComposer = useComposerStore((s) => s.openComposer);
   const multiSelectBarRef = useRef<HTMLDivElement>(null);
+
+  // Quick actions next to the search box, acting on the selected thread
+  const selectedThread = selectedThreadId
+    ? threads.find((t) => t.id === selectedThreadId) ?? null
+    : null;
+  const [unsubStatus, setUnsubStatus] = useState<"idle" | "loading" | "done" | "failed" | "none">("idle");
+  const unsubResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // A different selection means a different unsubscribe target
+  useEffect(() => {
+    setUnsubStatus("idle");
+    if (unsubResetRef.current) clearTimeout(unsubResetRef.current);
+  }, [selectedThreadId]);
+
+  const handleShowAllFromSender = useCallback(async () => {
+    const sender = selectedThread?.fromAddress;
+    if (!sender) return;
+    const query = `from:${sender}`;
+    const { setSearch } = useThreadStore.getState();
+    setSearch(query, null);
+    try {
+      const hits = await searchMessages(query, activeAccountId ?? undefined, 100);
+      useThreadStore.getState().setSearch(query, new Set(hits.map((h) => h.thread_id)));
+    } catch {
+      // Query stays in the box; the user can adjust it
+    }
+  }, [selectedThread, activeAccountId]);
+
+  const handleQuickUnsubscribe = useCallback(async () => {
+    if (!selectedThread || unsubStatus === "loading" || unsubStatus === "done") return;
+    const threadAccountId = selectedThread.accountId || activeAccountId;
+    if (!threadAccountId) return;
+
+    setUnsubStatus("loading");
+    try {
+      const messages = await getMessagesForThread(threadAccountId, selectedThread.id);
+      const target = [...messages].reverse().find((m) => m.list_unsubscribe);
+      if (!target?.list_unsubscribe) {
+        setUnsubStatus("none");
+        unsubResetRef.current = setTimeout(() => setUnsubStatus("idle"), 2500);
+        return;
+      }
+      const { executeUnsubscribe } = await import("@/services/unsubscribe/unsubscribeManager");
+      const result = await executeUnsubscribe(
+        threadAccountId,
+        selectedThread.id,
+        target.from_address ?? "unknown",
+        target.from_name,
+        target.list_unsubscribe,
+        target.list_unsubscribe_post,
+      );
+      setUnsubStatus(result.success ? "done" : "failed");
+    } catch (err) {
+      console.error("Quick unsubscribe failed:", err);
+      setUnsubStatus("failed");
+    }
+  }, [selectedThread, activeAccountId, unsubStatus]);
 
   const handleThreadContextMenu = useCallback((e: React.MouseEvent, threadId: string) => {
     e.preventDefault();
@@ -394,6 +454,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       setCategoryMap(new Map());
       setCategoryUnreadCounts(new Map());
       setFollowUpThreadIds(new Set());
+      setTaskThreadIds(new Set());
       setBundleRules([]);
       setHeldThreadIds(new Set());
       setBundleSummaries(new Map());
@@ -444,6 +505,19 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
           setFollowUpThreadIds(new Set());
         }
 
+        // Task indicators — threads with an open task linked
+        if (threadIds.length > 0) {
+          promises.push(
+            getTaskThreadIds(accountIds, threadIds).then((result) => {
+              if (!cancelled) setTaskThreadIds(result);
+            }).catch(() => {
+              if (!cancelled) setTaskThreadIds(new Set());
+            }),
+          );
+        } else {
+          setTaskThreadIds(new Set());
+        }
+
         // Bundle rules + held threads (only for inbox)
         if (isInbox) {
           promises.push(
@@ -483,7 +557,8 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
 
     loadMetadata();
     return () => { cancelled = true; };
-  }, [threadIdKey, activeLabel, activeCategory, activeAccountId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadIdKey, activeLabel, activeCategory, activeAccountId, accountScopeKey]);
 
   // Auto-scroll selected thread into view (triggered by keyboard navigation)
   useEffect(() => {
@@ -548,9 +623,53 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       }`}
       style={readingPanePosition === "right" && width ? { width } : undefined}
     >
-      {/* Search */}
-      <div className="px-3 py-2 border-b border-border-secondary">
-        <SearchBar />
+      {/* Search + quick actions on the selected thread */}
+      <div className="px-3 py-2 border-b border-border-secondary flex items-center gap-1">
+        <div className="flex-1 min-w-0">
+          <SearchBar />
+        </div>
+        <button
+          onClick={handleShowAllFromSender}
+          disabled={!selectedThread?.fromAddress}
+          title={
+            selectedThread?.fromAddress
+              ? `Show all messages from ${selectedThread.fromAddress}`
+              : "Select a thread to search by its sender"
+          }
+          className="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+        >
+          <UserSearch size={15} />
+        </button>
+        <button
+          onClick={handleQuickUnsubscribe}
+          disabled={!selectedThread}
+          title={
+            unsubStatus === "done"
+              ? "Unsubscribed"
+              : unsubStatus === "none"
+                ? "No unsubscribe link in this thread"
+                : unsubStatus === "failed"
+                  ? "Unsubscribe failed — click to retry"
+                  : selectedThread
+                    ? "Unsubscribe from this sender"
+                    : "Select a thread to unsubscribe"
+          }
+          className={`p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${
+            unsubStatus === "done"
+              ? "text-success"
+              : unsubStatus === "failed" || unsubStatus === "none"
+                ? "text-danger"
+                : "text-text-tertiary hover:text-text-primary hover:bg-bg-hover"
+          }`}
+        >
+          {unsubStatus === "done" ? (
+            <Check size={15} />
+          ) : unsubStatus === "none" ? (
+            <AlertCircle size={15} />
+          ) : (
+            <MailMinus size={15} className={unsubStatus === "loading" ? "animate-pulse" : ""} />
+          )}
+        </button>
       </div>
 
       {/* Header */}
@@ -704,6 +823,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
                         onContextMenu={handleThreadContextMenu}
                         category={rule.category}
                         hasFollowUp={followUpThreadIds.has(thread.id)}
+                        hasTask={taskThreadIds.has(thread.id)}
                       />
                     </div>
                   ))}
@@ -733,6 +853,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
                     category={categoryMap.get(thread.id)}
                     showCategoryBadge={activeLabel === "inbox" && activeCategory === "All"}
                     hasFollowUp={followUpThreadIds.has(thread.id)}
+                    hasTask={taskThreadIds.has(thread.id)}
                   />
                 </div>
               );

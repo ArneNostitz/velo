@@ -19,16 +19,18 @@ import { navigateToThread } from "@/router/navigate";
 import { formatRelativeDate } from "@/utils/date";
 import { formatFileSize, getFileIcon } from "@/utils/fileTypeHelpers";
 import { AuthBadge } from "./AuthBadge";
+import { ThreadFilesSection } from "./ThreadFilesSection";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
 
 interface ContactSidebarProps {
   email: string;
   name: string | null;
   accountId: string;
+  threadId?: string;
   onClose: () => void;
 }
 
-export function ContactSidebar({ email, name, accountId, onClose }: ContactSidebarProps) {
+export function ContactSidebar({ email, name, accountId, threadId, onClose }: ContactSidebarProps) {
   // Repaint when the 12/24-hour preference changes
   useTimeFormat();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -377,6 +379,9 @@ export function ContactSidebar({ email, name, accountId, onClose }: ContactSideb
             )}
           </div>
         )}
+
+        {/* Files across all messages of the open thread */}
+        {threadId && <ThreadFilesSection accountId={accountId} threadId={threadId} />}
 
         {/* Shared Files */}
         {attachments.length > 0 && (

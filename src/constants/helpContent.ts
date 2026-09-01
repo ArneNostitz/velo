@@ -62,6 +62,7 @@ import {
   Paperclip,
   Tags,
   FolderInput,
+  CheckCheck,
 } from "lucide-react";
 
 // ---------- Types ----------
@@ -370,6 +371,22 @@ export const HELP_CATEGORIES: HelpCategory[] = [
           { text: "Toggle Send & Archive in Settings > Composing." },
           { text: "Archived threads are still searchable in All Mail." },
           { text: "If someone replies, the thread comes back to your inbox automatically." },
+        ],
+        relatedSettingsTab: "composing",
+      },
+      {
+        id: "read-receipts",
+        icon: CheckCheck,
+        title: "Read receipts",
+        summary: "Request and answer read confirmations.",
+        description:
+          "Ask recipients to confirm when they open your email, using the standard read-receipt mechanism (MDN) that most mail clients understand. Toggle the request per message with the double-check icon in the composer footer, or turn it on for all messages in Settings. When a receipt comes back, your sent message shows an \"Opened\" badge — with a count when it was confirmed more than once. When someone requests a receipt from you, a banner appears on the opened message so you decide whether to answer — or set Velo to always or never send receipts. Note that receiving a receipt back always depends on the recipient's mail client and their choice.",
+        tips: [
+          { text: "Click the double-check icon in the composer footer to request a receipt for that message." },
+          { text: "Sent messages show an \"Opened\" badge once a receipt arrives; hover it for when." },
+          { text: "Set the default for requests and how to answer incoming requests in Settings > Composing." },
+          { text: "Receipts you send only say the message was displayed — never your location or device." },
+          { text: "A request pointing at a different domain than the sender is flagged and never answered automatically." },
         ],
         relatedSettingsTab: "composing",
       },
@@ -886,6 +903,7 @@ export const HELP_CATEGORIES: HelpCategory[] = [
           "When viewing a newsletter or marketing email, click Unsubscribe (or press u) to instantly unsubscribe. The app detects the List-Unsubscribe header and handles the process automatically using the RFC 8058 one-click POST method when available, or falls back to a mailto: unsubscribe. Your unsubscribe actions are logged so you can track what you've unsubscribed from.",
         tips: [
           { text: "Unsubscribe from the current thread", shortcut: "u" },
+          { text: "Or click the unsubscribe icon next to the search box while a thread is selected." },
           { text: "Uses RFC 8058 one-click unsubscribe when available." },
           { text: "Falls back to mailto: unsubscribe if one-click isn't supported." },
           { text: "View unsubscribe history in Settings > People." },
@@ -927,6 +945,7 @@ export const HELP_CATEGORIES: HelpCategory[] = [
           { text: "Shows profile photo, email, contact frequency, and first contact date." },
           { text: "Quick actions: compose new email, copy address." },
           { text: "Browse recent shared threads and attachments." },
+          { text: "\"Files in this thread\" lists every attachment in the open conversation — preview any file or save them all to a folder at once." },
           { text: "Add notes about contacts for your own reference." },
         ],
         relatedSettingsTab: "people",
@@ -1072,6 +1091,8 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         tips: [
           { text: "Toggle the task panel from the action bar button." },
           { text: "Quick-add tasks with the input at the bottom of the panel." },
+          { text: "Threads with an open task show a checkbox marker in the email list." },
+          { text: "On the Tasks page, selecting a task created from an email opens that email in a reference panel." },
           { text: "Click 'View all tasks' to go to the full Tasks page." },
           { text: "AI-extracted tasks are automatically linked to the email." },
         ],

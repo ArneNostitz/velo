@@ -39,6 +39,9 @@ export function createMockParsedMessage(
     listUnsubscribe: null,
     listUnsubscribePost: null,
     authResults: null,
+    messageIdHeader: null,
+    dispositionNotificationTo: null,
+    mdnReport: null,
     ...overrides,
   };
 }
@@ -239,6 +242,8 @@ export function createMockImapMessage(
     list_unsubscribe: null,
     list_unsubscribe_post: null,
     auth_results: null,
+    disposition_notification_to: null,
+    mdn_report: null,
     attachments: [],
     ...overrides,
   };

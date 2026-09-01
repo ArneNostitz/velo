@@ -150,6 +150,31 @@ describe("emailBuilder", () => {
     expect(decoded).toContain("multipart/alternative");
     expect(decoded).not.toContain("multipart/mixed");
   });
+
+  it("adds Disposition-Notification-To when a read receipt is requested", () => {
+    const raw = buildRawEmail({
+      from: "sender@example.com",
+      to: ["to@example.com"],
+      subject: "Test",
+      htmlBody: "<p>Hi</p>",
+      requestReadReceipt: true,
+    });
+
+    const decoded = decodeBase64Url(raw);
+    expect(decoded).toContain("Disposition-Notification-To: sender@example.com");
+  });
+
+  it("omits Disposition-Notification-To by default", () => {
+    const raw = buildRawEmail({
+      from: "sender@example.com",
+      to: ["to@example.com"],
+      subject: "Test",
+      htmlBody: "<p>Hi</p>",
+    });
+
+    const decoded = decodeBase64Url(raw);
+    expect(decoded).not.toContain("Disposition-Notification-To");
+  });
 });
 
 function decodeBase64Url(encoded: string): string {
