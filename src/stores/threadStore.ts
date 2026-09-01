@@ -19,6 +19,15 @@ export interface Thread {
   labelIds: string[];
   fromName: string | null;
   fromAddress: string | null;
+  /**
+   * Whether the newest message in the thread was written by the user.
+   *
+   * The list shows a "me:" marker in front of the snippet for these, so a
+   * thread waiting on the other side is distinguishable at a glance from one
+   * waiting on you. Optional — views that build a thread without the user's
+   * own addresses to hand simply omit the marker.
+   */
+  lastFromMe?: boolean;
 }
 
 interface ThreadState {

@@ -11,6 +11,12 @@ export type DefaultReplyMode = "reply" | "replyAll";
 export type MarkAsReadBehavior = "instant" | "2s" | "manual";
 export type FontScale = "small" | "default" | "large" | "xlarge";
 export type InboxViewMode = "unified" | "split";
+/**
+ * How an open thread is laid out. "classic" stacks messages top to bottom;
+ * "chat" turns the thread into a conversation — the user's messages on the
+ * right, theirs on the left, quotes and signatures trimmed away.
+ */
+export type ThreadViewMode = "classic" | "chat";
 export type { TimeFormat } from "@/utils/date";
 export type SettingsTab =
   | "general"
@@ -58,6 +64,7 @@ interface UIState {
   colorTheme: ColorThemeId;
   sendAndArchive: boolean;
   inboxViewMode: InboxViewMode;
+  threadViewMode: ThreadViewMode;
   taskSidebarVisible: boolean;
   sidebarNavConfig: SidebarNavItem[] | null;
   reduceMotion: boolean;
@@ -93,6 +100,7 @@ interface UIState {
   setColorTheme: (theme: ColorThemeId) => void;
   setSendAndArchive: (enabled: boolean) => void;
   setInboxViewMode: (mode: InboxViewMode) => void;
+  setThreadViewMode: (mode: ThreadViewMode) => void;
   toggleTaskSidebar: () => void;
   setTaskSidebarVisible: (visible: boolean) => void;
   setSidebarNavConfig: (config: SidebarNavItem[]) => void;
@@ -128,6 +136,7 @@ export const useUIStore = create<UIState>((set) => ({
   colorTheme: "indigo",
   sendAndArchive: false,
   inboxViewMode: "unified",
+  threadViewMode: "classic",
   taskSidebarVisible: false,
   sidebarNavConfig: null,
   reduceMotion: false,
@@ -196,6 +205,10 @@ export const useUIStore = create<UIState>((set) => ({
   setInboxViewMode: (inboxViewMode) => {
     setSetting("inbox_view_mode", inboxViewMode).catch(() => {});
     set({ inboxViewMode });
+  },
+  setThreadViewMode: (threadViewMode) => {
+    setSetting("thread_view_mode", threadViewMode).catch(() => {});
+    set({ threadViewMode });
   },
   toggleTaskSidebar: () =>
     set((state) => {

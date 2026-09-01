@@ -83,6 +83,8 @@ export function SettingsPage() {
   const setReadingPanePosition = useUIStore((s) => s.setReadingPanePosition);
   const emailDensity = useUIStore((s) => s.emailDensity);
   const setEmailDensity = useUIStore((s) => s.setEmailDensity);
+  const threadViewMode = useUIStore((s) => s.threadViewMode);
+  const setThreadViewMode = useUIStore((s) => s.setThreadViewMode);
   const fontScale = useUIStore((s) => s.fontScale);
   const setFontScale = useUIStore((s) => s.setFontScale);
   const colorTheme = useUIStore((s) => s.colorTheme);
@@ -494,6 +496,18 @@ export function SettingsPage() {
                         <option value="compact">Compact</option>
                         <option value="default">Default</option>
                         <option value="spacious">Spacious</option>
+                      </select>
+                    </SettingRow>
+                    <SettingRow label="Thread layout">
+                      <select
+                        value={threadViewMode}
+                        onChange={(e) => {
+                          setThreadViewMode(e.target.value as "classic" | "chat");
+                        }}
+                        className="w-48 bg-bg-tertiary text-text-primary text-sm px-3 py-1.5 rounded-md border border-border-primary focus:border-accent outline-none"
+                      >
+                        <option value="classic">Message list</option>
+                        <option value="chat">Chat bubbles</option>
                       </select>
                     </SettingRow>
                     <SettingRow label="Font size">

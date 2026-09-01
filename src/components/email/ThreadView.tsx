@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { MessageItem } from "./MessageItem";
 import { ActionBar } from "./ActionBar";
 import { getMessagesForThread, type DbMessage } from "@/services/db/messages";
@@ -15,6 +15,9 @@ import { escapeHtml, sanitizeHtml } from "@/utils/sanitize";
 import { isNoReplyAddress } from "@/utils/noReply";
 import { recipientHeadersFromMessages } from "@/utils/resolveFromAddress";
 import { ThreadSummary } from "./ThreadSummary";
+import { ChatThread } from "./ChatThread";
+import { PastConversations } from "./PastConversations";
+import { useOwnAddresses } from "@/hooks/useOwnAddresses";
 import { SmartReplySuggestions } from "./SmartReplySuggestions";
 import { InlineReply } from "./InlineReply";
 import { ContactSidebar } from "./ContactSidebar";
@@ -66,8 +69,16 @@ export function ThreadView({ thread }: ThreadViewProps) {
   // selected in the sidebar.
   const threadAccountId = thread.accountId || fallbackAccountId;
   const contactSidebarVisible = useUIStore((s) => s.contactSidebarVisible);
+  const threadViewMode = useUIStore((s) => s.threadViewMode);
+  const setThreadViewMode = useUIStore((s) => s.setThreadViewMode);
   const toggleContactSidebar = useUIStore((s) => s.toggleContactSidebar);
   const taskSidebarVisible = useUIStore((s) => s.taskSidebarVisible);
+  // Which side of the chat view a message sits on
+  const ownAddressScope = useMemo(
+    () => (threadAccountId ? [threadAccountId] : []),
+    [threadAccountId],
+  );
+  const ownAddresses = useOwnAddresses(ownAddressScope);
   const [showTaskExtract, setShowTaskExtract] = useState(false);
   const updateThread = useThreadStore((s) => s.updateThread);
   const [messages, setMessages] = useState<DbMessage[]>([]);
@@ -394,6 +405,15 @@ export function ThreadView({ thread }: ThreadViewProps) {
   const primarySender = pinnedContact?.email ?? lastMessage?.from_address ?? null;
   const primarySenderName = pinnedContact?.name ?? lastMessage?.from_name ?? null;
 
+  // The other side of the conversation. Not the same as primarySender: when
+  // the user wrote last, that is their own address, and hanging *their* whole
+  // mailbox under the thread is not what "earlier with them" means.
+  const peerMessage = [...messages]
+    .reverse()
+    .find((m) => !m.from_address || !ownAddresses.has(m.from_address.toLowerCase()));
+  const peerAddress = pinnedContact?.email ?? peerMessage?.from_address ?? null;
+  const peerName = pinnedContact?.name ?? peerMessage?.from_name ?? null;
+
   return (
     <div className="flex h-full @container relative">
       <div className="flex flex-col flex-1 min-w-0">
@@ -413,6 +433,10 @@ export function ThreadView({ thread }: ThreadViewProps) {
           onPopOut={() => handlePopOut(thread)}
           onToggleContactSidebar={toggleContactSidebar}
           onToggleTaskSidebar={() => useUIStore.getState().toggleTaskSidebar()}
+          threadViewMode={threadViewMode}
+          onToggleThreadViewMode={() =>
+            setThreadViewMode(threadViewMode === "chat" ? "classic" : "chat")
+          }
         />
 
         {/* Thread subject */}
@@ -442,19 +466,30 @@ export function ThreadView({ thread }: ThreadViewProps) {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto">
           <ErrorBoundary name="MessageList">
-            {messages.map((msg, i) => (
-              <MessageItem
-                key={msg.id}
-                ref={(el) => { messageRefs.current[i] = el; }}
-                message={msg}
-                isLast={i === messages.length - 1}
-                focused={i === focusedMsgIdx}
+            {threadViewMode === "chat" ? (
+              <ChatThread
+                messages={messages}
+                ownAddresses={ownAddresses}
                 blockImages={blockImages}
-                senderAllowlisted={msg.from_address ? allowlistedSenders.has(msg.from_address) : false}
+                allowlistedSenders={allowlistedSenders}
                 isSpam={thread.labelIds.includes("SPAM")}
-                onContextMenu={(e) => handleMessageContextMenu(e, msg)}
+                onMessageContextMenu={handleMessageContextMenu}
               />
-            ))}
+            ) : (
+              messages.map((msg, i) => (
+                <MessageItem
+                  key={msg.id}
+                  ref={(el) => { messageRefs.current[i] = el; }}
+                  message={msg}
+                  isLast={i === messages.length - 1}
+                  focused={i === focusedMsgIdx}
+                  blockImages={blockImages}
+                  senderAllowlisted={msg.from_address ? allowlistedSenders.has(msg.from_address) : false}
+                  isSpam={thread.labelIds.includes("SPAM")}
+                  onContextMenu={(e) => handleMessageContextMenu(e, msg)}
+                />
+              ))
+            )}
           </ErrorBoundary>
 
           {/* Smart Reply Suggestions */}
@@ -480,6 +515,21 @@ export function ThreadView({ thread }: ThreadViewProps) {
                   .then(setMessages)
                   .catch(console.error);
               }}
+            />
+          )}
+
+          {/* The rest of the correspondence with this person, so the whole
+              history is one scroll rather than a sidebar full of links */}
+          {threadAccountId && peerAddress && (
+            <PastConversations
+              accountId={threadAccountId}
+              email={peerAddress}
+              name={peerName}
+              currentThreadId={thread.id}
+              viewMode={threadViewMode}
+              ownAddresses={ownAddresses}
+              blockImages={blockImages}
+              allowlistedSenders={allowlistedSenders}
             />
           )}
         </div>

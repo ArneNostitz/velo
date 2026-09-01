@@ -424,3 +424,41 @@ export async function getMutedThreadIds(
   );
   return new Set(rows.map((r) => r.id));
 }
+
+/**
+ * Every other conversation with one person, newest first.
+ *
+ * "Every other" is literal: the thread currently open is excluded, and both
+ * directions count — mail they sent and mail addressed to them. Used to hang
+ * a person's whole history under the open thread so it reads as one long
+ * correspondence rather than a pile of separate rows.
+ */
+export async function getThreadsWithContact(
+  accountId: string,
+  email: string,
+  excludeThreadId: string | null,
+  limit = 25,
+  offset = 0,
+): Promise<DbThread[]> {
+  if (!email) return [];
+  const db = await getDb();
+  const needle = `%${email.toLowerCase()}%`;
+  return db.select<DbThread[]>(
+    `SELECT t.*, m.from_name, m.from_address FROM threads t
+     LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
+       AND m.date = (SELECT MAX(m2.date) FROM messages m2
+                     WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
+     WHERE t.account_id = $1
+       AND ($2 IS NULL OR t.id != $2)
+       AND EXISTS (
+         SELECT 1 FROM messages mc
+         WHERE mc.account_id = t.account_id AND mc.thread_id = t.id
+           AND (LOWER(COALESCE(mc.from_address, '')) = $3
+                OR LOWER(COALESCE(mc.to_addresses, '')) LIKE $4
+                OR LOWER(COALESCE(mc.cc_addresses, '')) LIKE $4)
+       )
+     ORDER BY t.last_message_at DESC
+     LIMIT $5 OFFSET $6`,
+    [accountId, excludeThreadId, email.toLowerCase(), needle, limit, offset],
+  );
+}

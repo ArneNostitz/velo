@@ -64,6 +64,8 @@ import {
   FolderInput,
   CheckCheck,
   Download,
+  MessagesSquare,
+  History,
 } from "lucide-react";
 
 // ---------- Types ----------
@@ -221,6 +223,46 @@ export const HELP_CATEGORIES: HelpCategory[] = [
           { text: "Go back to the list", shortcut: "Escape" },
           { text: "Pop out a thread into its own window from the action bar." },
           { text: "Inline reply lets you respond to a specific message without leaving the thread." },
+        ],
+      },
+      {
+        id: "chat-thread-view",
+        icon: MessagesSquare,
+        title: "Chat view",
+        summary: "Read a thread as a back-and-forth conversation.",
+        description:
+          "Chat view turns an open thread into a conversation: your messages sit on the right, the other person's on the left, each with their avatar, name, and timestamp in one line above the bubble. Every message is stripped down to what was actually written — the quoted mail being replied to, signatures, and forwarded headers are hidden, so you read the exchange instead of the same text five times over. Messages start expanded; \"Collapse all\" folds the whole thread down to one-line previews.",
+        tips: [
+          { text: "Toggle chat view from the button in the thread's action bar." },
+          { text: "\"View full\" under a message brings back its quotes and signature." },
+          { text: "\"Collapse all\" folds every message; click a folded one to open just it." },
+          { text: "Switch back to the classic message list any time — the choice is remembered." },
+        ],
+        relatedSettingsTab: "general",
+      },
+      {
+        id: "past-conversations",
+        icon: History,
+        title: "Earlier conversations",
+        summary: "The rest of your history with a sender, under the thread.",
+        description:
+          "Below every open thread is the rest of your correspondence with that person — each earlier conversation with its own heading and every message in it listed folded. Scrolling down walks back through your whole history with them instead of sending you hunting through the mailbox. Click any message to open it in place, or collapse a conversation you're not interested in.",
+        tips: [
+          { text: "Both directions count — mail they sent you and mail you sent them." },
+          { text: "\"Load earlier conversations\" fetches the next batch further back." },
+          { text: "Collapse the whole section with the \"Earlier with ...\" header." },
+        ],
+      },
+      {
+        id: "last-sender-marker",
+        icon: CheckCheck,
+        title: "\"me:\" marker in the list",
+        summary: "See at a glance whether the ball is in your court.",
+        description:
+          "When the newest message in a conversation is one you sent, the email list shows a small blue \"me:\" tag in front of the preview text. Threads without it are waiting on you; threads with it are waiting on them.",
+        tips: [
+          { text: "The marker follows every address you send from, aliases included." },
+          { text: "Hidden in compact density, which drops the preview line entirely." },
         ],
       },
       {

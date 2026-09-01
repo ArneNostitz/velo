@@ -16,6 +16,7 @@ import {
   deleteAllThreadsForAccount,
   getThreadsForAccounts,
   getThreadsForCategoryAcrossAccounts,
+  getThreadsWithContact,
 } from "./threads";
 import { createMockDb } from "@/test/mocks";
 
@@ -219,5 +220,45 @@ describe("threads service - naming the other party", () => {
     expect(sql).toContain("NOT IN ($2)");
     expect(sql).toContain("LIMIT $3 OFFSET $4");
     expect(params).toEqual(["a", "me@x.com", 50, 0]);
+  });
+});
+
+describe("threads service - getThreadsWithContact", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getDb).mockResolvedValue(mockDb as unknown as Awaited<ReturnType<typeof getDb>>);
+    mockDb.select.mockResolvedValue([]);
+  });
+
+  function lastSelect(): { sql: string; params: unknown[] } {
+    const call = mockDb.select.mock.calls.at(-1)!;
+    return { sql: call[0] as string, params: call[1] as unknown[] };
+  }
+
+  it("matches mail in both directions, lowercased", async () => {
+    await getThreadsWithContact("acc-1", "Sam@Example.com", "thread-1", 10, 0);
+    const { sql, params } = lastSelect();
+    expect(sql).toContain("mc.from_address");
+    expect(sql).toContain("mc.to_addresses");
+    expect(sql).toContain("mc.cc_addresses");
+    expect(params).toEqual([
+      "acc-1",
+      "thread-1",
+      "sam@example.com",
+      "%sam@example.com%",
+      10,
+      0,
+    ]);
+  });
+
+  it("excludes the thread already on screen", async () => {
+    await getThreadsWithContact("acc-1", "sam@example.com", "thread-1");
+    const { sql } = lastSelect();
+    expect(sql).toContain("t.id != $2");
+  });
+
+  it("does not query without an address", async () => {
+    expect(await getThreadsWithContact("acc-1", "", null)).toEqual([]);
+    expect(mockDb.select).not.toHaveBeenCalled();
   });
 });

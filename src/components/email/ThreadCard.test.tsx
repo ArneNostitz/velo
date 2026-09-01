@@ -103,3 +103,21 @@ describe("ThreadCard", () => {
     expect(button.className).toContain("bg-red-500/8");
   });
 });
+
+describe("ThreadCard - who spoke last", () => {
+  const onClick = vi.fn();
+
+  it("marks threads whose newest message the user sent", () => {
+    render(
+      <ThreadCard thread={makeThread({ lastFromMe: true })} isSelected={false} onClick={onClick} />,
+    );
+    expect(screen.getByText("me:")).toBeInTheDocument();
+  });
+
+  it("shows no marker when the other side wrote last", () => {
+    render(
+      <ThreadCard thread={makeThread({ lastFromMe: false })} isSelected={false} onClick={onClick} />,
+    );
+    expect(screen.queryByText("me:")).not.toBeInTheDocument();
+  });
+});
