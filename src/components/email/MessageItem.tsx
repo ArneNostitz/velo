@@ -23,10 +23,16 @@ interface MessageItemProps {
   threadId?: string;
   isSpam?: boolean;
   focused?: boolean;
+  /**
+   * Lowercased addresses the user sends from, aliases included. Without it
+   * this falls back to the account's own address, which misses a message sent
+   * from a send-as alias.
+   */
+  ownAddresses?: Set<string>;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(function MessageItem({ message, isLast, blockImages, senderAllowlisted, accountId, threadId, isSpam, focused, onContextMenu }, ref) {
+export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(function MessageItem({ message, isLast, blockImages, senderAllowlisted, accountId, threadId, isSpam, focused, ownAddresses, onContextMenu }, ref) {
   const [expanded, setExpanded] = useState(isLast);
   // Repaint when the 12/24-hour preference changes
   useTimeFormat();
@@ -136,10 +142,13 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
   // "Opened" marker: read receipts received for a message the user sent
   const accounts = useAccountStore((s) => s.accounts);
   const accountEmail = accounts.find((a) => a.id === message.account_id)?.email;
-  const isOwnMessage =
-    !!accountEmail &&
-    !!message.from_address &&
-    message.from_address.toLowerCase() === accountEmail.toLowerCase();
+  const from = message.from_address?.toLowerCase();
+  const isOwnMessage = !from
+    ? false
+    : ownAddresses
+      // Aliases count: mail sent as one is still the user's own
+      ? ownAddresses.has(from)
+      : !!accountEmail && from === accountEmail.toLowerCase();
   const openedCount = isOwnMessage ? (message.read_receipt_count ?? 0) : 0;
 
   return (
