@@ -233,6 +233,9 @@ function ThreadMenu({
     return <ContextMenu items={[]} position={position} onClose={onClose} />;
   }
 
+  // A unified list spans mailboxes — act on the thread's own account
+  const threadAccountId = thread.accountId || activeAccountId;
+
   const isTrashView = activeLabel === "trash";
   const isDraftsView = activeLabel === "drafts";
   const isSpamView = activeLabel === "spam";
@@ -244,7 +247,7 @@ function ThreadMenu({
   const isMuted = isMulti ? false : thread.isMuted;
 
   const handleReply = async () => {
-    const messages = await getMessagesForThread(activeAccountId, thread.id);
+    const messages = await getMessagesForThread(threadAccountId, thread.id);
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage) return;
     const replyTo = lastMessage.reply_to ?? lastMessage.from_address;
@@ -256,11 +259,12 @@ function ThreadMenu({
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
       originalRecipients: recipientHeadersFromMessages(messages),
+      accountId: threadAccountId,
     });
   };
 
   const handleReplyAll = async () => {
-    const messages = await getMessagesForThread(activeAccountId, thread.id);
+    const messages = await getMessagesForThread(threadAccountId, thread.id);
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage) return;
     const replyTo = lastMessage.reply_to ?? lastMessage.from_address;
@@ -282,11 +286,12 @@ function ThreadMenu({
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
       originalRecipients: recipientHeadersFromMessages(messages),
+      accountId: threadAccountId,
     });
   };
 
   const handleForward = async () => {
-    const messages = await getMessagesForThread(activeAccountId, thread.id);
+    const messages = await getMessagesForThread(threadAccountId, thread.id);
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage) return;
     openComposer({
@@ -297,6 +302,7 @@ function ThreadMenu({
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
       originalRecipients: recipientHeadersFromMessages(messages),
+      accountId: threadAccountId,
     });
   };
 
@@ -637,6 +643,7 @@ function MessageMenu({
       threadId,
       inReplyToMessageId: messageId,
       originalRecipients: [toAddresses, ccAddresses].filter((h): h is string => !!h),
+      accountId,
     });
   };
 
@@ -660,6 +667,7 @@ function MessageMenu({
       threadId,
       inReplyToMessageId: messageId,
       originalRecipients: [toAddresses, ccAddresses].filter((h): h is string => !!h),
+      accountId,
     });
   };
 
@@ -672,6 +680,7 @@ function MessageMenu({
       threadId,
       inReplyToMessageId: messageId,
       originalRecipients: [toAddresses, ccAddresses].filter((h): h is string => !!h),
+      accountId,
     });
   };
 

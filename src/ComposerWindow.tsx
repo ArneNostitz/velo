@@ -69,6 +69,7 @@ export default function ComposerWindow() {
         const inReplyToMessageId = params.get("inReplyToMessageId") ?? null;
         const draftId = params.get("draftId") ?? null;
         const fromEmail = params.get("fromEmail");
+        const accountId = params.get("accountId");
 
         // Decode base64 body
         let bodyHtml = "";
@@ -92,6 +93,7 @@ export default function ComposerWindow() {
           threadId,
           inReplyToMessageId,
           draftId,
+          accountId,
         });
 
         // Set fromEmail and force fullpage mode

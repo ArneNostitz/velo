@@ -1,5 +1,11 @@
-import type { SendAsAlias } from "@/services/db/sendAsAliases";
 import { extractEmailAddresses, normalizeEmail } from "@/utils/emailUtils";
+
+/** Anything that can be a From address: a send-as alias, or an account identity. */
+export interface FromCandidate {
+  email: string;
+  isPrimary: boolean;
+  isDefault: boolean;
+}
 
 /** The recipient fields of a message, as stored on the messages table. */
 export interface MessageRecipients {
@@ -36,10 +42,10 @@ export function recipientHeadersFromMessages(
  * Falls back to the default alias (isDefault), then primary alias.
  * Returns null if no aliases are available.
  */
-export function resolveFromAddress(
-  aliases: SendAsAlias[],
+export function resolveFromAddress<T extends FromCandidate>(
+  aliases: T[],
   recipientHeaders: (string | null | undefined)[],
-): SendAsAlias | null {
+): T | null {
   if (aliases.length === 0) return null;
 
   // Headers are ordered by preference, and so are the addresses within one

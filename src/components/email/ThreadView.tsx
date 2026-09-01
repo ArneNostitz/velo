@@ -148,8 +148,9 @@ export function ThreadView({ thread }: ThreadViewProps) {
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
       originalRecipients: recipientHeadersFromMessages(messages),
+      accountId: threadAccountId,
     });
-  }, [lastMessage, messages, openComposer]);
+  }, [lastMessage, messages, threadAccountId, openComposer]);
 
   const handleReplyAll = useCallback(() => {
     if (!lastMessage) return;
@@ -172,8 +173,9 @@ export function ThreadView({ thread }: ThreadViewProps) {
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
       originalRecipients: recipientHeadersFromMessages(messages),
+      accountId: threadAccountId,
     });
-  }, [lastMessage, messages, openComposer]);
+  }, [lastMessage, messages, threadAccountId, openComposer]);
 
   const handleForward = useCallback(() => {
     if (!lastMessage) return;
@@ -185,8 +187,9 @@ export function ThreadView({ thread }: ThreadViewProps) {
       threadId: lastMessage.thread_id,
       inReplyToMessageId: lastMessage.id,
       originalRecipients: recipientHeadersFromMessages(messages),
+      accountId: threadAccountId,
     });
-  }, [lastMessage, messages, openComposer]);
+  }, [lastMessage, messages, threadAccountId, openComposer]);
 
   const handlePrint = useCallback(() => {
     if (messages.length === 0) return;

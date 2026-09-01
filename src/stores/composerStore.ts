@@ -23,6 +23,12 @@ export interface ComposerState {
   threadId: string | null;
   inReplyToMessageId: string | null;
   /**
+   * Mailbox this message is sent from, or null to use the active account.
+   * A unified list spans accounts, so a reply must go out through the account
+   * that holds the thread rather than whichever mailbox is currently selected.
+   */
+  accountId: string | null;
+  /**
    * Raw To/Cc headers of the message(s) being replied to or forwarded, newest
    * first. Drives the From default: a reply goes out from the address the mail
    * was delivered to, not the account's default alias.
@@ -52,6 +58,7 @@ export interface ComposerState {
     inReplyToMessageId?: string | null;
     originalRecipients?: string[];
     fromEmail?: string | null;
+    accountId?: string | null;
     draftId?: string | null;
   }) => void;
   closeComposer: () => void;
@@ -70,6 +77,8 @@ export interface ComposerState {
   setLastSavedAt: (ts: number | null) => void;
   setIsSaving: (saving: boolean) => void;
   setFromEmail: (email: string | null) => void;
+  /** Switch the sending mailbox; drops thread and draft state tied to the old one. */
+  setAccountId: (accountId: string | null) => void;
   setViewMode: (mode: ComposerViewMode) => void;
   setSignatureHtml: (html: string) => void;
   setSignatureId: (id: string | null) => void;
@@ -86,6 +95,7 @@ export const useComposerStore = create<ComposerState>((set) => ({
   bodyHtml: "",
   threadId: null,
   inReplyToMessageId: null,
+  accountId: null,
   originalRecipients: [],
   showCcBcc: false,
   draftId: null,
@@ -111,6 +121,7 @@ export const useComposerStore = create<ComposerState>((set) => ({
       bodyHtml: opts?.bodyHtml ?? "",
       threadId: opts?.threadId ?? null,
       inReplyToMessageId: opts?.inReplyToMessageId ?? null,
+      accountId: opts?.accountId ?? null,
       originalRecipients: opts?.originalRecipients ?? [],
       showCcBcc: (opts?.cc?.length ?? 0) > 0 || (opts?.bcc?.length ?? 0) > 0,
       draftId: opts?.draftId ?? null,
@@ -134,6 +145,7 @@ export const useComposerStore = create<ComposerState>((set) => ({
       bodyHtml: "",
       threadId: null,
       inReplyToMessageId: null,
+      accountId: null,
       originalRecipients: [],
       showCcBcc: false,
       draftId: null,
@@ -165,6 +177,18 @@ export const useComposerStore = create<ComposerState>((set) => ({
   setLastSavedAt: (lastSavedAt) => set({ lastSavedAt }),
   setIsSaving: (isSaving) => set({ isSaving }),
   setFromEmail: (fromEmail) => set({ fromEmail }),
+  setAccountId: (accountId) =>
+    set((state) =>
+      state.accountId === accountId
+        ? { accountId }
+        : {
+            accountId,
+            // Thread and draft ids belong to the mailbox that issued them
+            threadId: null,
+            draftId: null,
+            inReplyToMessageId: null,
+          },
+    ),
   setViewMode: (viewMode) => set({ viewMode }),
   setSignatureHtml: (signatureHtml) => set({ signatureHtml }),
   setSignatureId: (signatureId) => set({ signatureId }),

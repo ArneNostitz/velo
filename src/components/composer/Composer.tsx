@@ -24,7 +24,7 @@ import { upsertContact } from "@/services/db/contacts";
 import { getSetting } from "@/services/db/settings";
 import { insertScheduledEmail } from "@/services/db/scheduledEmails";
 import { getDefaultSignature } from "@/services/db/signatures";
-import { getAliasesForAccount, mapDbAlias, type SendAsAlias } from "@/services/db/sendAsAliases";
+import { collectIdentities, identitiesForAccount, type Identity } from "@/services/accounts/identities";
 import { resolveFromAddress } from "@/utils/resolveFromAddress";
 import { startAutoSave, stopAutoSave } from "@/services/composer/draftAutoSave";
 import { getTemplatesForAccount, type DbTemplate } from "@/services/db/templates";
@@ -62,12 +62,17 @@ export function Composer() {
 
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
-  const activeAccount = accounts.find((a) => a.id === activeAccountId);
+  const composerAccountId = useComposerStore((s) => s.accountId);
+  const setComposerAccountId = useComposerStore((s) => s.setAccountId);
+  // A reply carries the mailbox that holds its thread; new mail uses the
+  // account currently selected in the sidebar.
+  const sendAccountId = composerAccountId ?? activeAccountId;
+  const sendAccount = accounts.find((a) => a.id === sendAccountId);
   const sendingRef = useRef(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [showAiAssist, setShowAiAssist] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [aliases, setAliases] = useState<SendAsAlias[]>([]);
+  const [identities, setIdentities] = useState<Identity[]>([]);
   const templateShortcutsRef = useRef<DbTemplate[]>([]);
   const dragCounterRef = useRef(0);
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -103,12 +108,13 @@ export function Composer() {
           const deleteFrom = from - tmpl.shortcut.length;
           if (deleteFrom >= 0) {
             const state = useComposerStore.getState();
-            const account = useAccountStore.getState().accounts.find(
-              (a) => a.id === useAccountStore.getState().activeAccountId,
+            const accountStore = useAccountStore.getState();
+            const account = accountStore.accounts.find(
+              (a) => a.id === (state.accountId ?? accountStore.activeAccountId),
             );
             interpolateVariables(tmpl.body_html, {
               recipientEmail: state.to[0],
-              senderEmail: account?.email,
+              senderEmail: state.fromEmail ?? account?.email,
               senderName: account?.displayName ?? undefined,
               subject: state.subject || undefined,
             }).then((resolved) => {
@@ -142,60 +148,74 @@ export function Composer() {
     },
   });
 
-  // Load signature, aliases, and templates in parallel when composer opens
+  // Every address the user can send from, across all mailboxes
   useEffect(() => {
-    if (!isOpen || !activeAccountId) return;
+    if (!isOpen) return;
+    let cancelled = false;
+    collectIdentities(accounts).then((all) => {
+      if (!cancelled) setIdentities(all);
+    }).catch((err) => {
+      console.error("Failed to load send identities:", err);
+    });
+    return () => { cancelled = true; };
+  }, [isOpen, accounts]);
+
+  // Load signature and templates for the sending mailbox
+  useEffect(() => {
+    if (!isOpen || !sendAccountId) return;
     let cancelled = false;
 
     Promise.all([
-      getDefaultSignature(activeAccountId),
-      getAliasesForAccount(activeAccountId),
-      getTemplatesForAccount(activeAccountId),
-    ]).then(([sig, dbAliases, templates]) => {
+      getDefaultSignature(sendAccountId),
+      getTemplatesForAccount(sendAccountId),
+    ]).then(([sig, templates]) => {
       if (cancelled) return;
       const store = useComposerStore.getState();
 
-      // Signature
       if (sig) {
         store.setSignatureHtml(sig.body_html);
         store.setSignatureId(sig.id);
       }
 
-      // Aliases + fromEmail resolution
-      const mapped = dbAliases.map(mapDbAlias);
-      setAliases(mapped);
-      if (!store.fromEmail && mapped.length > 0) {
-        if (store.mode === "reply" || store.mode === "replyAll" || store.mode === "forward") {
-          // Reply from the address the mail was delivered to, falling back to
-          // the account's default alias when none of ours was addressed.
-          const resolved = resolveFromAddress(mapped, store.originalRecipients);
-          if (resolved) store.setFromEmail(resolved.email);
-        } else {
-          // The identity picked in the account switcher wins over the account's
-          // own default, so "send as hello@..." sticks between messages.
-          const chosen = useAccountStore.getState().activeAliasEmail;
-          const defaultAlias =
-            (chosen ? mapped.find((a) => a.email === chosen) : undefined) ??
-            mapped.find((a) => a.isDefault) ??
-            mapped.find((a) => a.isPrimary) ??
-            mapped[0];
-          if (defaultAlias) store.setFromEmail(defaultAlias.email);
-        }
-      }
-
-      // Templates
       templateShortcutsRef.current = templates.filter((t) => t.shortcut);
     });
 
     return () => { cancelled = true; };
-  }, [isOpen, activeAccountId]);
+  }, [isOpen, sendAccountId]);
+
+  // Resolve the From address once the identities are known
+  useEffect(() => {
+    if (!isOpen || identities.length === 0) return;
+    const store = useComposerStore.getState();
+    if (store.fromEmail) return;
+
+    const mine = identitiesForAccount(identities, sendAccountId);
+    if (mine.length === 0) return;
+
+    if (store.mode === "reply" || store.mode === "replyAll" || store.mode === "forward") {
+      // Reply from the address the mail was delivered to, falling back to the
+      // account's default alias when none of ours was addressed.
+      const resolved = resolveFromAddress(mine, store.originalRecipients);
+      if (resolved) store.setFromEmail(resolved.email);
+    } else {
+      // The identity picked in the account switcher wins over the account's
+      // own default, so "send as hello@..." sticks between messages.
+      const chosen = useAccountStore.getState().activeAliasEmail;
+      const preferred =
+        (chosen ? mine.find((i) => i.email === chosen) : undefined) ??
+        mine.find((i) => i.isDefault) ??
+        mine.find((i) => i.isPrimary) ??
+        mine[0];
+      if (preferred) store.setFromEmail(preferred.email);
+    }
+  }, [isOpen, identities, sendAccountId]);
 
   // Start/stop draft auto-save
   useEffect(() => {
-    if (!isOpen || !activeAccountId) return;
-    startAutoSave(activeAccountId);
+    if (!isOpen || !sendAccountId) return;
+    startAutoSave(sendAccountId);
     return () => { stopAutoSave(); };
-  }, [isOpen, activeAccountId]);
+  }, [isOpen, sendAccountId]);
 
   // Apply the "request read receipts by default" setting on open
   useEffect(() => {
@@ -257,7 +277,7 @@ export function Composer() {
   }, [editor, signatureHtml]);
 
   const handleSend = useCallback(async () => {
-    if (!activeAccountId || !activeAccount || sendingRef.current) return;
+    if (!sendAccountId || !sendAccount || sendingRef.current) return;
     const state = useComposerStore.getState();
     if (state.to.length === 0) return;
 
@@ -265,7 +285,7 @@ export function Composer() {
     stopAutoSave();
 
     const html = getFullHtml();
-    const senderEmail = state.fromEmail ?? activeAccount.email;
+    const senderEmail = state.fromEmail ?? sendAccount.email;
     const raw = buildRawEmail({
       from: senderEmail,
       to: state.to,
@@ -295,16 +315,16 @@ export function Composer() {
 
     const timer = setTimeout(async () => {
       try {
-        await sendEmail(activeAccountId, raw, state.threadId ?? undefined);
+        await sendEmail(sendAccountId, raw, state.threadId ?? undefined);
 
         // Delete draft if it was saved
         if (currentDraftId) {
-          try { await deleteDraftAction(activeAccountId, currentDraftId); } catch { /* ignore */ }
+          try { await deleteDraftAction(sendAccountId, currentDraftId); } catch { /* ignore */ }
         }
 
         // Send & archive: remove from inbox if replying to a thread
         if (useUIStore.getState().sendAndArchive && state.threadId) {
-          try { await archiveThread(activeAccountId, state.threadId, []); } catch { /* ignore */ }
+          try { await archiveThread(sendAccountId, state.threadId, []); } catch { /* ignore */ }
         }
 
         // Update contacts frequency
@@ -321,10 +341,10 @@ export function Composer() {
 
     state.setUndoSendTimer(timer);
     closeComposer();
-  }, [activeAccountId, activeAccount, closeComposer, getFullHtml]);
+  }, [sendAccountId, sendAccount, closeComposer, getFullHtml]);
 
   const handleSchedule = useCallback(async (scheduledAt: number) => {
-    if (!activeAccountId || !activeAccount) return;
+    if (!sendAccountId || !sendAccount) return;
     const state = useComposerStore.getState();
     if (state.to.length === 0) return;
 
@@ -339,7 +359,7 @@ export function Composer() {
       : null;
 
     await insertScheduledEmail({
-      accountId: activeAccountId,
+      accountId: sendAccountId,
       toAddresses: state.to.join(", "),
       ccAddresses: state.cc.length > 0 ? state.cc.join(", ") : null,
       bccAddresses: state.bcc.length > 0 ? state.bcc.join(", ") : null,
@@ -360,7 +380,7 @@ export function Composer() {
       // Get the most recently inserted scheduled email for this account
       const rows = await db.select<{ id: string }[]>(
         "SELECT id FROM scheduled_emails WHERE account_id = $1 ORDER BY created_at DESC LIMIT 1",
-        [activeAccountId],
+        [sendAccountId],
       );
       if (rows[0]) {
         await db.execute(
@@ -374,25 +394,25 @@ export function Composer() {
     // Delete the draft if exists
     if (state.draftId) {
       try {
-        await deleteDraftAction(activeAccountId, state.draftId);
+        await deleteDraftAction(sendAccountId, state.draftId);
       } catch { /* ignore */ }
     }
 
     setShowSchedule(false);
     closeComposer();
-  }, [activeAccountId, activeAccount, closeComposer, getFullHtml]);
+  }, [sendAccountId, sendAccount, closeComposer, getFullHtml]);
 
   const handleDiscard = useCallback(async () => {
     stopAutoSave();
     // Delete the draft if it was saved
     const currentDraftId = useComposerStore.getState().draftId;
-    if (currentDraftId && activeAccountId) {
+    if (currentDraftId && sendAccountId) {
       try {
-        await deleteDraftAction(activeAccountId, currentDraftId);
+        await deleteDraftAction(sendAccountId, currentDraftId);
       } catch { /* ignore */ }
     }
     closeComposer();
-  }, [activeAccountId, closeComposer]);
+  }, [sendAccountId, closeComposer]);
 
   const handlePopOutComposer = useCallback(async () => {
     try {
@@ -409,6 +429,8 @@ export function Composer() {
       if (state.inReplyToMessageId) params.set("inReplyToMessageId", state.inReplyToMessageId);
       if (state.draftId) params.set("draftId", state.draftId);
       if (state.fromEmail) params.set("fromEmail", state.fromEmail);
+      // The popped-out window must send through the same mailbox
+      if (sendAccountId) params.set("accountId", sendAccountId);
       // Encode body as base64 to safely pass HTML
       const bodyHtml = editor?.getHTML() ?? "";
       if (bodyHtml) params.set("body", btoa(unescape(encodeURIComponent(bodyHtml))));
@@ -433,7 +455,7 @@ export function Composer() {
     } catch (err) {
       console.error("Failed to pop out composer:", err);
     }
-  }, [editor, closeComposer]);
+  }, [editor, sendAccountId, closeComposer]);
 
   const isFullpage = viewMode === "fullpage";
 
@@ -509,9 +531,14 @@ export function Composer() {
         {/* Address fields */}
         <div className="px-3 py-2 space-y-1.5 border-b border-border-secondary">
           <FromSelector
-            aliases={aliases}
-            selectedEmail={fromEmail ?? activeAccount?.email ?? ""}
-            onChange={(alias) => setFromEmail(alias.email)}
+            identities={identities}
+            selectedEmail={fromEmail ?? sendAccount?.email ?? ""}
+            selectedAccountId={sendAccountId}
+            onChange={(identity) => {
+              // Picking another mailbox's address sends through that mailbox
+              setComposerAccountId(identity.accountId);
+              setFromEmail(identity.email);
+            }}
           />
           <AddressInput label="To" addresses={to} onChange={setTo} />
           {showCcBcc ? (
@@ -580,7 +607,7 @@ export function Composer() {
         <div className="flex items-center justify-between px-4 py-2.5 border-t border-border-primary bg-bg-secondary rounded-b-lg">
           <div className="flex items-center gap-3">
             <div className="text-xs text-text-tertiary">
-              {fromEmail ?? activeAccount?.email ?? "No account"}
+              {fromEmail ?? sendAccount?.email ?? "No account"}
             </div>
             {savedLabel && (
               <span className={`text-xs text-text-tertiary italic transition-opacity duration-200 ${isSaving ? "animate-pulse" : ""}`}>

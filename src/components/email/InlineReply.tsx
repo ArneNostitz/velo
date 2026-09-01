@@ -276,12 +276,13 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
       inReplyToMessageId: lastMessage.id,
       originalRecipients: recipientHeadersFromMessages(messages),
       fromEmail,
+      accountId,
     });
 
     // Reset inline state
     editor.commands.setContent("");
     setMode(null);
-  }, [editor, lastMessage, messages, getRecipients, getSubject, mode, thread.id, openComposer, fromEmail]);
+  }, [editor, lastMessage, messages, getRecipients, getSubject, mode, thread.id, accountId, openComposer, fromEmail]);
 
   const handleRegenerateDraft = useCallback(async () => {
     if (!editor || !mode || mode === "forward") return;
