@@ -14,3 +14,16 @@ describe("startOAuthFlow", () => {
     );
   });
 });
+
+describe("OAuth scopes", () => {
+  it("requests the scope send-as aliases need", async () => {
+    // users.settings.sendAs.list 403s without gmail.settings.basic, which left
+    // "send from a different address" silently unavailable.
+    const source = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/services/gmail/auth.ts", "utf8"),
+    );
+    expect(source).toContain(
+      "https://www.googleapis.com/auth/gmail.settings.basic",
+    );
+  });
+});

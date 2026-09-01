@@ -21,10 +21,18 @@ interface AccountState {
    * smart folders, settings) — unified only changes which threads are listed.
    */
   unifiedInbox: boolean;
+  /**
+   * Send-as address the composer should default to, or null to use the
+   * account's own address. Gmail only accepts addresses verified as send-as on
+   * the account, so this always belongs to `activeAccountId`.
+   */
+  activeAliasEmail: string | null;
   setAccounts: (accounts: Account[], restoredId?: string | null) => void;
   setActiveAccount: (id: string) => void;
   setUnifiedInbox: (unified: boolean) => void;
   setAccountColor: (id: string, color: string) => void;
+  setActiveIdentity: (accountId: string, aliasEmail: string | null) => void;
+  restoreActiveIdentity: (aliasEmail: string | null) => void;
   restoreUnifiedInbox: (unified: boolean) => void;
   addAccount: (account: Account) => void;
   removeAccount: (id: string) => void;
@@ -58,6 +66,7 @@ export const useAccountStore = create<AccountState>((set) => ({
   accounts: [],
   activeAccountId: null,
   unifiedInbox: false,
+  activeAliasEmail: null,
 
   setAccounts: (accounts, restoredId) => {
     const activeId = (restoredId && accounts.some((a) => a.id === restoredId))
@@ -70,8 +79,28 @@ export const useAccountStore = create<AccountState>((set) => ({
     setSetting("active_account_id", activeAccountId).catch(() => {});
     // Picking a specific mailbox leaves the unified view.
     setSetting("unified_inbox", "false").catch(() => {});
-    set({ activeAccountId, unifiedInbox: false });
+    // The previous identity belonged to the previous account
+    setSetting("active_alias_email", "").catch(() => {});
+    set({ activeAccountId, unifiedInbox: false, activeAliasEmail: null });
   },
+
+  /**
+   * Choose which address new mail is sent from. Switches to the owning account
+   * so the identity and the mailbox never disagree.
+   */
+  setActiveIdentity: (accountId, aliasEmail) => {
+    setSetting("active_account_id", accountId).catch(() => {});
+    setSetting("unified_inbox", "false").catch(() => {});
+    setSetting("active_alias_email", aliasEmail ?? "").catch(() => {});
+    set({
+      activeAccountId: accountId,
+      unifiedInbox: false,
+      activeAliasEmail: aliasEmail,
+    });
+  },
+
+  /** Apply a persisted value on startup without writing it back. */
+  restoreActiveIdentity: (activeAliasEmail) => set({ activeAliasEmail }),
 
   setAccountColor: (id, color) =>
     set((state) => ({

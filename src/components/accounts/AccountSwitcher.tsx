@@ -1,8 +1,10 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useAccountStore, mailAccounts, type Account } from "@/stores/accountStore";
 import { ChevronDown, Check, Plus, UserPlus, Calendar, Layers } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { accountColor } from "@/constants/accountColors";
+import { getAliasesForAccount, mapDbAlias, type SendAsAlias } from "@/services/db/sendAsAliases";
+import { AtSign } from "lucide-react";
 
 interface AccountSwitcherProps {
   collapsed: boolean;
@@ -13,8 +15,17 @@ export function AccountSwitcher({
   collapsed,
   onAddAccount,
 }: AccountSwitcherProps) {
-  const { accounts, activeAccountId, unifiedInbox, setActiveAccount, setUnifiedInbox } =
-    useAccountStore();
+  const {
+    accounts,
+    activeAccountId,
+    unifiedInbox,
+    activeAliasEmail,
+    setActiveAccount,
+    setUnifiedInbox,
+    setActiveIdentity,
+  } = useAccountStore();
+  // Send-as addresses per account, so the dropdown can offer them as identities
+  const [aliasesByAccount, setAliasesByAccount] = useState<Record<string, SendAsAlias[]>>({});
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -23,6 +34,26 @@ export function AccountSwitcher({
   const activeAccount = accounts.find((a) => a.id === activeAccountId);
   // Unified only makes sense with more than one mailbox to unify
   const canUnify = mailAccounts(accounts).length > 1;
+
+  // Only load once the dropdown is opened — this is not startup work
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        mailAccounts(accounts).map(async (account) => {
+          try {
+            const rows = await getAliasesForAccount(account.id);
+            return [account.id, rows.map(mapDbAlias)] as const;
+          } catch {
+            return [account.id, [] as SendAsAlias[]] as const;
+          }
+        }),
+      );
+      if (!cancelled) setAliasesByAccount(Object.fromEntries(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [open, accounts]);
 
   const handleUnified = useCallback(() => {
     setUnifiedInbox(true);
@@ -35,6 +66,14 @@ export function AccountSwitcher({
       setOpen(false);
     },
     [setActiveAccount],
+  );
+
+  const handleIdentity = useCallback(
+    (accountId: string, aliasEmail: string) => {
+      setActiveIdentity(accountId, aliasEmail);
+      setOpen(false);
+    },
+    [setActiveIdentity],
   );
 
   const handleAdd = useCallback(() => {
@@ -82,7 +121,7 @@ export function AccountSwitcher({
               <div className="text-xs text-sidebar-text/50 truncate leading-tight">
                 {unifiedInbox
                   ? `${mailAccounts(accounts).length} accounts`
-                  : activeAccount!.email}
+                  : (activeAliasEmail ?? activeAccount!.email)}
               </div>
             </div>
             <ChevronDown
@@ -167,11 +206,45 @@ export function AccountSwitcher({
                     {account.email}
                   </div>
                 </div>
-                {isActive && (
+                {isActive && !activeAliasEmail && (
                   <Check size={14} className="shrink-0 text-accent" />
                 )}
               </button>
             );
+          })}
+
+          {/* Send-as addresses, offered as identities to send from. These come
+              from the account's Gmail settings — Velo cannot invent them. */}
+          {accounts.flatMap((account) => {
+            const extras = (aliasesByAccount[account.id] ?? []).filter(
+              (alias) => alias.email !== account.email,
+            );
+            return extras.map((alias) => {
+              const isActiveIdentity =
+                !unifiedInbox &&
+                account.id === activeAccountId &&
+                activeAliasEmail === alias.email;
+              return (
+                <button
+                  key={`${account.id}:${alias.id}`}
+                  onClick={() => handleIdentity(account.id, alias.email)}
+                  title={`Send as ${alias.email} using ${account.email}`}
+                  className={`flex items-center gap-2.5 w-full pl-8 pr-3 py-1.5 text-left transition-colors ${
+                    isActiveIdentity
+                      ? "bg-accent/8 text-accent"
+                      : "text-text-primary hover:bg-bg-hover"
+                  }`}
+                >
+                  <AtSign size={12} className="shrink-0 text-text-tertiary" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs truncate leading-tight">{alias.email}</div>
+                  </div>
+                  {isActiveIdentity && (
+                    <Check size={13} className="shrink-0 text-accent" />
+                  )}
+                </button>
+              );
+            });
           })}
           <div className="border-t border-border-primary my-1" />
           <button

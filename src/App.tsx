@@ -320,6 +320,11 @@ export default function App() {
         useAccountStore.getState().setAccounts(mapped, savedAccountId);
 
         // Restore the unified inbox choice, but only while it still applies
+        const savedAlias = await getSetting("active_alias_email");
+        if (savedAlias) {
+          useAccountStore.getState().restoreActiveIdentity(savedAlias);
+        }
+
         const savedUnified = await getSetting("unified_inbox");
         if (savedUnified === "true") {
           const mailboxes = mapped.filter((a) => a.provider !== "caldav");

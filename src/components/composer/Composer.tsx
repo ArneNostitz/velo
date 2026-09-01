@@ -167,7 +167,14 @@ export function Composer() {
           const resolved = resolveFromAddress(mapped, store.to.join(", "), store.cc.join(", "));
           if (resolved) store.setFromEmail(resolved.email);
         } else {
-          const defaultAlias = mapped.find((a) => a.isDefault) ?? mapped.find((a) => a.isPrimary) ?? mapped[0];
+          // The identity picked in the account switcher wins over the account's
+          // own default, so "send as hello@..." sticks between messages.
+          const chosen = useAccountStore.getState().activeAliasEmail;
+          const defaultAlias =
+            (chosen ? mapped.find((a) => a.email === chosen) : undefined) ??
+            mapped.find((a) => a.isDefault) ??
+            mapped.find((a) => a.isPrimary) ??
+            mapped[0];
           if (defaultAlias) store.setFromEmail(defaultAlias.email);
         }
       }

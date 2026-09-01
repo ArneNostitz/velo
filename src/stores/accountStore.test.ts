@@ -28,6 +28,7 @@ describe("accountStore", () => {
       accounts: [],
       activeAccountId: null,
       unifiedInbox: false,
+      activeAliasEmail: null,
     });
   });
 
@@ -153,6 +154,46 @@ describe("accountStore", () => {
       useAccountStore.getState().setAccounts([mockAccount, mockAccount2]);
       useAccountStore.getState().restoreUnifiedInbox(true);
       expect(useAccountStore.getState().unifiedInbox).toBe(true);
+    });
+  });
+
+  describe("sending identity", () => {
+    it("has no alias selected by default", () => {
+      expect(useAccountStore.getState().activeAliasEmail).toBeNull();
+    });
+
+    it("selects an alias and switches to its owning account", () => {
+      useAccountStore.getState().setAccounts([mockAccount, mockAccount2]);
+      useAccountStore.getState().setUnifiedInbox(true);
+      useAccountStore.getState().setActiveIdentity("acc-2", "hello@other.com");
+
+      const state = useAccountStore.getState();
+      expect(state.activeAccountId).toBe("acc-2");
+      expect(state.activeAliasEmail).toBe("hello@other.com");
+      // An identity belongs to one mailbox, so it leaves the unified view
+      expect(state.unifiedInbox).toBe(false);
+    });
+
+    it("drops the alias when a plain account is picked", () => {
+      useAccountStore.getState().setAccounts([mockAccount, mockAccount2]);
+      useAccountStore.getState().setActiveIdentity("acc-1", "hello@other.com");
+      useAccountStore.getState().setActiveAccount("acc-2");
+
+      expect(useAccountStore.getState().activeAliasEmail).toBeNull();
+    });
+
+    it("can clear the alias back to the account's own address", () => {
+      useAccountStore.getState().setAccounts([mockAccount]);
+      useAccountStore.getState().setActiveIdentity("acc-1", "hello@other.com");
+      useAccountStore.getState().setActiveIdentity("acc-1", null);
+
+      expect(useAccountStore.getState().activeAliasEmail).toBeNull();
+      expect(useAccountStore.getState().activeAccountId).toBe("acc-1");
+    });
+
+    it("restores a persisted identity", () => {
+      useAccountStore.getState().restoreActiveIdentity("hello@matchmii.com");
+      expect(useAccountStore.getState().activeAliasEmail).toBe("hello@matchmii.com");
     });
   });
 });
