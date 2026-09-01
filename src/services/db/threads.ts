@@ -137,7 +137,7 @@ function peerJoin(
  */
 export async function getThreadsForAccounts(
   accountIds: string[],
-  labelId?: string,
+  labelId?: string | string[],
   limit = 50,
   offset = 0,
   ownAddresses: string[] = [],
@@ -146,20 +146,25 @@ export async function getThreadsForAccounts(
   const db = await getDb();
   const { placeholders, nextIndex } = inClause(accountIds.length);
 
-  if (labelId) {
-    const peer = peerJoin(ownAddresses, nextIndex + 1);
+  // Several labels at once is one list, not several: the combined view puts
+  // INBOX and SENT side by side so a correspondence reads in order
+  const labelIds = labelId === undefined ? [] : Array.isArray(labelId) ? labelId : [labelId];
+
+  if (labelIds.length > 0) {
+    const labels = inClause(labelIds.length, nextIndex);
+    const peer = peerJoin(ownAddresses, labels.nextIndex);
     return db.select<DbThread[]>(
       `SELECT t.*, m.from_name, m.from_address${peer.select} FROM threads t
        INNER JOIN thread_labels tl ON tl.account_id = t.account_id AND tl.thread_id = t.id
        LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
          AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
        ${peer.join}
-       WHERE t.account_id IN (${placeholders}) AND tl.label_id = $${nextIndex}
+       WHERE t.account_id IN (${placeholders}) AND tl.label_id IN (${labels.placeholders})
          AND ${HAS_REAL_MESSAGE}
        GROUP BY t.account_id, t.id
        ORDER BY t.is_pinned DESC, t.last_message_at DESC
        LIMIT $${peer.nextIndex} OFFSET $${peer.nextIndex + 1}`,
-      [...accountIds, labelId, ...peer.params, limit, offset],
+      [...accountIds, ...labelIds, ...peer.params, limit, offset],
     );
   }
 

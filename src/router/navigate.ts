@@ -3,7 +3,7 @@ import { useUIStore } from "@/stores/uiStore";
 
 /** Known system labels that map to /mail/$label */
 const SYSTEM_LABELS = new Set([
-  "inbox", "starred", "snoozed", "sent", "drafts", "trash", "spam", "all",
+  "inbox", "conversations", "starred", "snoozed", "sent", "drafts", "trash", "spam", "all",
 ]);
 
 /**

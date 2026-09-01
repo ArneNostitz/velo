@@ -13,6 +13,7 @@ import { useActiveLabel, useActiveCategory } from "@/hooks/useRouteNavigation";
 import { navigateToLabel } from "@/router/navigate";
 import {
   Inbox,
+  MessagesSquare,
   Star,
   Clock,
   Send,
@@ -51,6 +52,7 @@ interface SidebarProps {
 
 export const ALL_NAV_ITEMS: { id: string; label: string; icon: LucideIcon }[] = [
   { id: "inbox", label: "Inbox", icon: Inbox },
+  { id: "conversations", label: "Conversations", icon: MessagesSquare },
   { id: "starred", label: "Starred", icon: Star },
   { id: "snoozed", label: "Snoozed", icon: Clock },
   { id: "sent", label: "Sent", icon: Send },

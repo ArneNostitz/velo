@@ -14,6 +14,8 @@ export interface DbContact {
 export interface ContactAttachment {
   id: string;
   message_id: string;
+  /** The conversation the file arrived in, so the sidebar can link back. */
+  thread_id: string;
   account_id: string;
   gmail_attachment_id: string | null;
   filename: string;
@@ -188,8 +190,8 @@ export async function getAttachmentsFromContact(
 ): Promise<ContactAttachment[]> {
   const db = await getDb();
   return db.select<ContactAttachment[]>(
-    `SELECT id, message_id, account_id, gmail_attachment_id, filename, mime_type, size, date FROM (
-       SELECT a.id, a.message_id, a.account_id, a.gmail_attachment_id,
+    `SELECT id, message_id, thread_id, account_id, gmail_attachment_id, filename, mime_type, size, date FROM (
+       SELECT a.id, a.message_id, m.thread_id, a.account_id, a.gmail_attachment_id,
               a.filename, a.mime_type, a.size, m.date,
               ROW_NUMBER() OVER (
                 PARTITION BY a.filename, COALESCE(a.size, -1)

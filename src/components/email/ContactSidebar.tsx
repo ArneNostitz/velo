@@ -457,6 +457,15 @@ export function ContactSidebar({ email, name, accountId, threadId, onClose }: Co
                         </div>
                       </div>
                     </button>
+                    {/* A file is only ever half the story — the mail it came
+                        in usually says why it was sent */}
+                    <button
+                      onClick={() => handleThreadClick(att.thread_id)}
+                      title="Open the email this file came in"
+                      className="p-1 text-text-tertiary hover:text-accent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-colors"
+                    >
+                      <Mail size={12} />
+                    </button>
                     <AttachmentSaveButton
                       accountId={att.account_id}
                       attachment={dbAtt}
