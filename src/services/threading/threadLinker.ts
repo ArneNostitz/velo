@@ -79,7 +79,7 @@ export async function linkSplitThreads(accountId: string): Promise<number> {
 
   for (const [target, sources] of bySource) {
     try {
-      await mergeThreads(accountId, target, sources);
+      await mergeThreads(accountId, target, sources, "header");
       merged += sources.length;
     } catch (err) {
       console.error("Failed to rejoin split threads:", err);
@@ -139,6 +139,8 @@ interface SubjectCandidate {
   subject: string | null;
   last_message_at: number;
   peers: string | null;
+  /** Messages in the thread written by the user. */
+  own_count: number;
 }
 
 /**
@@ -147,21 +149,35 @@ interface SubjectCandidate {
  * The headers do not always link — a client can start a fresh Message-ID
  * chain, and then only the subject and the people on it say the exchange
  * continued. Deliberately narrower than it could be: the subject has to match
- * exactly once decoration is stripped, a correspondent has to be shared, the
- * two must be within a month, and a bare "Hallo" never qualifies.
+ * exactly once decoration is stripped, the two must be within a month, a bare
+ * "Hallo" never qualifies — and the user must have written in both.
+ *
+ * That last one is what separates a conversation from a stream of
+ * notifications. "Dein MatchMii-Login" arrives with the same subject from the
+ * same sender every time, and a shared-correspondent test is trivially true
+ * for it; the first version of this rule folded 243 such threads, login codes
+ * and booking receipts among them, into their oldest sibling. Something the
+ * user replied to is a conversation. Something that merely repeats is not.
  */
 export async function linkThreadsBySubject(accountId: string): Promise<number> {
   const db = await getDb();
+
+  const own = await ownAddressesFor(accountId);
+  if (own.length === 0) return 0;
+  const ownPlaceholders = own.map((_, i) => `$${i + 2}`).join(", ");
 
   const rows = await db.select<SubjectCandidate[]>(
     `SELECT t.id, t.subject, t.last_message_at,
             (SELECT GROUP_CONCAT(DISTINCT LOWER(m.from_address))
              FROM messages m
-             WHERE m.account_id = t.account_id AND m.thread_id = t.id) AS peers
+             WHERE m.account_id = t.account_id AND m.thread_id = t.id) AS peers,
+            (SELECT COUNT(*) FROM messages m
+             WHERE m.account_id = t.account_id AND m.thread_id = t.id
+               AND LOWER(COALESCE(m.from_address, '')) IN (${ownPlaceholders})) AS own_count
      FROM threads t
      WHERE t.account_id = $1 AND t.merged_into IS NULL AND t.subject IS NOT NULL
      ORDER BY t.last_message_at ASC`,
-    [accountId],
+    [accountId, ...own],
   );
 
   const groups = new Map<string, SubjectCandidate[]>();
@@ -178,7 +194,11 @@ export async function linkThreadsBySubject(accountId: string): Promise<number> {
     if (!target) continue;
     const targetPeers = new Set((target.peers ?? "").split(",").filter(Boolean));
 
+    // A thread the user never wrote in is not a conversation to join
+    if (target.own_count === 0) continue;
+
     const sources = rest.filter((candidate) => {
+      if (candidate.own_count === 0) return false;
       if (Math.abs(candidate.last_message_at - target.last_message_at) > SUBJECT_MATCH_WINDOW_MS) {
         return false;
       }
@@ -191,11 +211,23 @@ export async function linkThreadsBySubject(accountId: string): Promise<number> {
 
     if (sources.length === 0) continue;
     try {
-      await mergeThreads(accountId, target.id, sources.map((s) => s.id));
+      await mergeThreads(accountId, target.id, sources.map((s) => s.id), "subject");
       merged += sources.length;
     } catch (err) {
       console.error("Failed to join threads by subject:", err);
     }
   }
   return merged;
+}
+
+/** The account's address and its verified aliases, lowercased. */
+async function ownAddressesFor(accountId: string): Promise<string[]> {
+  const { getAllAccounts } = await import("@/services/db/accounts");
+  const { collectOwnAddresses } = await import("@/services/accounts/ownAddresses");
+  const accounts = await getAllAccounts();
+  // collectOwnAddresses reads only id and email, which every account row has
+  return collectOwnAddresses(
+    accounts as unknown as Parameters<typeof collectOwnAddresses>[0],
+    [accountId],
+  );
 }

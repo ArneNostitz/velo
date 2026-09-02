@@ -843,6 +843,20 @@ export const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_tasks_kind ON tasks(kind, is_completed);
     `,
   },
+  {
+    version: 31,
+    description: "Record why a thread was merged, and undo the merges nobody asked for",
+    sql: `
+      -- The subject rule folded every same-subject notification from the same
+      -- sender into one thread: 243 threads, login codes and booking receipts
+      -- among them, vanished into their oldest sibling. Merges now carry a
+      -- reason, and the ones with no reason on record are separated again.
+      -- Header-linked ones are re-derived on the next sync. A manual merge
+      -- made before this has to be redone by hand.
+      ALTER TABLE threads ADD COLUMN merged_by TEXT;
+      UPDATE threads SET merged_into = NULL WHERE merged_into IS NOT NULL AND merged_by IS NULL;
+    `,
+  },
 ];
 
 /**

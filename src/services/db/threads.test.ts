@@ -359,15 +359,15 @@ describe("threads service - manual merge", () => {
   it("points the sources at the target without rewriting anything", async () => {
     await mergeThreads("acc-1", "t-target", ["t-a", "t-b"]);
     const [sql, params] = mockDb.execute.mock.calls[0]!;
-    expect(sql).toContain("SET merged_into = $2");
-    expect(sql).toContain("id IN ($3, $4)");
-    expect(params).toEqual(["acc-1", "t-target", "t-a", "t-b"]);
+    expect(sql).toContain("SET merged_into = $2, merged_by = $3");
+    expect(sql).toContain("id IN ($4, $5)");
+    expect(params).toEqual(["acc-1", "t-target", "manual", "t-a", "t-b"]);
   });
 
   it("re-points anything already merged into a source, so no chain forms", async () => {
     await mergeThreads("acc-1", "t-target", ["t-a"]);
     const [sql] = mockDb.execute.mock.calls[1]!;
-    expect(sql).toContain("WHERE account_id = $1 AND merged_into IN ($3)");
+    expect(sql).toContain("WHERE account_id = $1 AND merged_into IN ($4)");
   });
 
   it("never merges a thread into itself", async () => {
@@ -375,10 +375,15 @@ describe("threads service - manual merge", () => {
     expect(mockDb.execute).not.toHaveBeenCalled();
   });
 
+  it("records which rule merged, so a wrong rule can be undone alone", async () => {
+    await mergeThreads("acc-1", "t-target", ["t-a"], "subject");
+    expect(mockDb.execute.mock.calls[0]![1]).toEqual(["acc-1", "t-target", "subject", "t-a"]);
+  });
+
   it("separates one thread and leaves the others merged", async () => {
     await unmergeThread("acc-1", "t-a");
     expect(mockDb.execute).toHaveBeenCalledWith(
-      "UPDATE threads SET merged_into = NULL WHERE account_id = $1 AND id = $2",
+      "UPDATE threads SET merged_into = NULL, merged_by = NULL WHERE account_id = $1 AND id = $2",
       ["acc-1", "t-a"],
     );
   });

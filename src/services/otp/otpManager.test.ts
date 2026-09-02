@@ -73,6 +73,21 @@ describe("processIncomingCodes", () => {
     expect(mockWriteText).toHaveBeenCalledTimes(1);
   });
 
+  it("offers the code and the link together when a mail carries both", async () => {
+    const out = await processIncomingCodes([
+      codeMail({
+        id: "m4",
+        subject: "Dein Login",
+        bodyText: "Anmelden\nOder dieser Code\n271260\n",
+        bodyHtml: '<a href="https://app.example.com/login?t=9">Anmelden</a><p>Oder dieser Code</p><p>271260</p>',
+      }),
+    ], NOW);
+    expect(out).toEqual([{ code: "271260", linkUrl: "https://app.example.com/login?t=9", copied: true }]);
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "271260", linkUrl: "https://app.example.com/login?t=9" }),
+    );
+  });
+
   it("surfaces a sign-in link when there is no code", async () => {
     const out = await processIncomingCodes([
       codeMail({

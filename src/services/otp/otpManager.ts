@@ -82,44 +82,29 @@ export async function processIncomingCodes(
     if (handled.has(message.id)) continue;
     if (now - message.date > MAX_AGE_MS) continue;
 
+    // A login mail often carries both — "tap the button, or enter this
+    // code" — and the user decides which they want, so both are offered
     const match = detectOtpCode(message.subject, message.bodyText ?? stripTags(message.bodyHtml));
-    const link = match ? null : detectSignInLink(message.bodyHtml);
+    const link = detectSignInLink(message.bodyHtml);
     if (!match && !link) continue;
 
     handled.add(message.id);
     const sender = message.fromName ?? message.fromAddress ?? "";
+    const copied = match && autoCopy ? await writeClipboard(match.code) : false;
 
-    if (match) {
-      const copied = autoCopy ? await writeClipboard(match.code) : false;
-      try {
-        notifyOneTimeCode({
-          code: match.code,
-          sender,
-          copied,
-          threadId: message.threadId,
-          accountId: message.accountId,
-        });
-      } catch (err) {
-        console.error("Failed to notify about a one-time code:", err);
-      }
-      outcomes.push({ code: match.code, linkUrl: null, copied });
-      continue;
+    try {
+      notifyOneTimeCode({
+        code: match?.code,
+        linkUrl: link?.url,
+        sender,
+        copied,
+        threadId: message.threadId,
+        accountId: message.accountId,
+      });
+    } catch (err) {
+      console.error("Failed to notify about a one-time code:", err);
     }
-
-    if (link) {
-      try {
-        notifyOneTimeCode({
-          linkUrl: link.url,
-          sender,
-          copied: false,
-          threadId: message.threadId,
-          accountId: message.accountId,
-        });
-      } catch (err) {
-        console.error("Failed to notify about a sign-in link:", err);
-      }
-      outcomes.push({ code: null, linkUrl: link.url, copied: false });
-    }
+    outcomes.push({ code: match?.code ?? null, linkUrl: link?.url ?? null, copied });
   }
 
   return outcomes;
