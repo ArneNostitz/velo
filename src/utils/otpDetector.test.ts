@@ -92,3 +92,38 @@ describe("detectSignInLink", () => {
     expect(detectSignInLink(null)).toBeNull();
   });
 });
+
+describe("detectOtpCode - a bare 'code' label", () => {
+  // Verbatim shape from a real magic-link mail: a button, then the code under
+  // a heading that says nothing but "code"
+  it("takes the code under 'ODER DIESER CODE'", () => {
+    const body = "Tipp auf den Knopf — oder gib den Code in der App ein. ODER DIESER CODE 221818 "
+      + "Beides gilt 15 Minuten.";
+    expect(detectOtpCode("Dein MatchMii-Login", body)?.code).toBe("221818");
+  });
+
+  it("takes 'Code: 884201' with no other wording", () => {
+    expect(detectOtpCode(null, "Code: 884201")?.code).toBe("884201");
+  });
+
+  it("does not take a promo code", () => {
+    expect(detectOtpCode(null, "Use promo code 556677 for 20% off")).toBeNull();
+  });
+
+  it("does not take an order code", () => {
+    expect(detectOtpCode(null, "Your order code is 4851209")).toBeNull();
+  });
+
+  it("does not take a tracking code", () => {
+    expect(detectOtpCode(null, "Tracking code 998877 — on its way")).toBeNull();
+  });
+
+  it("does not match 'code' inside a longer word", () => {
+    expect(detectOtpCode(null, "Postcode 102030 is where we ship")).toBeNull();
+  });
+
+  it("will not take a 4-digit number on a bare 'code' alone", () => {
+    // Too weak: four digits next to the word "code" is not enough evidence
+    expect(detectOtpCode(null, "Code 1234")).toBeNull();
+  });
+});

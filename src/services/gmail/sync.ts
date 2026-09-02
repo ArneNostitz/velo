@@ -154,6 +154,16 @@ async function processAndStoreThread(
     ));
   }));
 
+  // Rejoin conversations Gmail split — by the headers where they link, and by
+  // subject plus a shared correspondent where they do not
+  try {
+    const { linkSplitThreads, linkThreadsBySubject } = await import("@/services/threading/threadLinker");
+    await linkSplitThreads(accountId);
+    await linkThreadsBySubject(accountId);
+  } catch (err) {
+    console.error("Thread linking failed:", err);
+  }
+
   // Count incoming read receipts against the sent messages they acknowledge
   try {
     const { processReadReceiptReports, backfillStoredReadReceipts } =
