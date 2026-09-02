@@ -16,7 +16,7 @@ describe("migration 28 — the read-receipt index", () => {
     expect(m28!.sql).toContain("messages(account_id, thread_id, is_read_receipt)");
   });
 
-  it("is the newest migration", () => {
-    expect(Math.max(...MIGRATIONS.map((m) => m.version))).toBe(28);
+  it("is present in the list", () => {
+    expect(MIGRATIONS.map((m) => m.version)).toContain(28);
   });
 });

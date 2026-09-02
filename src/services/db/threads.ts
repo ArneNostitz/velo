@@ -160,7 +160,7 @@ export async function getThreadsForAccounts(
          AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
        ${peer.join}
        WHERE t.account_id IN (${placeholders}) AND tl.label_id IN (${labels.placeholders})
-         AND ${HAS_REAL_MESSAGE}
+         AND ${HAS_REAL_MESSAGE} AND ${NOT_MERGED_AWAY}
        GROUP BY t.account_id, t.id
        ORDER BY t.is_pinned DESC, t.last_message_at DESC
        LIMIT $${peer.nextIndex} OFFSET $${peer.nextIndex + 1}`,
@@ -174,7 +174,7 @@ export async function getThreadsForAccounts(
      LEFT JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
        AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
      ${peer.join}
-     WHERE t.account_id IN (${placeholders}) AND ${HAS_REAL_MESSAGE}
+     WHERE t.account_id IN (${placeholders}) AND ${HAS_REAL_MESSAGE} AND ${NOT_MERGED_AWAY}
      ORDER BY t.is_pinned DESC, t.last_message_at DESC
      LIMIT $${peer.nextIndex} OFFSET $${peer.nextIndex + 1}`,
     [...accountIds, ...peer.params, limit, offset],
@@ -231,7 +231,7 @@ export async function getThreadsForCategoryAcrossAccounts(
        ${peerPrimary.join}
        WHERE t.account_id IN (${placeholders}) AND tl.label_id = 'INBOX'
          AND (tc.category IS NULL OR tc.category = 'Primary')
-         AND ${HAS_REAL_MESSAGE}
+         AND ${HAS_REAL_MESSAGE} AND ${NOT_MERGED_AWAY}
        GROUP BY t.account_id, t.id
        ORDER BY t.is_pinned DESC, t.last_message_at DESC
        LIMIT $${peerPrimary.nextIndex} OFFSET $${peerPrimary.nextIndex + 1}`,
@@ -248,7 +248,7 @@ export async function getThreadsForCategoryAcrossAccounts(
        AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
      ${peer.join}
      WHERE t.account_id IN (${placeholders}) AND tl.label_id = 'INBOX' AND tc.category = $${nextIndex}
-       AND ${HAS_REAL_MESSAGE}
+       AND ${HAS_REAL_MESSAGE} AND ${NOT_MERGED_AWAY}
      GROUP BY t.account_id, t.id
      ORDER BY t.is_pinned DESC, t.last_message_at DESC
      LIMIT $${peer.nextIndex} OFFSET $${peer.nextIndex + 1}`,
@@ -446,6 +446,9 @@ const HAS_REAL_MESSAGE = `EXISTS (
      )`;
 
 /** Threads the user never chose to keep in a list. */
+/** A thread the user folded into another is no longer a row of its own. */
+const NOT_MERGED_AWAY = "t.merged_into IS NULL";
+
 const NOT_DRAFT_OR_BIN = `NOT EXISTS (
        SELECT 1 FROM thread_labels tlx
        WHERE tlx.account_id = t.account_id AND tlx.thread_id = t.id
@@ -513,6 +516,7 @@ export async function getThreadsWithContact(
        AND ($2 IS NULL OR t.id != $2)
        AND ${NOT_DRAFT_OR_BIN}
        AND ${HAS_REAL_MESSAGE}
+       AND ${NOT_MERGED_AWAY}
        AND EXISTS (
          SELECT 1 FROM messages mc
          WHERE mc.account_id = t.account_id AND mc.thread_id = t.id
@@ -523,4 +527,67 @@ export async function getThreadsWithContact(
      LIMIT $${next} OFFSET $${next + 1}`,
     params,
   );
+}
+
+/**
+ * Fold one or more conversations into another.
+ *
+ * Threading is a guess — senders rewrite the subject, ticket systems drop
+ * In-Reply-To, and one exchange lands in two threads. This is the user
+ * overruling that. Nothing is rewritten: each merged thread keeps its own
+ * rows and simply points at the thread it now reads as part of, so the merge
+ * can be undone and a resync cannot lose anything.
+ *
+ * Merging is per account. A Gmail thread id, a draft and a send-as address
+ * are only valid in the mailbox that issued them, so folding two mailboxes
+ * into one row would break every action taken on it.
+ */
+export async function mergeThreads(
+  accountId: string,
+  targetThreadId: string,
+  sourceThreadIds: string[],
+): Promise<void> {
+  const sources = sourceThreadIds.filter((id) => id !== targetThreadId);
+  if (sources.length === 0) return;
+  const db = await getDb();
+  const ids = inClause(sources.length, 3);
+
+  await db.execute(
+    `UPDATE threads SET merged_into = $2
+     WHERE account_id = $1 AND id IN (${ids.placeholders})`,
+    [accountId, targetThreadId, ...sources],
+  );
+
+  // A thread already carrying others comes with them: re-point its followers
+  // at the new target so a chain can never form.
+  await db.execute(
+    `UPDATE threads SET merged_into = $2
+     WHERE account_id = $1 AND merged_into IN (${ids.placeholders})`,
+    [accountId, targetThreadId, ...sources],
+  );
+}
+
+/** Separate a thread again, leaving whatever else was merged alone. */
+export async function unmergeThread(
+  accountId: string,
+  threadId: string,
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "UPDATE threads SET merged_into = NULL WHERE account_id = $1 AND id = $2",
+    [accountId, threadId],
+  );
+}
+
+/** Ids folded into a thread, for loading its messages. Empty when none are. */
+export async function getMergedThreadIds(
+  accountId: string,
+  threadId: string,
+): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.select<{ id: string }[]>(
+    "SELECT id FROM threads WHERE account_id = $1 AND merged_into = $2",
+    [accountId, threadId],
+  );
+  return rows.map((r) => r.id);
 }

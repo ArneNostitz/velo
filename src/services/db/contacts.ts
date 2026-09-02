@@ -139,22 +139,6 @@ export async function getContactStats(
   };
 }
 
-export async function getRecentThreadsWithContact(
-  email: string,
-  limit = 5,
-): Promise<{ thread_id: string; subject: string | null; last_message_at: number | null }[]> {
-  const db = await getDb();
-  return db.select(
-    `SELECT DISTINCT t.id as thread_id, t.subject, t.last_message_at
-     FROM threads t
-     INNER JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.id
-     WHERE m.from_address = $1
-     ORDER BY t.last_message_at DESC
-     LIMIT $2`,
-    [normalizeEmail(email), limit],
-  );
-}
-
 export async function updateContactAvatar(
   email: string,
   avatarUrl: string,
