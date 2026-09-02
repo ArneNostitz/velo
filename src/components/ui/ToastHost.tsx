@@ -50,16 +50,21 @@ export function ToastHost() {
                     {toast.detail}
                   </p>
                 )}
-                {toast.action && (
-                  <button
-                    onClick={() => {
-                      void toast.action?.run();
-                      dismiss(toast.id);
-                    }}
-                    className="mt-1.5 text-xs font-medium text-accent hover:underline"
-                  >
-                    {toast.action.label}
-                  </button>
+                {(toast.action || toast.actions?.length) && (
+                  <div className="mt-1.5 flex items-center gap-3">
+                    {[...(toast.action ? [toast.action] : []), ...(toast.actions ?? [])].map((action) => (
+                      <button
+                        key={action.label}
+                        onClick={() => {
+                          void action.run();
+                          if (!action.keepOpen) dismiss(toast.id);
+                        }}
+                        className="text-xs font-medium text-accent hover:underline"
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
               <button

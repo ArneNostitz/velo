@@ -13,6 +13,7 @@ import { AuthWarningBanner } from "./AuthWarningBanner";
 import { PhishingBanner } from "./PhishingBanner";
 import { ReadReceiptBanner } from "./ReadReceiptBanner";
 import { ReadReceiptBadge } from "./ReadReceiptBadge";
+import { OneTimeCodeBanner } from "./OneTimeCodeBanner";
 import { RecipientLine } from "./RecipientLine";
 import type { MessageScanResult } from "@/utils/phishingDetector";
 
@@ -208,6 +209,10 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
           )}
 
           {!isSpam && <ReadReceiptBanner message={message} />}
+
+          {/* A login mail's code and link as buttons — the notification
+              cannot carry them, so the message does */}
+          <OneTimeCodeBanner message={message} />
 
           {message.list_unsubscribe && (
             <UnsubscribeLink

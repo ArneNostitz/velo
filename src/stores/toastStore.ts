@@ -22,7 +22,16 @@ export interface Toast {
   /** Milliseconds until it removes itself. Errors never do. */
   ttlMs: number | null;
   /** An optional action, e.g. "Reconnect" or "Retry". */
-  action?: { label: string; run: () => void | Promise<void> };
+  action?: ToastAction;
+  /** Further actions — a login mail offers both "Copy code" and "Open link". */
+  actions?: ToastAction[];
+}
+
+export interface ToastAction {
+  label: string;
+  run: () => void | Promise<void>;
+  /** Keep the toast open after running — e.g. copying, which the user may repeat. */
+  keepOpen?: boolean;
 }
 
 interface ToastStore {
@@ -112,7 +121,8 @@ export function notify(
   kind: Exclude<ToastKind, "error">,
   title: string,
   detail?: string,
-  ttlMs = 5000,
+  ttlMs: number | null = 5000,
+  actions?: ToastAction[],
 ): string {
-  return useToastStore.getState().push({ kind, title, detail, ttlMs });
+  return useToastStore.getState().push({ kind, title, detail, ttlMs, actions });
 }

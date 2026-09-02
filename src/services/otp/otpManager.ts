@@ -1,7 +1,7 @@
 import { detectOtpCode, detectSignInLink } from "@/utils/otpDetector";
 import { getSetting } from "@/services/db/settings";
 import { notifyOneTimeCode } from "@/services/notifications/notificationManager";
-import { reportError } from "@/stores/toastStore";
+import { reportError, notify } from "@/stores/toastStore";
 
 /**
  * One-time codes and sign-in links, surfaced the moment they arrive.
@@ -105,6 +105,36 @@ export async function processIncomingCodes(
     } catch (err) {
       console.error("Failed to notify about a one-time code:", err);
     }
+
+    // The desktop notification cannot carry buttons — the plugin hands the
+    // text to the OS and that is all — so the buttons live here, in the app,
+    // and stay until used or dismissed
+    const actions = [];
+    if (match) {
+      actions.push({
+        label: copied ? "Copy again" : "Copy code",
+        keepOpen: true,
+        run: async () => { await writeClipboard(match.code); },
+      });
+    }
+    if (link) {
+      actions.push({
+        label: "Open sign-in link",
+        run: () => {
+          window.dispatchEvent(new CustomEvent("velo-open-signin-link", {
+            detail: { url: link.url, threadId: message.threadId, accountId: message.accountId },
+          }));
+        },
+      });
+    }
+    notify(
+      "info",
+      match ? (copied ? `Code copied: ${match.code}` : `Code: ${match.code}`) : "Sign-in link",
+      `From ${sender}`,
+      null,
+      actions,
+    );
+
     outcomes.push({ code: match?.code ?? null, linkUrl: link?.url ?? null, copied });
   }
 

@@ -857,6 +857,18 @@ export const MIGRATIONS = [
       UPDATE threads SET merged_into = NULL WHERE merged_into IS NOT NULL AND merged_by IS NULL;
     `,
   },
+  {
+    version: 32,
+    description: "Separate every subject-rule merge again",
+    sql: `
+      -- The subject rule was wrong a second time. A magic-link mail arrives
+      -- from the user's own address, so "the user wrote in it" held for every
+      -- login mail and they were folded together again. The rule now needs
+      -- someone else in the thread too. Its merges are all suspect, so they
+      -- are undone. Header and manual merges are untouched.
+      UPDATE threads SET merged_into = NULL, merged_by = NULL WHERE merged_by = 'subject';
+    `,
+  },
 ];
 
 /**
