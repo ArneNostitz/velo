@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useUIStore, type SettingsTab } from "@/stores/uiStore";
 import { useIdleStatusStore, describeIdleState, explainIdleFailure } from "@/stores/idleStatusStore";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { Spinner } from "@/components/ui/Spinner";
 import { useAccountStore } from "@/stores/accountStore";
 import { getSetting, setSetting, getSecureSetting, setSecureSetting } from "@/services/db/settings";
 import { PROVIDER_MODELS } from "@/services/ai/types";
@@ -86,6 +87,7 @@ export function SettingsPage() {
   const [imapIdle, setImapIdle] = useState(true);
   const idleStatuses = useIdleStatusStore((s) => s.statuses);
   const idleReasons = useIdleStatusStore((s) => s.reasons);
+  const [reconnecting, setReconnecting] = useState<Record<string, boolean>>({});
   const [otpDetection, setOtpDetection] = useState(true);
   const [otpAutoCopy, setOtpAutoCopy] = useState(true);
   const [notifyAccounts, setNotifyAccounts] = useState<Set<string>>(() => new Set());
@@ -785,75 +787,6 @@ export function SettingsPage() {
                     )}
                   </Section>
 
-                  <Section title="Delivery">
-                    <ToggleRow
-                      label="Instant delivery"
-                      description="Hold a connection open so the mail server can say when something arrives, instead of asking it every minute. Falls back to checking on a timer wherever a server refuses."
-                      checked={imapIdle}
-                      onToggle={async () => {
-                        const next = !imapIdle;
-                        setImapIdle(next);
-                        await setSetting("imap_idle", next ? "true" : "false");
-                        const { startIdleWatchers, stopIdleWatchers } =
-                          await import("@/services/imap/idleManager");
-                        if (next) await startIdleWatchers();
-                        else await stopIdleWatchers();
-                      }}
-                    />
-                    {imapIdle && (
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs text-text-tertiary">
-                            Whether each server is actually pushing to Velo right now
-                          </span>
-                          <button
-                            onClick={async () => {
-                              const { startIdleWatchers } = await import("@/services/imap/idleManager");
-                              await startIdleWatchers();
-                            }}
-                            className="text-xs text-accent hover:underline"
-                          >
-                            Reconnect
-                          </button>
-                        </div>
-                        <div className="space-y-1">
-                          {accounts.map((account) => {
-                            const state = idleStatuses[account.id] ?? "off";
-                            const reason = idleReasons[account.id];
-                            const dot =
-                              state === "connected" ? "bg-success"
-                              : state === "connecting" ? "bg-accent animate-pulse"
-                              : state === "failed" ? "bg-warning"
-                              : "bg-text-tertiary";
-                            const explanation =
-                              state === "connected"
-                                ? "The server is holding a connection open and will say the moment mail arrives."
-                                : state === "connecting"
-                                  ? "Asking the server to hold a connection. Usually a few seconds."
-                                  : state === "failed"
-                                    ? explainIdleFailure(reason)
-                                    : "This account is not being watched. It still syncs on the timer.";
-                            return (
-                              <Tooltip key={account.id} content={explanation} placement="left">
-                                <div className="flex items-center gap-2 py-1.5 px-3 bg-bg-secondary rounded-md text-xs cursor-default">
-                                  <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
-                                  <span className="text-text-primary truncate flex-1">{account.email}</span>
-                                  <span className={`shrink-0 ${
-                                    state === "connected" ? "text-success"
-                                    : state === "failed" ? "text-warning"
-                                    : "text-text-tertiary"
-                                  }`}>
-                                    {describeIdleState(state)}
-                                  </span>
-                                </div>
-                              </Tooltip>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </Section>
-
                   <Section title="Which mailboxes">
                     <p className="text-xs text-text-tertiary mb-2">
                       Only the mailboxes you pick will notify. Pick none for silence —
@@ -1181,15 +1114,74 @@ export function SettingsPage() {
                                   accountId={account.id}
                                   selectedId={current.id}
                                 />
+                                {/* Whether this server is pushing to us right now — the
+                                    setting only says it was asked to */}
+                                {imapIdle && (() => {
+                                  const state = idleStatuses[account.id] ?? "off";
+                                  const reason = idleReasons[account.id];
+                                  const explanation =
+                                    state === "connected"
+                                      ? "The server is holding a connection open and will say the moment mail arrives."
+                                      : state === "connecting"
+                                        ? "Asking the server to hold a connection. Usually a few seconds."
+                                        : state === "failed"
+                                          ? explainIdleFailure(reason)
+                                          : "Not being watched. This account still syncs on the timer.";
+                                  return (
+                                    <Tooltip content={explanation} placement="bottom">
+                                      <div className="mt-1 flex items-center gap-1.5 text-[0.6875rem] cursor-default w-fit">
+                                        {state === "connecting" ? (
+                                          <Spinner size={11} label="Connecting" className="text-accent" />
+                                        ) : (
+                                          <span
+                                            aria-hidden="true"
+                                            className={`inline-block w-2 h-2 rounded-full ${
+                                              state === "connected" ? "bg-success"
+                                              : state === "failed" ? "bg-warning"
+                                              : "bg-text-tertiary"
+                                            }`}
+                                          />
+                                        )}
+                                        <span className={
+                                          state === "connected" ? "text-success"
+                                          : state === "failed" ? "text-warning"
+                                          : "text-text-tertiary"
+                                        }>
+                                          {describeIdleState(state)}
+                                        </span>
+                                      </div>
+                                    </Tooltip>
+                                  );
+                                })()}
                               </div>
                               </div>
                               <div className="flex items-center gap-3">
+                                {imapIdle && (
+                                  <button
+                                    onClick={async () => {
+                                      setReconnecting((prev) => ({ ...prev, [account.id]: true }));
+                                      try {
+                                        const { startIdleWatchers } = await import("@/services/imap/idleManager");
+                                        await startIdleWatchers();
+                                      } finally {
+                                        setReconnecting((prev) => ({ ...prev, [account.id]: false }));
+                                      }
+                                    }}
+                                    disabled={reconnecting[account.id] || idleStatuses[account.id] === "connecting"}
+                                    className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors disabled:opacity-50"
+                                  >
+                                    {(reconnecting[account.id] || idleStatuses[account.id] === "connecting") && (
+                                      <Spinner size={11} label="Reconnecting" />
+                                    )}
+                                    Reconnect
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => handleReauthorizeAccount(account.id, account.email)}
                                   disabled={reauthStatus[account.id] === "authorizing"}
-                                  className="text-xs text-accent hover:text-accent-hover transition-colors disabled:opacity-50"
+                                  className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors disabled:opacity-50"
                                 >
-                                  {reauthStatus[account.id] === "authorizing" && "Waiting..."}
+                                  {reauthStatus[account.id] === "authorizing" && <><Spinner size={11} label="Waiting for Google" />Waiting…</>}
                                   {reauthStatus[account.id] === "done" && "Done!"}
                                   {reauthStatus[account.id] === "error" && "Failed"}
                                   {(!reauthStatus[account.id] || reauthStatus[account.id] === "idle") && "Re-authorize"}
@@ -1197,9 +1189,9 @@ export function SettingsPage() {
                                 <button
                                   onClick={() => handleResyncAccount(account.id)}
                                   disabled={resyncStatus[account.id] === "syncing"}
-                                  className="text-xs text-accent hover:text-accent-hover transition-colors disabled:opacity-50"
+                                  className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors disabled:opacity-50"
                                 >
-                                  {resyncStatus[account.id] === "syncing" && "Resyncing..."}
+                                  {resyncStatus[account.id] === "syncing" && <><Spinner size={11} label="Resyncing" />Resyncing…</>}
                                   {resyncStatus[account.id] === "done" && "Done!"}
                                   {resyncStatus[account.id] === "error" && "Failed"}
                                   {(!resyncStatus[account.id] || resyncStatus[account.id] === "idle") && "Resync"}
@@ -1216,6 +1208,23 @@ export function SettingsPage() {
                         })}
                       </div>
                     )}
+                  </Section>
+
+                  <Section title="Instant delivery">
+                    <ToggleRow
+                      label="Let servers push new mail"
+                      description="Hold a connection open so the server says the moment something arrives, instead of being asked every minute. Falls back to the timer wherever a server refuses. Status is shown on each account above."
+                      checked={imapIdle}
+                      onToggle={async () => {
+                        const next = !imapIdle;
+                        setImapIdle(next);
+                        await setSetting("imap_idle", next ? "true" : "false");
+                        const { startIdleWatchers, stopIdleWatchers } =
+                          await import("@/services/imap/idleManager");
+                        if (next) await startIdleWatchers();
+                        else await stopIdleWatchers();
+                      }}
+                    />
                   </Section>
 
                   {accounts.some((a) => a.provider === "caldav") && (

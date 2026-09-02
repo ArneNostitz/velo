@@ -72,6 +72,8 @@ import { useTaskStore } from "./stores/taskStore";
 import { ContextMenuPortal } from "./components/ui/ContextMenuPortal";
 import { MoveToFolderDialog } from "./components/email/MoveToFolderDialog";
 import { OfflineBanner } from "./components/ui/OfflineBanner";
+import { ToastHost } from "./components/ui/ToastHost";
+import { reportError } from "./stores/toastStore";
 import { UpdateToast } from "./components/ui/UpdateToast";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { formatSyncError } from "./utils/networkErrors";
@@ -116,6 +118,11 @@ export default function App() {
         setSyncState("idle", null);
       } else if (message.startsWith("Sync failed")) {
         setSyncState("error", message);
+        // The ring around the avatar turns red, which is easy to miss. Say it.
+        reportError("Sync failed", message.replace(/^Sync failed:?\s*/, ""), {
+          label: "Retry",
+          run: () => import("@/services/refreshMail").then((m) => m.refreshMail()),
+        });
       } else {
         setSyncState("syncing", message);
       }
@@ -201,6 +208,18 @@ export default function App() {
     };
     window.addEventListener("velo-idle-sync", handleIdleSync);
 
+    // Anything nobody caught. Not a substitute for catching things — the
+    // message is whatever the browser gives us — but it means an error can no
+    // longer vanish into a console the user is not looking at.
+    const handleUncaught = (e: ErrorEvent) => {
+      reportError("Something went wrong", e.error ?? e.message);
+    };
+    const handleRejection = (e: PromiseRejectionEvent) => {
+      reportError("Something went wrong", e.reason);
+    };
+    window.addEventListener("error", handleUncaught);
+    window.addEventListener("unhandledrejection", handleRejection);
+
     window.addEventListener("velo-open-signin-link", handleSignInLink);
 
     window.addEventListener("velo-move-to-folder", handleMoveToFolder);
@@ -209,6 +228,8 @@ export default function App() {
       window.removeEventListener("velo-toggle-shortcuts-help", toggleHelp);
       window.removeEventListener("velo-toggle-ask-inbox", toggleAskInbox);
       window.removeEventListener("velo-idle-sync", handleIdleSync);
+      window.removeEventListener("error", handleUncaught);
+      window.removeEventListener("unhandledrejection", handleRejection);
       window.removeEventListener("velo-open-signin-link", handleSignInLink);
       window.removeEventListener("velo-move-to-folder", handleMoveToFolder);
     };
@@ -233,7 +254,14 @@ export default function App() {
   useEffect(() => {
     async function init() {
       try {
-        await runMigrations();
+        try {
+          await runMigrations();
+        } catch (err) {
+          // Without the schema nothing below can load. Say why, instead of
+          // presenting an empty app that looks like lost data.
+          reportError("Database update failed — the app cannot start properly", err);
+          throw err;
+        }
 
         const ui = useUIStore.getState();
 
@@ -609,6 +637,7 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen overflow-hidden text-text-primary">
       <OfflineBanner />
+      <ToastHost />
       <TitleBar />
       <div className="flex flex-1 min-w-0 overflow-hidden">
         <DndProvider>

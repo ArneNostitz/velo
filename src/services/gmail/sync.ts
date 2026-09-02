@@ -1,4 +1,5 @@
 import { GmailClient } from "./client";
+import { reportError } from "@/stores/toastStore";
 import { parseGmailMessage, type ParsedMessage } from "./messageParser";
 import { upsertLabel } from "../db/labels";
 import { upsertThread, setThreadLabels } from "../db/threads";
@@ -161,7 +162,7 @@ async function processAndStoreThread(
     await linkSplitThreads(accountId);
     await linkThreadsBySubject(accountId);
   } catch (err) {
-    console.error("Thread linking failed:", err);
+    reportError("Could not link split conversations", err);
   }
 
   // Count incoming read receipts against the sent messages they acknowledge
@@ -173,7 +174,7 @@ async function processAndStoreThread(
     // they need recognising from what did get stored
     await backfillStoredReadReceipts(accountId);
   } catch (err) {
-    console.error("Read receipt processing failed:", err);
+    reportError("Could not process read receipts", err);
   }
 }
 
@@ -435,7 +436,7 @@ export async function deltaSync(
                 })),
             );
           } catch (err) {
-            console.error("One-time code detection failed:", err);
+            reportError("Could not check for login codes", err);
           }
 
           // Rules that ask to be told about a match, evaluated before the

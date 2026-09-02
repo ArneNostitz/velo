@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { reportError } from "@/stores/toastStore";
 import { CSSTransition } from "react-transition-group";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -348,7 +349,7 @@ export function Composer() {
           await upsertContact(addr, null);
         }
       } catch (err) {
-        console.error("Failed to send email:", err);
+        reportError("Email not sent", err);
       } finally {
         useComposerStore.getState().setUndoSendVisible(false);
         sendingRef.current = false;

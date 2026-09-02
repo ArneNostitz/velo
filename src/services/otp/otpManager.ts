@@ -1,6 +1,7 @@
 import { detectOtpCode, detectSignInLink } from "@/utils/otpDetector";
 import { getSetting } from "@/services/db/settings";
 import { notifyOneTimeCode } from "@/services/notifications/notificationManager";
+import { reportError } from "@/stores/toastStore";
 
 /**
  * One-time codes and sign-in links, surfaced the moment they arrive.
@@ -55,7 +56,7 @@ async function writeClipboard(text: string): Promise<boolean> {
     await navigator.clipboard.writeText(text);
     return true;
   } catch (err) {
-    console.error("Failed to copy one-time code:", err);
+    reportError("Could not copy the login code", err);
     return false;
   }
 }
