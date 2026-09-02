@@ -15,8 +15,15 @@ import { useIdleStatusStore } from "@/stores/idleStatusStore";
  * waiting a minute to find out there is any.
  */
 
-/** Gmail's IMAP endpoint. Used for accounts that sync over the API. */
-const GMAIL_IMAP = { host: "imap.gmail.com", port: 993, security: "ssl" };
+/**
+ * Gmail's IMAP endpoint, for accounts that sync over the API.
+ *
+ * `security` is the value the Rust side matches on — "tls", not the "ssl"
+ * the account form stores and `mapSecurity()` translates. Hand-building this
+ * config bypassed that translation, and every watcher was refused with
+ * "Unknown security mode: ssl" from the first attempt.
+ */
+const GMAIL_IMAP = { host: "imap.gmail.com", port: 993, security: "tls" as const };
 
 /** Ignore a second doorbell for the same account within this window. */
 const DEBOUNCE_MS = 3000;

@@ -39,6 +39,8 @@ describe("startIdleWatchers", () => {
       accountId: "g1",
       config: expect.objectContaining({
         host: "imap.gmail.com",
+        // The Rust side accepts "tls" — "ssl" was refused on every attempt
+        security: "tls",
         auth_method: "oauth2",
         password: "tok-123",
       }),

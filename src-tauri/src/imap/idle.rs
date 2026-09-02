@@ -114,9 +114,26 @@ pub async fn stop_all(registry: Arc<IdleRegistry>) {
     }
 }
 
+/// Errors that retrying cannot fix. A wrong security mode, a refused login,
+/// a host that does not resolve — the fifteen-second loop would repeat these
+/// forever and make a permanent problem look like a flaky connection. They
+/// stop the watcher; "Reconnect" in settings, or a re-authorisation, starts
+/// it again.
+fn is_permanent(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    e.contains("unknown security mode")
+        || e.contains("authenticationfailed")
+        || e.contains("invalid credentials")
+        || e.contains("[auth]")
+        || e.contains("failed to resolve")
+        || e.contains("no such host")
+        || e.contains("nodename nor servname")
+}
+
 /// Reconnect until cancelled. A dropped connection is normal — servers close
 /// idle sockets, laptops sleep, networks change — so this treats it as
-/// something to recover from rather than an error to report.
+/// something to recover from rather than an error to report. Errors that
+/// will not change on their own end the loop instead.
 async fn watch_loop(
     app: AppHandle,
     account_id: String,
@@ -139,7 +156,12 @@ async fn watch_loop(
                 if token.is_cancelled() {
                     return;
                 }
-                log::warn!("IDLE for {account_id} dropped: {err}");
+                let permanent = is_permanent(&err);
+                if permanent {
+                    log::warn!("IDLE for {account_id} stopped: {err}");
+                } else {
+                    log::warn!("IDLE for {account_id} dropped: {err}");
+                }
                 let _ = app.emit(
                     "velo-idle-failed",
                     IdleFailure {
@@ -147,6 +169,9 @@ async fn watch_loop(
                         error: err,
                     },
                 );
+                if permanent {
+                    return;
+                }
             }
         }
 
