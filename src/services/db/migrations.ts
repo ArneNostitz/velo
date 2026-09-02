@@ -818,6 +818,19 @@ export const MIGRATIONS = [
         ON messages(account_id, thread_id, is_read_receipt);
     `,
   },
+  {
+    version: 29,
+    description: "Manually merged conversations",
+    sql: `
+      -- Threading is a guess: senders change the subject, ticket systems drop
+      -- In-Reply-To, and the same exchange ends up in two threads. This lets
+      -- the user say so. A merged thread keeps its rows and points at the one
+      -- it now reads as part of; nothing is rewritten, so it can be undone.
+      ALTER TABLE threads ADD COLUMN merged_into TEXT;
+      CREATE INDEX IF NOT EXISTS idx_threads_merged_into
+        ON threads(account_id, merged_into);
+    `,
+  },
 ];
 
 /**

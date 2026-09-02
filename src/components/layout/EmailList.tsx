@@ -10,7 +10,7 @@ import { collectOwnAddresses } from "@/services/accounts/ownAddresses";
 import { useUIStore } from "@/stores/uiStore";
 import { useActiveLabel, useSelectedThreadId, useActiveCategory } from "@/hooks/useRouteNavigation";
 import { navigateToThread, navigateToLabel } from "@/router/navigate";
-import { getThreadsForAccounts, getThreadsForCategoryAcrossAccounts, getThreadsByIds, getThreadLabelIds, deleteThread as deleteThreadFromDb } from "@/services/db/threads";
+import { getThreadsForAccounts, getThreadsForCategoryAcrossAccounts, getThreadsByIds, getThreadLabelIds, deleteThread as deleteThreadFromDb, mergeThreads } from "@/services/db/threads";
 import { getCategoriesForThreads, getCategoryUnreadCounts } from "@/services/db/threadCategories";
 import { getActiveFollowUpThreadIds } from "@/services/db/followUpReminders";
 import { getTaskThreadIds } from "@/services/db/tasks";
@@ -25,7 +25,7 @@ import { useComposerStore } from "@/stores/composerStore";
 import { getMessagesForThread } from "@/services/db/messages";
 import { getSmartFolderSearchQuery, mapSmartFolderRows, type SmartFolderRow } from "@/services/search/smartFolderQuery";
 import { getDb } from "@/services/db/connection";
-import { Archive, Trash2, X, Ban, Filter, ChevronRight, Package, FolderSearch, UserSearch, MailMinus, Check, AlertCircle } from "lucide-react";
+import { Archive, Trash2, X, Ban, Filter, ChevronRight, Package, FolderSearch, UserSearch, MailMinus, Check, AlertCircle, Merge } from "lucide-react";
 import { searchMessages } from "@/services/db/search";
 import { EmptyState } from "../ui/EmptyState";
 import {
@@ -261,6 +261,13 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     [activeAccountId],
   );
 
+  const threadById = useCallback(
+    (id: string): Thread | undefined =>
+      useThreadStore.getState().threadMap.get(id)
+      ?? useThreadStore.getState().cachedThreads.get(id),
+    [],
+  );
+
   const handleBulkDelete = async () => {
     if (multiSelectCount === 0) return;
     const isTrashView = activeLabel === "trash";
@@ -296,6 +303,37 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       }
     }
     clearMultiSelect();
+  };
+
+  // Fold the selected conversations into the oldest of them. Same mailbox
+  // only: a thread id, a draft and a send-as address are valid in exactly one
+  // account, so a merged row spanning two would break every action on it.
+  const mergeableAccountId = useMemo(() => {
+    if (multiSelectCount < 2) return null;
+    const accountIds = new Set(
+      [...selectedThreadIds].map((id) => accountForThread(id)).filter(Boolean),
+    );
+    return accountIds.size === 1 ? ([...accountIds][0] as string) : null;
+  }, [selectedThreadIds, multiSelectCount, accountForThread]);
+
+  const handleMerge = async () => {
+    if (!mergeableAccountId) return;
+    const ids = [...selectedThreadIds];
+    // The oldest keeps the row: a conversation is named by how it started
+    const ordered = ids
+      .map((id) => threadById(id))
+      .filter((t): t is Thread => !!t)
+      .sort((a, b) => a.lastMessageAt - b.lastMessageAt);
+    const target = ordered[0];
+    if (!target) return;
+    try {
+      await mergeThreads(mergeableAccountId, target.id, ids);
+      clearMultiSelect();
+      await loadThreads();
+      navigateToThread(target.id);
+    } catch (err) {
+      console.error("Failed to merge conversations:", err);
+    }
   };
 
   const handleBulkSpam = async () => {
@@ -830,6 +868,15 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
             >
               <Trash2 size={14} />
             </button>
+            {mergeableAccountId && (
+              <button
+                onClick={handleMerge}
+                title="Merge into one conversation"
+                className="p-1.5 text-text-secondary hover:text-accent hover:bg-bg-hover rounded transition-colors"
+              >
+                <Merge size={14} />
+              </button>
+            )}
             <button
               onClick={handleBulkSpam}
               title={activeLabel === "spam" ? "Not spam" : "Report spam"}

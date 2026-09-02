@@ -18,7 +18,6 @@ vi.mock("@/services/db/contacts", () => ({
   getContactStats: vi.fn(() =>
     Promise.resolve({ emailCount: 5, firstEmail: 1700000000000, lastEmail: 1700100000000 }),
   ),
-  getRecentThreadsWithContact: vi.fn(() => Promise.resolve([])),
   upsertContact: vi.fn(() => Promise.resolve()),
   updateContact: vi.fn(() => Promise.resolve()),
   updateContactNotes: vi.fn(() => Promise.resolve()),
@@ -40,6 +39,7 @@ vi.mock("@/services/contacts/gravatar", () => ({
 vi.mock("@/services/db/threads", () => ({
   getThreadById: vi.fn(),
   getThreadLabelIds: vi.fn(),
+  getThreadsWithContact: vi.fn(() => Promise.resolve([])),
 }));
 
 vi.mock("@/router/navigate", () => ({

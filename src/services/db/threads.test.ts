@@ -17,6 +17,9 @@ import {
   getThreadsForAccounts,
   getThreadsForCategoryAcrossAccounts,
   getThreadsWithContact,
+  mergeThreads,
+  unmergeThread,
+  getMergedThreadIds,
 } from "./threads";
 import { createMockDb } from "@/test/mocks";
 
@@ -343,5 +346,50 @@ describe("threads service - combined Inbox + Sent view", () => {
   it("falls back to no label filter when given none", async () => {
     await getThreadsForAccounts(["a"], undefined, 50, 0, []);
     expect(lastSelect().sql).not.toContain("tl.label_id");
+  });
+});
+
+describe("threads service - manual merge", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getDb).mockResolvedValue(mockDb as unknown as Awaited<ReturnType<typeof getDb>>);
+    mockDb.select.mockResolvedValue([]);
+  });
+
+  it("points the sources at the target without rewriting anything", async () => {
+    await mergeThreads("acc-1", "t-target", ["t-a", "t-b"]);
+    const [sql, params] = mockDb.execute.mock.calls[0]!;
+    expect(sql).toContain("SET merged_into = $2");
+    expect(sql).toContain("id IN ($3, $4)");
+    expect(params).toEqual(["acc-1", "t-target", "t-a", "t-b"]);
+  });
+
+  it("re-points anything already merged into a source, so no chain forms", async () => {
+    await mergeThreads("acc-1", "t-target", ["t-a"]);
+    const [sql] = mockDb.execute.mock.calls[1]!;
+    expect(sql).toContain("WHERE account_id = $1 AND merged_into IN ($3)");
+  });
+
+  it("never merges a thread into itself", async () => {
+    await mergeThreads("acc-1", "t-target", ["t-target"]);
+    expect(mockDb.execute).not.toHaveBeenCalled();
+  });
+
+  it("separates one thread and leaves the others merged", async () => {
+    await unmergeThread("acc-1", "t-a");
+    expect(mockDb.execute).toHaveBeenCalledWith(
+      "UPDATE threads SET merged_into = NULL WHERE account_id = $1 AND id = $2",
+      ["acc-1", "t-a"],
+    );
+  });
+
+  it("reads back what was folded into a thread", async () => {
+    mockDb.select.mockResolvedValue([{ id: "t-a" }, { id: "t-b" }]);
+    expect(await getMergedThreadIds("acc-1", "t-target")).toEqual(["t-a", "t-b"]);
+  });
+
+  it("keeps a merged-away thread out of the lists", async () => {
+    await getThreadsForAccounts(["a"], "INBOX", 50, 0, []);
+    expect(mockDb.select.mock.calls.at(-1)![0]).toContain("t.merged_into IS NULL");
   });
 });

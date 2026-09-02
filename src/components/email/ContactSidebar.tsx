@@ -4,7 +4,7 @@ import {
   Paperclip, Building2, ChevronDown, ChevronRight, Pin,
 } from "lucide-react";
 import {
-  getContactByEmail, getContactStats, getRecentThreadsWithContact,
+  getContactByEmail, getContactStats,
   upsertContact, updateContact, updateContactNotes,
   getAttachmentsFromContact, getContactsFromSameDomain, getLatestAuthResult,
   type ContactStats, type DbContact, type ContactAttachment, type SameDomainContact,
@@ -14,7 +14,7 @@ import { fetchAndCacheGravatarUrl } from "@/services/contacts/gravatar";
 import { useThreadStore } from "@/stores/threadStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useComposerStore } from "@/stores/composerStore";
-import { getThreadById, getThreadLabelIds } from "@/services/db/threads";
+import { getThreadById, getThreadLabelIds, getThreadsWithContact } from "@/services/db/threads";
 import { navigateToThread } from "@/router/navigate";
 import { formatRelativeDate } from "@/utils/date";
 import { formatFileSize, getFileIcon } from "@/utils/fileTypeHelpers";
@@ -46,10 +46,18 @@ interface ContactSidebarProps {
   name: string | null;
   accountId: string;
   threadId?: string;
+  /** Lowercased addresses the user sends from, so "recent" means an exchange. */
+  ownAddresses?: Set<string>;
   onClose: () => void;
 }
 
-export function ContactSidebar({ email, name, accountId, threadId, onClose }: ContactSidebarProps) {
+export function ContactSidebar({ email, name, accountId, threadId, ownAddresses, onClose }: ContactSidebarProps) {
+  // A Set identity changes every render of the parent; the addresses do not
+  const ownAddressKey = ownAddresses ? [...ownAddresses].sort().join(",") : "";
+  const ownAddressList = useMemo(
+    () => (ownAddressKey ? ownAddressKey.split(",") : []),
+    [ownAddressKey],
+  );
   // Repaint when the 12/24-hour preference changes
   useTimeFormat();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -134,7 +142,16 @@ export function ContactSidebar({ email, name, accountId, threadId, onClose }: Co
     getContactStats(email).then((s) => { if (!cancelled) setStats(s); });
 
     // Load recent threads
-    getRecentThreadsWithContact(email).then((t) => { if (!cancelled) setRecentThreads(t); });
+    // Threads the two of them actually exchanged, in this mailbox — matching
+    // on "they sent it" alone listed every unrelated mail from that address
+    getThreadsWithContact(accountId, email, null, ownAddressList, 5).then((rows) => {
+      if (cancelled) return;
+      setRecentThreads(rows.map((r) => ({
+        thread_id: r.id,
+        subject: r.subject,
+        last_message_at: r.last_message_at,
+      })));
+    }).catch(() => { if (!cancelled) setRecentThreads([]); });
 
     // Load VIP status
     isVipSender(accountId, email).then((v) => { if (!cancelled) setIsVip(v); });
@@ -149,7 +166,7 @@ export function ContactSidebar({ email, name, accountId, threadId, onClose }: Co
     getLatestAuthResult(email).then((r) => { if (!cancelled) setAuthResults(r); });
 
     return () => { cancelled = true; };
-  }, [email, accountId]);
+  }, [email, accountId, ownAddressKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // -- Event handlers --
 

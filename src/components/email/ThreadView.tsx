@@ -1,16 +1,17 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { MessageItem } from "./MessageItem";
 import { ActionBar } from "./ActionBar";
-import { getMessagesForThread, type DbMessage } from "@/services/db/messages";
+import { getMessagesForThreads, type DbMessage } from "@/services/db/messages";
 import { useAccountStore } from "@/stores/accountStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useThreadStore, type Thread } from "@/stores/threadStore";
+import { getMergedThreadIds, unmergeThread } from "@/services/db/threads";
 import { useComposerStore } from "@/stores/composerStore";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 import { markThreadRead } from "@/services/emailActions";
 import { getSetting } from "@/services/db/settings";
 import { getAllowlistedSenders } from "@/services/db/imageAllowlist";
-import { VolumeX } from "lucide-react";
+import { VolumeX, Merge } from "lucide-react";
 import { escapeHtml, sanitizeHtml } from "@/utils/sanitize";
 import { isNoReplyAddress } from "@/utils/noReply";
 import { recipientHeadersFromMessages } from "@/utils/resolveFromAddress";
@@ -94,15 +95,25 @@ export function ThreadView({ thread }: ThreadViewProps) {
     getSetting("block_remote_images").then((val) => setBlockImages(val !== "false"));
   }, []);
 
-  // Load messages
+  // Threads the user folded into this one — shown here, not as rows of their own
+  const [mergedIds, setMergedIds] = useState<string[]>([]);
+
+  // Load messages, including any conversation merged into this one
+  const reloadMessages = useCallback(async () => {
+    if (!threadAccountId) return;
+    const merged = await getMergedThreadIds(threadAccountId, thread.id);
+    setMergedIds(merged);
+    const all = await getMessagesForThreads(threadAccountId, [thread.id, ...merged]);
+    setMessages(all);
+  }, [threadAccountId, thread.id]);
+
   useEffect(() => {
     if (!threadAccountId) return;
     setLoading(true);
-    getMessagesForThread(threadAccountId, thread.id)
-      .then(setMessages)
+    reloadMessages()
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [threadAccountId, thread.id]);
+  }, [threadAccountId, thread.id, reloadMessages]);
 
   // Check per-sender allowlist (single batch query instead of N queries)
   useEffect(() => {
@@ -402,13 +413,10 @@ export function ThreadView({ thread }: ThreadViewProps) {
   // Detect no-reply senders — disable reply buttons but still allow forward
   const noReply = isNoReplyAddress(lastMessage?.reply_to ?? lastMessage?.from_address);
 
-  // Get the primary sender for the contact sidebar
-  const primarySender = pinnedContact?.email ?? lastMessage?.from_address ?? null;
-  const primarySenderName = pinnedContact?.name ?? lastMessage?.from_name ?? null;
-
-  // The other side of the conversation. Not the same as primarySender: when
-  // the user wrote last, that is their own address, and hanging *their* whole
-  // mailbox under the thread is not what "earlier with them" means.
+  // The other side of the conversation — who the sidebar and the history are
+  // about. Taking the last sender instead put the user's own alias there
+  // whenever they wrote last, so the panel profiled the user and listed every
+  // unrelated thread they had sent from that address.
   const isMine = (address: string | null | undefined) =>
     !!address && ownAddresses.has(address.toLowerCase());
   const peerMessage = [...messages].reverse().find((m) => m.from_address && !isMine(m.from_address));
@@ -447,6 +455,28 @@ export function ThreadView({ thread }: ThreadViewProps) {
             setThreadViewMode(threadViewMode === "chat" ? "classic" : "chat")
           }
         />
+
+        {/* Merged conversations — say so, and offer the way out */}
+        {mergedIds.length > 0 && threadAccountId && (
+          <div className="flex items-center gap-2 px-6 py-2 bg-accent/5 border-b border-border-secondary text-xs text-text-secondary">
+            <Merge size={13} className="shrink-0 text-accent" />
+            <span className="flex-1">
+              {mergedIds.length} other conversation{mergedIds.length === 1 ? "" : "s"} merged into this one
+            </span>
+            <button
+              onClick={async () => {
+                for (const id of mergedIds) {
+                  await unmergeThread(threadAccountId, id).catch(console.error);
+                }
+                await reloadMessages().catch(console.error);
+                window.dispatchEvent(new CustomEvent("velo-threads-merged"));
+              }}
+              className="text-accent hover:underline shrink-0"
+            >
+              Separate again
+            </button>
+          </div>
+        )}
 
         {/* Thread subject */}
         <div className="px-6 py-3 border-b border-border-primary">
@@ -520,10 +550,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
               accountId={threadAccountId}
               noReply={noReply}
               onSent={() => {
-                // Reload messages after sending
-                getMessagesForThread(threadAccountId, thread.id)
-                  .then(setMessages)
-                  .catch(console.error);
+                reloadMessages().catch(console.error);
               }}
             />
           )}
@@ -546,7 +573,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
       </div>
 
       {/* Contact sidebar — overlay at narrow widths, inline at wide */}
-      {contactSidebarVisible && primarySender && threadAccountId && (
+      {contactSidebarVisible && peerAddress && threadAccountId && (
         <>
           {/* Backdrop for overlay mode (narrow widths) */}
           <div
@@ -555,10 +582,11 @@ export function ThreadView({ thread }: ThreadViewProps) {
           />
           <div className="absolute right-0 top-0 bottom-0 z-20 shadow-xl @[640px]:relative @[640px]:z-auto @[640px]:shadow-none">
             <ContactSidebar
-              email={primarySender}
-              name={primarySenderName}
+              email={peerAddress}
+              name={peerName}
               accountId={threadAccountId}
               threadId={thread.id}
+              ownAddresses={ownAddresses}
               onClose={toggleContactSidebar}
             />
           </div>
