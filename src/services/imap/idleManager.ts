@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getAllAccounts, type DbAccount } from "@/services/db/accounts";
 import { getSetting } from "@/services/db/settings";
 import { buildImapConfig } from "./imapConfigBuilder";
+import { useIdleStatusStore } from "@/stores/idleStatusStore";
 
 /**
  * Let the mail server say when something changed, instead of asking it.
@@ -22,6 +23,7 @@ const DEBOUNCE_MS = 3000;
 
 let unlistenActivity: UnlistenFn | null = null;
 let unlistenFailure: UnlistenFn | null = null;
+let unlistenStatus: UnlistenFn | null = null;
 let lastFired = new Map<string, number>();
 const failedAccounts = new Set<string>();
 
@@ -64,6 +66,7 @@ function idleConfigFor(account: DbAccount, accessToken?: string) {
  * this.
  */
 export async function startIdleWatchers(): Promise<void> {
+  const { setStatus } = useIdleStatusStore.getState();
   const enabled = (await getSetting("imap_idle")) !== "false";
   if (!enabled) {
     await stopIdleWatchers();
@@ -82,13 +85,20 @@ export async function startIdleWatchers(): Promise<void> {
         accessToken = await ensureFreshToken(account);
       }
       const config = idleConfigFor(account, accessToken);
-      if (!config) continue;
+      if (!config) {
+        setStatus(account.id, "off");
+        continue;
+      }
 
+      // "connecting" until the watcher reports in — the Rust side owns the
+      // truth from here, and it may take a few seconds
+      setStatus(account.id, "connecting");
       await invoke("imap_start_idle", { accountId: account.id, config });
       failedAccounts.delete(account.id);
     } catch (err) {
       // Not fatal: the account keeps syncing on the timer
       failedAccounts.add(account.id);
+      setStatus(account.id, "failed", String(err));
       console.warn(`IDLE unavailable for ${account.email}:`, err);
     }
   }
@@ -105,7 +115,10 @@ export async function stopIdleWatchers(): Promise<void> {
   unlistenActivity = null;
   unlistenFailure?.();
   unlistenFailure = null;
+  unlistenStatus?.();
+  unlistenStatus = null;
   lastFired = new Map();
+  useIdleStatusStore.getState().clearAll();
 }
 
 async function attachListeners(): Promise<void> {
@@ -131,9 +144,27 @@ async function attachListeners(): Promise<void> {
     "velo-idle-failed",
     (event) => {
       failedAccounts.add(event.payload.account_id);
+      useIdleStatusStore.getState().setStatus(event.payload.account_id, "failed", event.payload.error);
       console.warn(
         `IDLE dropped for ${event.payload.account_id}: ${event.payload.error}`,
       );
+    },
+  );
+
+  // The watcher's own word on whether the connection is up. A drop reads as
+  // "connecting" rather than "failed": the Rust loop is already reconnecting,
+  // and only a refusal (above) means the account is stuck on the timer.
+  unlistenStatus = await listen<{ account_id: string; state: "connected" | "disconnected" }>(
+    "velo-idle-status",
+    (event) => {
+      const { account_id, state } = event.payload;
+      const store = useIdleStatusStore.getState();
+      if (state === "connected") {
+        failedAccounts.delete(account_id);
+        store.setStatus(account_id, "connected");
+      } else if (store.statuses[account_id] !== "failed") {
+        store.setStatus(account_id, "connecting");
+      }
     },
   );
 }

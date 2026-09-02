@@ -57,6 +57,25 @@ struct IdleFailure {
     error: String,
 }
 
+/// The watcher's connection state, so the app can say whether instant
+/// delivery is actually live for an account rather than merely switched on.
+#[derive(Clone, serde::Serialize)]
+struct IdleStatus {
+    account_id: String,
+    /// "connected" while IDLE is held open, "disconnected" the moment it is not.
+    state: &'static str,
+}
+
+fn emit_status(app: &AppHandle, account_id: &str, state: &'static str) {
+    let _ = app.emit(
+        "velo-idle-status",
+        IdleStatus {
+            account_id: account_id.to_string(),
+            state,
+        },
+    );
+}
+
 /// Begin watching an account's INBOX. Starting an account that is already
 /// watched replaces the old watcher, so a settings change cannot leave two.
 pub async fn start(
@@ -109,7 +128,9 @@ async fn watch_loop(
             return;
         }
 
-        match idle_session(&app, &account_id, &config, &token).await {
+        let outcome = idle_session(&app, &account_id, &config, &token).await;
+        emit_status(&app, &account_id, "disconnected");
+        match outcome {
             Ok(()) => {
                 // Cancelled from outside; nothing to recover from
                 return;
@@ -150,6 +171,7 @@ async fn idle_session(
         .map_err(|e| format!("Could not select INBOX for IDLE: {e}"))?;
 
     log::info!("IDLE watching {account_id}");
+    emit_status(app, account_id, "connected");
 
     loop {
         let mut handle = session.idle();
