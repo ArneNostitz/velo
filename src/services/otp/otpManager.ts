@@ -1,6 +1,6 @@
-import { sendNotification } from "@tauri-apps/plugin-notification";
 import { detectOtpCode, detectSignInLink } from "@/utils/otpDetector";
 import { getSetting } from "@/services/db/settings";
+import { notifyOneTimeCode } from "@/services/notifications/notificationManager";
 
 /**
  * One-time codes and sign-in links, surfaced the moment they arrive.
@@ -22,6 +22,9 @@ const handled = new Set<string>();
 
 export interface OtpCandidate {
   id: string;
+  /** So the notification can open the message it came from. */
+  threadId?: string;
+  accountId?: string;
   subject: string | null;
   bodyText: string | null;
   bodyHtml: string | null;
@@ -42,6 +45,14 @@ async function writeClipboard(text: string): Promise<boolean> {
     // focused, and the whole point is that the user is in another app
     const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
     await writeText(text);
+    return true;
+  } catch (err) {
+    console.error("Failed to copy one-time code via the plugin:", err);
+  }
+  try {
+    // Worth trying anyway: if the window happens to be focused this works,
+    // and a copied code is the whole point
+    await navigator.clipboard.writeText(text);
     return true;
   } catch (err) {
     console.error("Failed to copy one-time code:", err);
@@ -81,11 +92,12 @@ export async function processIncomingCodes(
     if (match) {
       const copied = autoCopy ? await writeClipboard(match.code) : false;
       try {
-        sendNotification({
-          title: copied ? `Code copied: ${match.code}` : `Code: ${match.code}`,
-          body: copied
-            ? `From ${sender} — ready to paste`
-            : `From ${sender}`,
+        notifyOneTimeCode({
+          code: match.code,
+          sender,
+          copied,
+          threadId: message.threadId,
+          accountId: message.accountId,
         });
       } catch (err) {
         console.error("Failed to notify about a one-time code:", err);
@@ -96,9 +108,12 @@ export async function processIncomingCodes(
 
     if (link) {
       try {
-        sendNotification({
-          title: "Sign-in link",
-          body: `${sender} — open Velo to use it`,
+        notifyOneTimeCode({
+          linkUrl: link.url,
+          sender,
+          copied: false,
+          threadId: message.threadId,
+          accountId: message.accountId,
         });
       } catch (err) {
         console.error("Failed to notify about a sign-in link:", err);

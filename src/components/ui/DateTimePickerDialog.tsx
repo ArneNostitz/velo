@@ -18,6 +18,9 @@ interface DateTimePickerDialogProps {
   /** Called with a Unix timestamp in seconds */
   onSelect: (timestamp: number) => void;
   submitLabel: string;
+  /** Offered only when there is something to clear — a date already set. */
+  onClear?: () => void;
+  clearLabel?: string;
   zIndex?: string;
 }
 
@@ -28,6 +31,8 @@ export function DateTimePickerDialog({
   presets,
   onSelect,
   submitLabel,
+  onClear,
+  clearLabel = "Clear",
   zIndex,
 }: DateTimePickerDialogProps) {
   const [customDate, setCustomDate] = useState("");
@@ -90,6 +95,14 @@ export function DateTimePickerDialog({
         >
           {submitLabel}
         </Button>
+        {onClear && (
+          <button
+            onClick={onClear}
+            className="w-full mt-2 text-xs text-text-tertiary hover:text-danger transition-colors"
+          >
+            {clearLabel}
+          </button>
+        )}
       </div>
     </Modal>
   );

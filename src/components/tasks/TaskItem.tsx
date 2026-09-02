@@ -8,8 +8,10 @@ import {
   Calendar,
   RepeatIcon,
   Link2,
+  BellRing,
 } from "lucide-react";
 import type { DbTask, TaskPriority } from "@/services/db/tasks";
+import { DateTimePickerDialog } from "@/components/ui/DateTimePickerDialog";
 
 const PRIORITY_COLORS: Record<TaskPriority, string> = {
   none: "text-text-tertiary",
@@ -55,6 +57,8 @@ interface TaskItemProps {
   onToggleComplete: (id: string, completed: boolean) => void;
   onSelect?: (id: string) => void;
   onDelete?: (id: string) => void;
+  /** Set or clear when a task is due. Omitted, the date is read-only. */
+  onSetDueDate?: (id: string, dueDate: number | null) => void;
   isSelected?: boolean;
   compact?: boolean;
 }
@@ -65,10 +69,12 @@ export function TaskItem({
   onToggleComplete,
   onSelect,
   onDelete,
+  onSetDueDate,
   isSelected,
   compact,
 }: TaskItemProps) {
   const [expanded, setExpanded] = useState(false);
+  const [pickingDue, setPickingDue] = useState(false);
   const tags: string[] = (() => {
     try {
       return JSON.parse(task.tags_json) as string[];
@@ -121,16 +127,35 @@ export function TaskItem({
             >
               {task.title}
             </span>
+            {/* A follow-up reminder is a task with a bell — same list, same
+                due date, but it is waiting on someone else, not on you */}
+            {task.kind === "reminder" && (
+              <BellRing size={11} className="shrink-0 text-accent" aria-label="Follow-up reminder" />
+            )}
           </div>
 
           {!compact && (
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {task.due_date && (
-                <span className={`inline-flex items-center gap-1 text-[0.6875rem] px-1.5 py-0.5 rounded ${getDueDateColor(task.due_date)}`}>
+              {task.due_date ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); if (onSetDueDate) setPickingDue(true); }}
+                  disabled={!onSetDueDate}
+                  title={onSetDueDate ? "Change when this is due" : undefined}
+                  className={`inline-flex items-center gap-1 text-[0.6875rem] px-1.5 py-0.5 rounded ${getDueDateColor(task.due_date)} ${onSetDueDate ? "hover:brightness-95" : "cursor-default"}`}
+                >
                   <Calendar size={10} />
                   {formatDueDate(task.due_date)}
-                </span>
-              )}
+                </button>
+              ) : onSetDueDate ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setPickingDue(true); }}
+                  title="Set a due date"
+                  className="inline-flex items-center gap-1 text-[0.6875rem] px-1.5 py-0.5 rounded text-text-tertiary hover:text-accent hover:bg-bg-hover transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <Calendar size={10} />
+                  Due
+                </button>
+              ) : null}
               {hasRecurrence && (
                 <span className="inline-flex items-center gap-0.5 text-[0.6875rem] text-text-tertiary">
                   <RepeatIcon size={10} />
@@ -193,6 +218,45 @@ export function TaskItem({
           ))}
         </div>
       )}
+
+      {pickingDue && onSetDueDate && (
+        <DateTimePickerDialog
+          isOpen
+          title="Due..."
+          presets={getDuePresets()}
+          submitLabel="Set due date"
+          onSelect={(timestamp) => {
+            onSetDueDate(task.id, timestamp);
+            setPickingDue(false);
+          }}
+          onClose={() => setPickingDue(false)}
+          onClear={task.due_date ? () => {
+            onSetDueDate(task.id, null);
+            setPickingDue(false);
+          } : undefined}
+          clearLabel="Remove due date"
+        />
+      )}
     </div>
   );
+}
+
+/** The dates a task is usually due, so the common cases are one click. */
+function getDuePresets(): { label: string; timestamp: number }[] {
+  const at9 = (daysAhead: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + daysAhead);
+    d.setHours(9, 0, 0, 0);
+    return Math.floor(d.getTime() / 1000);
+  };
+  const laterToday = () => {
+    const d = new Date();
+    d.setHours(d.getHours() + 3, 0, 0, 0);
+    return Math.floor(d.getTime() / 1000);
+  };
+  return [
+    { label: "Later today", timestamp: laterToday() },
+    { label: "Tomorrow", timestamp: at9(1) },
+    { label: "Next week", timestamp: at9(7) },
+  ];
 }

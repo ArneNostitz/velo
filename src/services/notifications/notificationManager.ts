@@ -19,6 +19,10 @@ interface NotificationContext {
   accountId?: string;
   fromAddress?: string;
   subject?: string;
+  /** A one-time code the notification is offering to copy. */
+  code?: string;
+  /** A sign-in link the notification is offering to open. */
+  linkUrl?: string;
 }
 
 let lastNotificationContext: NotificationContext | null = null;
@@ -69,13 +73,36 @@ export async function initNotifications(): Promise<void> {
           { id: "archive", title: "Archive" },
         ],
       },
+      {
+        id: "otp-code",
+        actions: [{ id: "copy-code", title: "Copy code" }],
+      },
+      {
+        id: "otp-link",
+        actions: [{ id: "open-link", title: "Open link" }],
+      },
     ]);
 
     await onAction(async (event) => {
       const actionId = event.actionTypeId;
       const ctx = lastNotificationContext;
 
-      if (actionId === "reply" && ctx?.threadId && ctx?.accountId) {
+      if (actionId === "copy-code" && ctx?.code) {
+        try {
+          const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+          await writeText(ctx.code);
+        } catch (err) {
+          console.error("Failed to copy the code from a notification:", err);
+        }
+      } else if (actionId === "open-link" && ctx?.linkUrl) {
+        // Through the app rather than straight to the browser: a link in mail
+        // is exactly the phishing vector, so it goes past the same check a
+        // click inside the message would
+        await showAndFocusMainWindow();
+        window.dispatchEvent(new CustomEvent("velo-open-signin-link", {
+          detail: { url: ctx.linkUrl, threadId: ctx.threadId, accountId: ctx.accountId },
+        }));
+      } else if (actionId === "reply" && ctx?.threadId && ctx?.accountId) {
         await showAndFocusMainWindow();
         useComposerStore.getState().openComposer({
           mode: "reply",
@@ -165,11 +192,12 @@ export function shouldNotifyForMessage(
     ruleRequested?: boolean;
   },
 ): boolean {
-  // A mailbox the user switched off stays quiet even for a rule or a VIP —
-  // it is the coarsest choice they made, so it wins
+  // A mailbox the user did not pick stays quiet even for a rule or a VIP — it
+  // is the coarsest choice they made, so it wins. Picking none means none:
+  // silence is a setting, not an empty list to be ignored. One-time codes and
+  // sign-in links never reach this function, so they still come through.
   const allowedAccounts = opts?.allowedAccounts;
-  if (allowedAccounts && allowedAccounts.size > 0 && opts?.accountId
-      && !allowedAccounts.has(opts.accountId)) {
+  if (allowedAccounts && opts?.accountId && !allowedAccounts.has(opts.accountId)) {
     return false;
   }
   // A rule saying "notify me" is an explicit instruction, so it outranks the
@@ -209,5 +237,48 @@ export function notifySnoozeReturn(subject: string): void {
     title: "Snoozed email returned",
     body: subject || "(No subject)",
     actionTypeId: "default",
+  });
+}
+
+/**
+ * Announce a one-time code or a sign-in link, with the buttons that make it
+ * useful and the context the click handler needs.
+ *
+ * Sent through here rather than calling sendNotification directly, because a
+ * notification with no actionTypeId carries no buttons and no context — the
+ * click then has nothing to open and merely focuses the window.
+ */
+export function notifyOneTimeCode(opts: {
+  code?: string;
+  linkUrl?: string;
+  sender: string;
+  copied: boolean;
+  threadId?: string;
+  accountId?: string;
+}): void {
+  if (!notificationsEnabled) return;
+
+  const ctx: NotificationContext = {
+    threadId: opts.threadId,
+    accountId: opts.accountId,
+    code: opts.code,
+    linkUrl: opts.linkUrl,
+  };
+  lastNotificationContext = ctx;
+  if (opts.threadId) recentContexts.set(opts.threadId, ctx);
+
+  if (opts.code) {
+    sendNotification({
+      title: opts.copied ? `Code copied: ${opts.code}` : `Code: ${opts.code}`,
+      body: opts.copied ? `From ${opts.sender} — ready to paste` : `From ${opts.sender}`,
+      actionTypeId: "otp-code",
+    });
+    return;
+  }
+
+  sendNotification({
+    title: "Sign-in link",
+    body: `From ${opts.sender}`,
+    actionTypeId: "otp-link",
   });
 }

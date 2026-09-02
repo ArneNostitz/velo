@@ -34,6 +34,14 @@ export function useActiveLabel(): string {
     if (match.routeId === "/calendar") {
       return "calendar";
     }
+    // Without these the sidebar falls through to "inbox" and highlights the
+    // wrong entry while the page itself is open
+    if (match.routeId === "/tasks") {
+      return "tasks";
+    }
+    if (match.routeId === "/attachments") {
+      return "attachments";
+    }
     if (match.routeId === "/help/$topic" || match.routeId === "/help") {
       return "help";
     }

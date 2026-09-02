@@ -12,8 +12,7 @@ import { useActiveLabel, useSelectedThreadId, useActiveCategory } from "@/hooks/
 import { navigateToThread, navigateToLabel } from "@/router/navigate";
 import { getThreadsForAccounts, getThreadsForCategoryAcrossAccounts, getThreadsByIds, getThreadLabelIds, deleteThread as deleteThreadFromDb, mergeThreads } from "@/services/db/threads";
 import { getCategoriesForThreads, getCategoryUnreadCounts } from "@/services/db/threadCategories";
-import { getActiveFollowUpThreadIds } from "@/services/db/followUpReminders";
-import { getTaskThreadIds } from "@/services/db/tasks";
+import { getTaskThreadIds, getReminderThreadIds } from "@/services/db/tasks";
 import { getBundleRules, getHeldThreadIds, getBundleSummaries, type DbBundleRule } from "@/services/db/bundleRules";
 import { getGmailClient } from "@/services/gmail/tokenManager";
 import { archiveThread, trashThread, permanentDeleteThread, spamThread } from "@/services/emailActions";
@@ -612,10 +611,11 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
           setCategoryUnreadCounts(new Map());
         }
 
-        // Follow-up indicators
+        // Follow-up bells, read from the reminder tasks so a unified list
+        // shows them for every mailbox rather than only the active one
         if (threadIds.length > 0) {
           promises.push(
-            getActiveFollowUpThreadIds(activeAccountId, threadIds).then((result) => {
+            getReminderThreadIds(accountIds).then((result) => {
               if (!cancelled) setFollowUpThreadIds(result);
             }).catch(() => {
               if (!cancelled) setFollowUpThreadIds(new Set());

@@ -193,7 +193,20 @@ export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply
     const lastMsg = messages[messages.length - 1]!;
     try {
       await insertFollowUpReminder(threadAccountId, thread.id, lastMsg.id, remindAt);
+      // The same thing said twice used to live in two tables. The reminder
+      // engine still fires the notification; the task is what the user sees,
+      // alongside everything else they have to do.
+      const { insertTask } = await import("@/services/db/tasks");
+      await insertTask({
+        accountId: threadAccountId,
+        title: thread.subject ? `Follow up: ${thread.subject}` : "Follow up",
+        dueDate: remindAt,
+        threadId: thread.id,
+        threadAccountId,
+        kind: "reminder",
+      });
       setHasFollowUp(true);
+      window.dispatchEvent(new CustomEvent("velo-tasks-changed"));
     } catch (err) {
       console.error("Failed to set follow-up reminder:", err);
     }
@@ -203,7 +216,12 @@ export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply
     if (!threadAccountId) return;
     try {
       await cancelFollowUpForThread(threadAccountId, thread.id);
+      // Cancelling the reminder closes the task standing for it
+      const { getReminderTaskForThread, deleteTask } = await import("@/services/db/tasks");
+      const reminderTask = await getReminderTaskForThread(threadAccountId, thread.id);
+      if (reminderTask) await deleteTask(reminderTask.id);
       setHasFollowUp(false);
+      window.dispatchEvent(new CustomEvent("velo-tasks-changed"));
     } catch (err) {
       console.error("Failed to cancel follow-up:", err);
     }

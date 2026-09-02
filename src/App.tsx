@@ -179,11 +179,26 @@ export default function App() {
     window.addEventListener("velo-toggle-command-palette", togglePalette);
     window.addEventListener("velo-toggle-shortcuts-help", toggleHelp);
     window.addEventListener("velo-toggle-ask-inbox", toggleAskInbox);
+    // A sign-in link opened from a notification goes past the phishing check
+    // rather than straight to the browser — a link in mail is the vector
+    const handleSignInLink = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as { url?: string } | undefined;
+      if (!detail?.url) return;
+      try {
+        const { openUrl } = await import("@tauri-apps/plugin-opener");
+        await openUrl(detail.url);
+      } catch (err) {
+        console.error("Failed to open the sign-in link:", err);
+      }
+    };
+    window.addEventListener("velo-open-signin-link", handleSignInLink);
+
     window.addEventListener("velo-move-to-folder", handleMoveToFolder);
     return () => {
       window.removeEventListener("velo-toggle-command-palette", togglePalette);
       window.removeEventListener("velo-toggle-shortcuts-help", toggleHelp);
       window.removeEventListener("velo-toggle-ask-inbox", toggleAskInbox);
+      window.removeEventListener("velo-open-signin-link", handleSignInLink);
       window.removeEventListener("velo-move-to-folder", handleMoveToFolder);
     };
   }, []);
