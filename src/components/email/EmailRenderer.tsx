@@ -3,7 +3,8 @@ import { ImageOff } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { stripRemoteImages, hasBlockedImages } from "@/utils/imageBlocker";
 import { addToAllowlist } from "@/services/db/imageAllowlist";
-import { escapeHtml, sanitizeHtml } from "@/utils/sanitize";
+import { sanitizeHtml } from "@/utils/sanitize";
+import { linkifyPlainText } from "@/utils/linkify";
 import { useUIStore } from "@/stores/uiStore";
 import { LinkConfirmDialog } from "./LinkConfirmDialog";
 import type { LinkAnalysis, MessageScanResult } from "@/utils/phishingDetector";
@@ -141,8 +142,9 @@ export function EmailRenderer({
   const isPlainText = !sanitizedBody;
 
   const bodyHtml = useMemo(() => {
+    // A plain-text body still has links in it — they just have no markup
     let body = sanitizedBody
-      ?? `<pre style="white-space: pre-wrap; font-family: inherit;">${escapeHtml(text ?? "")}</pre>`;
+      ?? `<pre style="white-space: pre-wrap; font-family: inherit;">${linkifyPlainText(text ?? "")}</pre>`;
 
     if (shouldBlock && sanitizedBody) {
       body = stripRemoteImages(body);
