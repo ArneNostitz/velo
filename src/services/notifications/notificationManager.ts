@@ -157,7 +157,24 @@ export function shouldNotifyForMessage(
   vipSenders: Set<string>,
   threadCategory: string | null,
   fromAddress?: string,
+  opts?: {
+    /** Mailboxes chosen in settings. Empty means every account notifies. */
+    allowedAccounts?: Set<string>;
+    accountId?: string;
+    /** A mail rule matched this message with a "Notify me" action. */
+    ruleRequested?: boolean;
+  },
 ): boolean {
+  // A mailbox the user switched off stays quiet even for a rule or a VIP —
+  // it is the coarsest choice they made, so it wins
+  const allowedAccounts = opts?.allowedAccounts;
+  if (allowedAccounts && allowedAccounts.size > 0 && opts?.accountId
+      && !allowedAccounts.has(opts.accountId)) {
+    return false;
+  }
+  // A rule saying "notify me" is an explicit instruction, so it outranks the
+  // category filter the same way a VIP does
+  if (opts?.ruleRequested) return true;
   if (!smartEnabled) return true; // Smart notifications off → notify everything
   if (fromAddress && vipSenders.has(normalizeEmail(fromAddress))) return true; // VIP always notifies
   const category = threadCategory ?? "Primary"; // uncategorized defaults to Primary

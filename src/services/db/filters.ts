@@ -14,6 +14,8 @@ export interface FilterActions {
   star?: boolean;
   markRead?: boolean;
   trash?: boolean;
+  /** Always notify for a message this rule matches, whatever the filters say. */
+  notify?: boolean;
 }
 
 export interface DbFilterRule {

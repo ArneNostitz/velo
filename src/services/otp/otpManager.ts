@@ -1,0 +1,127 @@
+import { sendNotification } from "@tauri-apps/plugin-notification";
+import { detectOtpCode, detectSignInLink } from "@/utils/otpDetector";
+import { getSetting } from "@/services/db/settings";
+
+/**
+ * One-time codes and sign-in links, surfaced the moment they arrive.
+ *
+ * A login code is worth nothing thirty seconds later, so the point is to
+ * spare the user from opening the mail at all: the code goes on the clipboard
+ * and into a notification, and a magic link becomes one click.
+ */
+
+/**
+ * How recent a message must be to act on. Without this, the first sync of an
+ * account would copy a two-year-old code over whatever the user was holding,
+ * and fire a notification for every login they have ever done.
+ */
+const MAX_AGE_MS = 10 * 60 * 1000;
+
+/** Codes already acted on, so a re-sync of the same message stays quiet. */
+const handled = new Set<string>();
+
+export interface OtpCandidate {
+  id: string;
+  subject: string | null;
+  bodyText: string | null;
+  bodyHtml: string | null;
+  date: number;
+  fromName?: string | null;
+  fromAddress?: string | null;
+}
+
+export interface OtpOutcome {
+  code: string | null;
+  linkUrl: string | null;
+  copied: boolean;
+}
+
+async function writeClipboard(text: string): Promise<boolean> {
+  try {
+    // The Rust side, deliberately: navigator.clipboard needs the document
+    // focused, and the whole point is that the user is in another app
+    const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+    await writeText(text);
+    return true;
+  } catch (err) {
+    console.error("Failed to copy one-time code:", err);
+    return false;
+  }
+}
+
+/**
+ * Act on the codes and sign-in links in a batch of newly arrived messages.
+ *
+ * Returns what was found, so callers can test it without a clipboard or a
+ * notification centre.
+ */
+export async function processIncomingCodes(
+  messages: OtpCandidate[],
+  now = Date.now(),
+): Promise<OtpOutcome[]> {
+  if (messages.length === 0) return [];
+
+  const enabled = (await getSetting("otp_detection")) !== "false";
+  if (!enabled) return [];
+  const autoCopy = (await getSetting("otp_auto_copy")) !== "false";
+
+  const outcomes: OtpOutcome[] = [];
+
+  for (const message of messages) {
+    if (handled.has(message.id)) continue;
+    if (now - message.date > MAX_AGE_MS) continue;
+
+    const match = detectOtpCode(message.subject, message.bodyText ?? stripTags(message.bodyHtml));
+    const link = match ? null : detectSignInLink(message.bodyHtml);
+    if (!match && !link) continue;
+
+    handled.add(message.id);
+    const sender = message.fromName ?? message.fromAddress ?? "";
+
+    if (match) {
+      const copied = autoCopy ? await writeClipboard(match.code) : false;
+      try {
+        sendNotification({
+          title: copied ? `Code copied: ${match.code}` : `Code: ${match.code}`,
+          body: copied
+            ? `From ${sender} — ready to paste`
+            : `From ${sender}`,
+        });
+      } catch (err) {
+        console.error("Failed to notify about a one-time code:", err);
+      }
+      outcomes.push({ code: match.code, linkUrl: null, copied });
+      continue;
+    }
+
+    if (link) {
+      try {
+        sendNotification({
+          title: "Sign-in link",
+          body: `${sender} — open Velo to use it`,
+        });
+      } catch (err) {
+        console.error("Failed to notify about a sign-in link:", err);
+      }
+      outcomes.push({ code: null, linkUrl: link.url, copied: false });
+    }
+  }
+
+  return outcomes;
+}
+
+/** Crude text from HTML, for messages that carry no plain-text part. */
+function stripTags(html: string | null): string | null {
+  if (!html) return null;
+  if (typeof DOMParser === "undefined") return html.replace(/<[^>]+>/g, " ");
+  try {
+    return new DOMParser().parseFromString(html, "text/html").body?.textContent ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Test seam: forget what has already been acted on. */
+export function resetHandledCodes(): void {
+  handled.clear();
+}

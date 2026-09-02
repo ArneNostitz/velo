@@ -6,7 +6,7 @@ import { upsertMessage } from "../db/messages";
 import { upsertAttachment } from "../db/attachments";
 import { updateAccountSyncState } from "../db/accounts";
 import { shouldNotifyForMessage, queueNewEmailNotification } from "../notifications/notificationManager";
-import { applyFiltersToMessages } from "../filters/filterEngine";
+import { applyFiltersToMessages, messagesRequestingNotify } from "../filters/filterEngine";
 import { getSetting } from "../db/settings";
 import { getMutedThreadIds } from "../db/threads";
 import { getThreadCategory } from "../db/threadCategories";
@@ -363,6 +363,11 @@ export async function deltaSync(
       ((await getSetting("notify_categories")) ?? "Primary").split(",").map((s) => s.trim()).filter(Boolean),
     );
     const vipSenders = smartNotifications ? await getVipSenders(accountId) : new Set<string>();
+    // Mailboxes the user chose to hear from; empty means all of them
+    const notifyAccountsSetting = await getSetting("notify_accounts");
+    const allowedAccounts = new Set(
+      notifyAccountsSetting ? notifyAccountsSetting.split(",").filter(Boolean) : [],
+    );
 
     // Re-fetch affected threads in parallel (max 5 concurrent)
     const threadIds = [...affectedThreadIds];
@@ -398,12 +403,55 @@ export async function deltaSync(
             }
           }
 
+          // One-time codes and sign-in links, before the ordinary notification:
+          // a login code is worthless a minute later, so it gets announced (and
+          // copied) whatever the category filters say
+          try {
+            const { processIncomingCodes } = await import("@/services/otp/otpManager");
+            await processIncomingCodes(
+              parsedMessages
+                .filter((m) => newInboxMessageIds.has(m.id))
+                .map((m) => ({
+                  id: m.id,
+                  subject: m.subject,
+                  bodyText: m.bodyText,
+                  bodyHtml: m.bodyHtml,
+                  date: m.date,
+                  fromName: m.fromName,
+                  fromAddress: m.fromAddress,
+                })),
+            );
+          } catch (err) {
+            console.error("One-time code detection failed:", err);
+          }
+
+          // Rules that ask to be told about a match, evaluated before the
+          // filters run: archiving a message should not silence it
+          const notifyRequestedIds = await messagesRequestingNotify(
+            accountId,
+            parsedMessages
+              .filter((m) => newInboxMessageIds.has(m.id))
+              .map((m) => ({
+                id: m.id,
+                fromAddress: m.fromAddress,
+                subject: m.subject,
+                toAddresses: m.toAddresses,
+              })),
+          );
+
           // Send desktop notifications for new unread inbox messages (smart-filtered)
           // Skip notifications for muted threads
           for (const parsed of parsedMessages) {
             if (newInboxMessageIds.has(parsed.id) && !mutedThreadIds.has(threadId)) {
               const fromAddr = parsed.fromAddress ?? undefined;
-              if (shouldNotifyForMessage(smartNotifications, notifyCategories, vipSenders, await getThreadCategory(accountId, threadId), fromAddr)) {
+              if (shouldNotifyForMessage(
+                smartNotifications,
+                notifyCategories,
+                vipSenders,
+                await getThreadCategory(accountId, threadId),
+                fromAddr,
+                { allowedAccounts, accountId, ruleRequested: notifyRequestedIds.has(parsed.id) },
+              )) {
                 const sender = parsed.fromName ?? parsed.fromAddress ?? "Unknown";
                 queueNewEmailNotification(
                   sender,

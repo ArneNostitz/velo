@@ -31,6 +31,7 @@ export function FilterEditor() {
   const [actionArchive, setActionArchive] = useState(false);
   const [actionStar, setActionStar] = useState(false);
   const [actionMarkRead, setActionMarkRead] = useState(false);
+  const [actionNotify, setActionNotify] = useState(false);
   const [actionTrash, setActionTrash] = useState(false);
 
   const loadFilters = useCallback(async () => {
@@ -80,6 +81,7 @@ export function FilterEditor() {
     if (actionArchive) a.archive = true;
     if (actionStar) a.star = true;
     if (actionMarkRead) a.markRead = true;
+    if (actionNotify) a.notify = true;
     if (actionTrash) a.trash = true;
     return a;
   };
@@ -122,6 +124,7 @@ export function FilterEditor() {
     setActionArchive(actions.archive ?? false);
     setActionStar(actions.star ?? false);
     setActionMarkRead(actions.markRead ?? false);
+    setActionNotify(actions.notify ?? false);
     setActionTrash(actions.trash ?? false);
     setShowForm(true);
   }, []);
@@ -288,6 +291,13 @@ export function FilterEditor() {
                 <label className="flex items-center gap-1.5 text-xs text-text-secondary">
                   <input type="checkbox" checked={actionTrash} onChange={(e) => setActionTrash(e.target.checked)} className="rounded" />
                   Trash
+                </label>
+                <label
+                  className="flex items-center gap-1.5 text-xs text-text-secondary"
+                  title="Always notify for a message this rule matches, whatever the notification filters say"
+                >
+                  <input type="checkbox" checked={actionNotify} onChange={(e) => setActionNotify(e.target.checked)} className="rounded" />
+                  Notify me
                 </label>
               </div>
             </div>
