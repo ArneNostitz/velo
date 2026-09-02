@@ -703,6 +703,13 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     };
   }, [loadThreads, accountScopeKey, activeLabel]);
 
+  // A merge removes a row from every list it appeared in
+  useEffect(() => {
+    const handler = () => { loadThreads(); };
+    window.addEventListener("velo-threads-merged", handler);
+    return () => window.removeEventListener("velo-threads-merged", handler);
+  }, [loadThreads]);
+
   // A long initial sync stores threads as it goes; surface them while it runs
   // rather than leaving the list empty. Skipped during a search, since reloading
   // the label view would drop the user's results mid-typing.
