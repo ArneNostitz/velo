@@ -4,8 +4,8 @@ const mockNotify = vi.fn();
 const mockWriteText = vi.fn(() => Promise.resolve());
 const settings = new Map<string, string>();
 
-vi.mock("@tauri-apps/plugin-notification", () => ({
-  sendNotification: (...args: unknown[]) => mockNotify(...args),
+vi.mock("@/services/notifications/notificationManager", () => ({
+  notifyOneTimeCode: (...args: unknown[]) => mockNotify(...args),
 }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
   writeText: (...args: unknown[]) => mockWriteText(...args),
@@ -43,7 +43,7 @@ describe("processIncomingCodes", () => {
     expect(out).toEqual([{ code: "493028", linkUrl: null, copied: true }]);
     expect(mockWriteText).toHaveBeenCalledWith("493028");
     expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Code copied: 493028" }),
+      expect.objectContaining({ code: "493028", copied: true }),
     );
   });
 
@@ -52,7 +52,7 @@ describe("processIncomingCodes", () => {
     const out = await processIncomingCodes([codeMail()], NOW);
     expect(mockWriteText).not.toHaveBeenCalled();
     expect(out[0]!.copied).toBe(false);
-    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: "Code: 493028" }));
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ code: "493028", copied: false }));
   });
 
   it("does nothing when detection is switched off", async () => {
@@ -82,7 +82,9 @@ describe("processIncomingCodes", () => {
       }),
     ], NOW);
     expect(out).toEqual([{ code: null, linkUrl: "https://app.example.com/magic?t=1", copied: false }]);
-    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: "Sign-in link" }));
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ linkUrl: "https://app.example.com/magic?t=1" }),
+    );
   });
 
   it("stays quiet for ordinary mail", async () => {
@@ -94,9 +96,17 @@ describe("processIncomingCodes", () => {
   });
 
   it("survives a clipboard that refuses", async () => {
-    mockWriteText.mockRejectedValueOnce(new Error("denied"));
+    mockWriteText.mockRejectedValue(new Error("denied"));
+    // The browser fallback is unavailable in jsdom too
+    Object.assign(navigator, { clipboard: { writeText: () => Promise.reject(new Error("no")) } });
     const out = await processIncomingCodes([codeMail()], NOW);
     expect(out[0]!.copied).toBe(false);
     expect(mockNotify).toHaveBeenCalled();
+  });
+  it("carries the thread so clicking the notification can open the message", async () => {
+    await processIncomingCodes([codeMail({ threadId: "t-1", accountId: "a-1" })], NOW);
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "t-1", accountId: "a-1" }),
+    );
   });
 });

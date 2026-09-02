@@ -5,16 +5,17 @@ import {
   Trash2,
   CheckCircle2,
 } from "lucide-react";
-import { useAccountStore } from "@/stores/accountStore";
+import { useAccountStore, listedAccountIds } from "@/stores/accountStore";
 import { useTaskStore, type TaskGroupBy, type TaskFilterStatus } from "@/stores/taskStore";
 import {
-  getTasksForAccount,
+  getTasksForAccounts,
+  updateTask,
   insertTask,
   completeTask,
   uncompleteTask,
   deleteTask as dbDeleteTask,
   getSubtasks,
-  getIncompleteTaskCount,
+  getIncompleteTaskCountForAccounts,
   type DbTask,
   type TaskPriority,
 } from "@/services/db/tasks";
@@ -33,6 +34,15 @@ const PRIORITY_ORDER: Record<TaskPriority, number> = {
 
 export function TasksPage() {
   const accounts = useAccountStore((s) => s.accounts);
+  const activeAccountId = useAccountStore((s) => s.activeAccountId);
+  const unifiedInbox = useAccountStore((s) => s.unifiedInbox);
+  // A task belongs to the person, not the mailbox — scoping the page to the
+  // active account hid every task made in another one
+  const accountIds = useMemo(
+    () => listedAccountIds({ accounts, activeAccountId, unifiedInbox }),
+    [accounts, activeAccountId, unifiedInbox],
+  );
+  const accountScopeKey = accountIds.join(",");
   const activeAccount = accounts.find((a) => a.isActive);
   const accountId = activeAccount?.id ?? null;
 
@@ -54,16 +64,23 @@ export function TasksPage() {
 
   // Load tasks
   const loadTasks = useCallback(async () => {
-    if (!accountId) return;
     const includeCompleted = filterStatus !== "incomplete";
-    const loaded = await getTasksForAccount(accountId, includeCompleted);
+    const loaded = await getTasksForAccounts(accountIds, includeCompleted);
     setTasks(loaded);
-    const count = await getIncompleteTaskCount(accountId);
+    const count = await getIncompleteTaskCountForAccounts(accountIds);
     useTaskStore.getState().setIncompleteCount(count);
-  }, [accountId, filterStatus, setTasks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountScopeKey, filterStatus, setTasks]);
 
   useEffect(() => {
     loadTasks();
+  }, [loadTasks]);
+
+  // A reminder set or cancelled from a thread is a task appearing or leaving
+  useEffect(() => {
+    const handler = () => { loadTasks(); };
+    window.addEventListener("velo-tasks-changed", handler);
+    return () => window.removeEventListener("velo-tasks-changed", handler);
   }, [loadTasks]);
 
   // Load subtasks
@@ -176,6 +193,11 @@ export function TasksPage() {
     }
     await loadTasks();
   }, [tasks, loadTasks]);
+
+  const handleSetDueDate = useCallback(async (id: string, dueDate: number | null) => {
+    await updateTask(id, { dueDate });
+    await loadTasks();
+  }, [loadTasks]);
 
   const handleDelete = useCallback(async (id: string) => {
     await dbDeleteTask(id);
@@ -333,6 +355,7 @@ export function TasksPage() {
                       onToggleComplete={handleToggleComplete}
                       onSelect={setSelectedTaskId}
                       onDelete={handleDelete}
+                      onSetDueDate={handleSetDueDate}
                       isSelected={selectedTaskId === task.id}
                     />
                   ))}

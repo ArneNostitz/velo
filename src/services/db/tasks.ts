@@ -11,6 +11,8 @@ export interface DbTask {
   is_completed: number;
   completed_at: number | null;
   due_date: number | null;
+  /** "task" or "reminder" — a follow-up that grew a bell. */
+  kind: TaskKind;
   parent_id: string | null;
   thread_id: string | null;
   thread_account_id: string | null;
@@ -102,6 +104,8 @@ export async function getSubtasks(parentId: string): Promise<DbTask[]> {
   );
 }
 
+export type TaskKind = "task" | "reminder";
+
 export async function insertTask(task: {
   id?: string;
   accountId: string | null;
@@ -115,12 +119,13 @@ export async function insertTask(task: {
   sortOrder?: number;
   recurrenceRule?: string | null;
   tagsJson?: string;
+  kind?: TaskKind;
 }): Promise<string> {
   const db = await getDb();
   const id = task.id ?? crypto.randomUUID();
   await db.execute(
-    `INSERT INTO tasks (id, account_id, title, description, priority, due_date, parent_id, thread_id, thread_account_id, sort_order, recurrence_rule, tags_json)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    `INSERT INTO tasks (id, account_id, title, description, priority, due_date, parent_id, thread_id, thread_account_id, sort_order, recurrence_rule, tags_json, kind)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [
       id,
       task.accountId,
@@ -134,6 +139,7 @@ export async function insertTask(task: {
       task.sortOrder ?? 0,
       task.recurrenceRule ?? null,
       task.tagsJson ?? "[]",
+      task.kind ?? "task",
     ],
   );
   return id;
@@ -274,4 +280,87 @@ export async function deleteTaskTag(
     "DELETE FROM task_tags WHERE tag = $1 AND account_id = $2",
     [tag, accountId],
   );
+}
+
+/**
+ * Tasks across several mailboxes, for the unified list.
+ *
+ * The page is not scoped to one account the way a label is: a task belongs to
+ * the person, not the mailbox, and scoping it to the active account hid every
+ * task made in another one.
+ */
+export async function getTasksForAccounts(
+  accountIds: string[],
+  includeCompleted = false,
+): Promise<DbTask[]> {
+  const db = await getDb();
+  if (accountIds.length === 0) {
+    return db.select<DbTask[]>(
+      `SELECT * FROM tasks WHERE account_id IS NULL AND parent_id IS NULL
+         ${includeCompleted ? "" : "AND is_completed = 0"}
+       ORDER BY is_completed ASC, sort_order ASC, created_at DESC`,
+    );
+  }
+  const placeholders = accountIds.map((_, i) => `$${i + 1}`).join(", ");
+  return db.select<DbTask[]>(
+    `SELECT * FROM tasks
+     WHERE (account_id IN (${placeholders}) OR account_id IS NULL) AND parent_id IS NULL
+       ${includeCompleted ? "" : "AND is_completed = 0"}
+     ORDER BY is_completed ASC, sort_order ASC, created_at DESC`,
+    accountIds,
+  );
+}
+
+/** Outstanding tasks across several mailboxes, for the sidebar badge. */
+export async function getIncompleteTaskCountForAccounts(
+  accountIds: string[],
+): Promise<number> {
+  const db = await getDb();
+  if (accountIds.length === 0) return 0;
+  const placeholders = accountIds.map((_, i) => `$${i + 1}`).join(", ");
+  const rows = await db.select<{ count: number }[]>(
+    `SELECT COUNT(*) AS count FROM tasks
+     WHERE (account_id IN (${placeholders}) OR account_id IS NULL)
+       AND parent_id IS NULL AND is_completed = 0`,
+    accountIds,
+  );
+  return rows[0]?.count ?? 0;
+}
+
+/**
+ * The reminder task standing for a thread's follow-up, if there is one.
+ *
+ * "Remind me if no reply" and "add a task" were two features doing the same
+ * job with separate storage. A reminder is now a task carrying kind
+ * "reminder", so it shares the list, due dates, completion and search — and
+ * the mail list can still mark it with a bell rather than a checkbox.
+ */
+export async function getReminderTaskForThread(
+  accountId: string,
+  threadId: string,
+): Promise<DbTask | null> {
+  const db = await getDb();
+  const rows = await db.select<DbTask[]>(
+    `SELECT * FROM tasks
+     WHERE thread_account_id = $1 AND thread_id = $2 AND kind = 'reminder' AND is_completed = 0
+     ORDER BY created_at DESC LIMIT 1`,
+    [accountId, threadId],
+  );
+  return rows[0] ?? null;
+}
+
+/** Thread ids carrying an open reminder, for the bell in the mail list. */
+export async function getReminderThreadIds(
+  accountIds: string[],
+): Promise<Set<string>> {
+  if (accountIds.length === 0) return new Set();
+  const db = await getDb();
+  const placeholders = accountIds.map((_, i) => `$${i + 1}`).join(", ");
+  const rows = await db.select<{ thread_id: string }[]>(
+    `SELECT DISTINCT thread_id FROM tasks
+     WHERE thread_account_id IN (${placeholders})
+       AND kind = 'reminder' AND is_completed = 0 AND thread_id IS NOT NULL`,
+    accountIds,
+  );
+  return new Set(rows.map((r) => r.thread_id));
 }

@@ -363,11 +363,12 @@ export async function deltaSync(
       ((await getSetting("notify_categories")) ?? "Primary").split(",").map((s) => s.trim()).filter(Boolean),
     );
     const vipSenders = smartNotifications ? await getVipSenders(accountId) : new Set<string>();
-    // Mailboxes the user chose to hear from; empty means all of them
+    // Mailboxes the user chose to hear from. Never set means every account —
+    // the setting has not been touched. Set and empty means none of them.
     const notifyAccountsSetting = await getSetting("notify_accounts");
-    const allowedAccounts = new Set(
-      notifyAccountsSetting ? notifyAccountsSetting.split(",").filter(Boolean) : [],
-    );
+    const allowedAccounts = notifyAccountsSetting === null
+      ? undefined
+      : new Set(notifyAccountsSetting.split(",").filter(Boolean));
 
     // Re-fetch affected threads in parallel (max 5 concurrent)
     const threadIds = [...affectedThreadIds];
@@ -413,6 +414,8 @@ export async function deltaSync(
                 .filter((m) => newInboxMessageIds.has(m.id))
                 .map((m) => ({
                   id: m.id,
+                  threadId: m.threadId,
+                  accountId,
                   subject: m.subject,
                   bodyText: m.bodyText,
                   bodyHtml: m.bodyHtml,

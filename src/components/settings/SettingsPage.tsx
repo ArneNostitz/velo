@@ -750,6 +750,11 @@ export function SettingsPage() {
                   </Section>
 
                   <Section title="One-time codes & sign-in links">
+                    <p className="text-xs text-text-tertiary mb-2">
+                      These stand on their own. A code or a sign-in link is announced
+                      even when every mailbox below is switched off — it is worthless
+                      a minute later, which is the opposite of ordinary mail.
+                    </p>
                     <ToggleRow
                       label="Detect login codes"
                       description="Spot a verification code in arriving mail and announce it, so you never have to open the message"
@@ -776,7 +781,8 @@ export function SettingsPage() {
 
                   <Section title="Which mailboxes">
                     <p className="text-xs text-text-tertiary mb-2">
-                      Nothing selected means every account notifies.
+                      Only the mailboxes you pick will notify. Pick none for silence —
+                      one-time codes and sign-in links come through regardless.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {accounts.map((account) => (

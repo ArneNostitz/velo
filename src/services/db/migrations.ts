@@ -831,6 +831,18 @@ export const MIGRATIONS = [
         ON threads(account_id, merged_into);
     `,
   },
+  {
+    version: 30,
+    description: "Follow-up reminders are tasks with a bell on them",
+    sql: `
+      -- "Remind me if no reply" and "add a task" were two features doing the
+      -- same job with different storage. A reminder is now a task that knows
+      -- it is one, so both appear in the same list and share due dates,
+      -- completion and search.
+      ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'task';
+      CREATE INDEX IF NOT EXISTS idx_tasks_kind ON tasks(kind, is_completed);
+    `,
+  },
 ];
 
 /**
