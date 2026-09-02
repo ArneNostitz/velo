@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useMemo, useState, useRef, useCallback, useEffect } from "react";
+import { useIdleStatusStore, describeIdleState, type IdleState } from "@/stores/idleStatusStore";
 import { useAccountStore, mailAccounts, type Account } from "@/stores/accountStore";
 import { ChevronDown, Check, Plus, UserPlus, Layers, RefreshCw } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -39,6 +40,25 @@ export function AccountSwitcher({
   useClickOutside(dropdownRef, () => setOpen(false));
 
   const activeAccount = accounts.find((a) => a.id === activeAccountId);
+
+  // Instant delivery, summarised for what the tooltip is about: one account,
+  // or every listed one when the inbox is unified
+  const idleStatuses = useIdleStatusStore((s) => s.statuses);
+  const idleSummary = useMemo(() => {
+    const ids = unifiedInbox
+      ? mailAccounts(accounts).map((a) => a.id)
+      : activeAccount ? [activeAccount.id] : [];
+    const states = ids.map((id) => idleStatuses[id] ?? "off");
+    if (states.length === 0) return { state: "off" as IdleState, label: describeIdleState("off") };
+    const connected = states.filter((st) => st === "connected").length;
+    if (states.length === 1) {
+      return { state: states[0]!, label: describeIdleState(states[0]) };
+    }
+    if (connected === states.length) return { state: "connected" as IdleState, label: "Instant delivery on" };
+    if (states.some((st) => st === "connecting")) return { state: "connecting" as IdleState, label: `Connecting… ${connected}/${states.length} live` };
+    if (connected > 0) return { state: "failed" as IdleState, label: `Instant delivery on ${connected}/${states.length}` };
+    return { state: states.includes("failed") ? "failed" as IdleState : "off" as IdleState, label: describeIdleState(states.includes("failed") ? "failed" : "off") };
+  }, [idleStatuses, unifiedInbox, accounts, activeAccount]);
   // Unified only makes sense with more than one mailbox to unify
   const canUnify = mailAccounts(accounts).length > 1;
 
@@ -204,6 +224,30 @@ export function AccountSwitcher({
               {syncMessage ?? (syncState === "error" ? "Sync failed" : "Syncing...")}
             </div>
           )}
+          {/* Whether the server is pushing to us, or we are still asking it */}
+          <div
+            className={`text-[0.6875rem] mt-1 flex items-center gap-1.5 ${
+              idleSummary.state === "connected"
+                ? "text-success"
+                : idleSummary.state === "failed"
+                  ? "text-warning"
+                  : "text-text-tertiary"
+            }`}
+          >
+            <span
+              aria-hidden="true"
+              className={`inline-block w-1.5 h-1.5 rounded-full ${
+                idleSummary.state === "connected"
+                  ? "bg-success"
+                  : idleSummary.state === "connecting"
+                    ? "bg-accent animate-pulse"
+                    : idleSummary.state === "failed"
+                      ? "bg-warning"
+                      : "bg-text-tertiary"
+              }`}
+            />
+            {idleSummary.label}
+          </div>
           <div className="text-[0.625rem] text-text-tertiary mt-1">
             Click avatar to refresh · F5
           </div>

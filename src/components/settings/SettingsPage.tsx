@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useUIStore, type SettingsTab } from "@/stores/uiStore";
+import { useIdleStatusStore, describeIdleState, explainIdleFailure } from "@/stores/idleStatusStore";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { useAccountStore } from "@/stores/accountStore";
 import { getSetting, setSetting, getSecureSetting, setSecureSetting } from "@/services/db/settings";
 import { PROVIDER_MODELS } from "@/services/ai/types";
@@ -82,6 +84,8 @@ export function SettingsPage() {
   const readingPanePosition = useUIStore((s) => s.readingPanePosition);
   const setReadingPanePosition = useUIStore((s) => s.setReadingPanePosition);
   const [imapIdle, setImapIdle] = useState(true);
+  const idleStatuses = useIdleStatusStore((s) => s.statuses);
+  const idleReasons = useIdleStatusStore((s) => s.reasons);
   const [otpDetection, setOtpDetection] = useState(true);
   const [otpAutoCopy, setOtpAutoCopy] = useState(true);
   const [notifyAccounts, setNotifyAccounts] = useState<Set<string>>(() => new Set());
@@ -796,6 +800,58 @@ export function SettingsPage() {
                         else await stopIdleWatchers();
                       }}
                     />
+                    {imapIdle && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs text-text-tertiary">
+                            Whether each server is actually pushing to Velo right now
+                          </span>
+                          <button
+                            onClick={async () => {
+                              const { startIdleWatchers } = await import("@/services/imap/idleManager");
+                              await startIdleWatchers();
+                            }}
+                            className="text-xs text-accent hover:underline"
+                          >
+                            Reconnect
+                          </button>
+                        </div>
+                        <div className="space-y-1">
+                          {accounts.map((account) => {
+                            const state = idleStatuses[account.id] ?? "off";
+                            const reason = idleReasons[account.id];
+                            const dot =
+                              state === "connected" ? "bg-success"
+                              : state === "connecting" ? "bg-accent animate-pulse"
+                              : state === "failed" ? "bg-warning"
+                              : "bg-text-tertiary";
+                            const explanation =
+                              state === "connected"
+                                ? "The server is holding a connection open and will say the moment mail arrives."
+                                : state === "connecting"
+                                  ? "Asking the server to hold a connection. Usually a few seconds."
+                                  : state === "failed"
+                                    ? explainIdleFailure(reason)
+                                    : "This account is not being watched. It still syncs on the timer.";
+                            return (
+                              <Tooltip key={account.id} content={explanation} placement="left">
+                                <div className="flex items-center gap-2 py-1.5 px-3 bg-bg-secondary rounded-md text-xs cursor-default">
+                                  <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                                  <span className="text-text-primary truncate flex-1">{account.email}</span>
+                                  <span className={`shrink-0 ${
+                                    state === "connected" ? "text-success"
+                                    : state === "failed" ? "text-warning"
+                                    : "text-text-tertiary"
+                                  }`}>
+                                    {describeIdleState(state)}
+                                  </span>
+                                </div>
+                              </Tooltip>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </Section>
 
                   <Section title="Which mailboxes">

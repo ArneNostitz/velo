@@ -84,3 +84,43 @@ describe("startIdleWatchers", () => {
     expect(mockInvoke).toHaveBeenCalledWith("imap_stop_all_idle");
   });
 });
+
+import { useIdleStatusStore } from "@/stores/idleStatusStore";
+
+describe("startIdleWatchers - what it tells the status store", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    settings.clear();
+    accounts = [];
+    await stopIdleWatchers();
+    vi.clearAllMocks();
+  });
+
+  it("marks an account connecting once the watcher is asked for", async () => {
+    accounts = [gmail];
+    await startIdleWatchers();
+    expect(useIdleStatusStore.getState().statuses.g1).toBe("connecting");
+  });
+
+  it("marks a refused account failed, and keeps the server's reason", async () => {
+    mockInvoke.mockImplementationOnce(() => Promise.reject(new Error("AUTHENTICATIONFAILED")));
+    accounts = [gmail];
+    await startIdleWatchers();
+    const store = useIdleStatusStore.getState();
+    expect(store.statuses.g1).toBe("failed");
+    expect(store.reasons.g1).toContain("AUTHENTICATIONFAILED");
+  });
+
+  it("marks an account off when it cannot idle at all", async () => {
+    accounts = [{ ...imap, imap_host: null }];
+    await startIdleWatchers();
+    expect(useIdleStatusStore.getState().statuses.i1).toBe("off");
+  });
+
+  it("forgets everything when the watchers stop", async () => {
+    accounts = [gmail];
+    await startIdleWatchers();
+    await stopIdleWatchers();
+    expect(useIdleStatusStore.getState().statuses).toEqual({});
+  });
+});
