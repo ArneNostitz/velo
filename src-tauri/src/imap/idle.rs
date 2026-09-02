@@ -121,13 +121,12 @@ pub async fn stop_all(registry: Arc<IdleRegistry>) {
 /// it again.
 fn is_permanent(err: &str) -> bool {
     let e = err.to_ascii_lowercase();
+    // A DNS lookup failing is a Wi-Fi flap, not a misconfiguration — it
+    // stopped a watcher for good on one blip, so it is not in this list
     e.contains("unknown security mode")
         || e.contains("authenticationfailed")
         || e.contains("invalid credentials")
         || e.contains("[auth]")
-        || e.contains("failed to resolve")
-        || e.contains("no such host")
-        || e.contains("nodename nor servname")
 }
 
 /// Reconnect until cancelled. A dropped connection is normal — servers close

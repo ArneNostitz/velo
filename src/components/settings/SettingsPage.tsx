@@ -1161,8 +1161,8 @@ export function SettingsPage() {
                                     onClick={async () => {
                                       setReconnecting((prev) => ({ ...prev, [account.id]: true }));
                                       try {
-                                        const { startIdleWatchers } = await import("@/services/imap/idleManager");
-                                        await startIdleWatchers();
+                                        const { reconnectAccount } = await import("@/services/imap/idleManager");
+                                        await reconnectAccount(account.id);
                                       } finally {
                                         setReconnecting((prev) => ({ ...prev, [account.id]: false }));
                                       }

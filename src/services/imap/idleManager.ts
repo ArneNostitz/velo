@@ -74,7 +74,6 @@ function idleConfigFor(account: DbAccount, accessToken?: string) {
  * this.
  */
 export async function startIdleWatchers(): Promise<void> {
-  const { setStatus } = useIdleStatusStore.getState();
   const enabled = (await getSetting("imap_idle")) !== "false";
   if (!enabled) {
     await stopIdleWatchers();
@@ -86,34 +85,54 @@ export async function startIdleWatchers(): Promise<void> {
   const accounts = await getAllAccounts();
   for (const account of accounts) {
     if (account.is_active === 0) continue;
-    try {
-      let accessToken: string | undefined;
-      if (account.auth_method !== "password") {
-        const { ensureFreshToken } = await import("@/services/oauth/oauthTokenManager");
-        accessToken = await ensureFreshToken(account);
-      }
-      const config = idleConfigFor(account, accessToken);
-      if (!config) {
-        setStatus(account.id, "off");
-        continue;
-      }
-
-      // "connecting" until the watcher reports in — the Rust side owns the
-      // truth from here, and it may take a few seconds
-      setStatus(account.id, "connecting");
-      await invoke("imap_start_idle", { accountId: account.id, config });
-      failedAccounts.delete(account.id);
-    } catch (err) {
-      // Not fatal: the account keeps syncing on the timer
-      failedAccounts.add(account.id);
-      setStatus(account.id, "failed", String(err));
-      console.warn(`IDLE unavailable for ${account.email}:`, err);
-      reportError(`Instant delivery unavailable for ${account.email}`, explainIdleFailure(String(err)), {
-        label: "Reconnect",
-        run: () => startIdleWatchers(),
-      });
-    }
+    await startIdleWatcher(account);
   }
+}
+
+/** Start (or restart) the watcher for one account. */
+async function startIdleWatcher(account: DbAccount): Promise<void> {
+  const { setStatus } = useIdleStatusStore.getState();
+  try {
+    let accessToken: string | undefined;
+    if (account.auth_method !== "password") {
+      const { ensureFreshToken } = await import("@/services/oauth/oauthTokenManager");
+      accessToken = await ensureFreshToken(account);
+    }
+    const config = idleConfigFor(account, accessToken);
+    if (!config) {
+      setStatus(account.id, "off");
+      return;
+    }
+
+    // "connecting" until the watcher reports in — the Rust side owns the
+    // truth from here, and it may take a few seconds
+    setStatus(account.id, "connecting");
+    await invoke("imap_start_idle", { accountId: account.id, config });
+    failedAccounts.delete(account.id);
+  } catch (err) {
+    // Not fatal: the account keeps syncing on the timer
+    failedAccounts.add(account.id);
+    setStatus(account.id, "failed", String(err));
+    console.warn(`IDLE unavailable for ${account.email}:`, err);
+    reportError(`Instant delivery unavailable for ${account.email}`, explainIdleFailure(String(err)), {
+      label: "Reconnect",
+      run: () => reconnectAccount(account.id),
+    });
+  }
+}
+
+/**
+ * Reconnect one account — not all of them. Pressing Reconnect on a row
+ * used to restart every watcher, which is confusing to watch and pointless
+ * for the four that were fine.
+ */
+export async function reconnectAccount(accountId: string): Promise<void> {
+  const enabled = (await getSetting("imap_idle")) !== "false";
+  if (!enabled) return;
+  await attachListeners();
+  const account = (await getAllAccounts()).find((a) => a.id === accountId);
+  if (!account || account.is_active === 0) return;
+  await startIdleWatcher(account);
 }
 
 /** Stop every watcher and detach the listeners. */
@@ -163,7 +182,7 @@ async function attachListeners(): Promise<void> {
       // Same title + detail on every retry collapses into one toast
       reportError("Instant delivery stopped", explainIdleFailure(event.payload.error), {
         label: "Reconnect",
-        run: () => startIdleWatchers(),
+        run: () => reconnectAccount(event.payload.account_id),
       });
     },
   );

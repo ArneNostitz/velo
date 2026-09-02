@@ -377,3 +377,19 @@ body {
   animation: none !important;
   transition-duration: 0.01ms !important;
 }
+
+/* A spinner is information, not decoration: it is the only thing saying
+ * "this is still working". Reduce-motion slows it rather than freezing it —
+ * a frozen spinner reads as a stuck control, which is the opposite of what
+ * the setting is for. */
+.spinner-motion {
+  animation: spin 1s linear infinite;
+}
+.reduce-motion .spinner-motion {
+  animation: spin 1.6s linear infinite !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner-motion {
+    animation: spin 1.6s linear infinite !important;
+  }
+}
