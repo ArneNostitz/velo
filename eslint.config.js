@@ -12,7 +12,18 @@ import reactHooks from "eslint-plugin-react-hooks";
  */
 export default tseslint.config(
   {
-    ignores: ["dist/**", "src-tauri/**", "landing/**", "node_modules/**"],
+    // Patterns are anchored at the config's directory, so a bare "src-tauri/**"
+    // misses a nested checkout — a git worktree under .claude/worktrees/ puts a
+    // second src-tauri/target inside the repo, and linting a release build's
+    // compressed codegen assets fails with a parse error on every one of them.
+    ignores: [
+      "**/dist/**",
+      "**/src-tauri/**",
+      "**/target/**",
+      "**/landing/**",
+      "**/node_modules/**",
+      ".claude/**",
+    ],
   },
   {
     files: ["src/**/*.{ts,tsx}"],
