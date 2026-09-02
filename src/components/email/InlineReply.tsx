@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { reportError } from "@/stores/toastStore";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -242,7 +243,7 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
             await upsertContact(addr, null);
           }
         } catch (err) {
-          console.error("Failed to send inline reply:", err);
+          reportError("Reply not sent", err);
         } finally {
           setUndoSendVisible(false);
         }
@@ -255,7 +256,7 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
       setMode(null);
       onSent();
     } catch (err) {
-      console.error("Failed to send:", err);
+      reportError("Reply not sent", err);
     } finally {
       setSending(false);
     }

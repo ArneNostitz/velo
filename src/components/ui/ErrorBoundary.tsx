@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { reportError } from "@/stores/toastStore";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -23,6 +24,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error(`[ErrorBoundary${this.props.name ? `: ${this.props.name}` : ""}]`, error, errorInfo);
+    // The pane shows its own fallback, but a toast says which part broke
+    // even when that pane is scrolled away or hidden
+    reportError(`${this.props.name ?? "A part of the app"} crashed`, error);
   }
 
   render(): ReactNode {

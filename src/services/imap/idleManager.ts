@@ -3,7 +3,8 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getAllAccounts, type DbAccount } from "@/services/db/accounts";
 import { getSetting } from "@/services/db/settings";
 import { buildImapConfig } from "./imapConfigBuilder";
-import { useIdleStatusStore } from "@/stores/idleStatusStore";
+import { useIdleStatusStore, explainIdleFailure } from "@/stores/idleStatusStore";
+import { reportError } from "@/stores/toastStore";
 
 /**
  * Let the mail server say when something changed, instead of asking it.
@@ -107,6 +108,10 @@ export async function startIdleWatchers(): Promise<void> {
       failedAccounts.add(account.id);
       setStatus(account.id, "failed", String(err));
       console.warn(`IDLE unavailable for ${account.email}:`, err);
+      reportError(`Instant delivery unavailable for ${account.email}`, explainIdleFailure(String(err)), {
+        label: "Reconnect",
+        run: () => startIdleWatchers(),
+      });
     }
   }
 }
@@ -155,6 +160,11 @@ async function attachListeners(): Promise<void> {
       console.warn(
         `IDLE dropped for ${event.payload.account_id}: ${event.payload.error}`,
       );
+      // Same title + detail on every retry collapses into one toast
+      reportError("Instant delivery stopped", explainIdleFailure(event.payload.error), {
+        label: "Reconnect",
+        run: () => startIdleWatchers(),
+      });
     },
   );
 

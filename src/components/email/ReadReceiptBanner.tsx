@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { reportError } from "@/stores/toastStore";
 import { CheckCheck, X } from "lucide-react";
 import type { DbMessage } from "@/services/db/messages";
 import { useAccountStore } from "@/stores/accountStore";
@@ -87,7 +88,7 @@ export function ReadReceiptBanner({ message }: ReadReceiptBannerProps) {
       await sendReadReceipt(message, false);
       setState("sent");
     } catch (err) {
-      console.error("Failed to send read receipt:", err);
+      reportError("Read receipt not sent", err);
       setState("failed");
     }
   };
