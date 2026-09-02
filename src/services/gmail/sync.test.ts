@@ -38,6 +38,10 @@ vi.mock("../filters/filterEngine", () => ({
 vi.mock("@/services/otp/otpManager", () => ({
   processIncomingCodes: vi.fn(() => Promise.resolve([])),
 }));
+vi.mock("@/services/threading/threadLinker", () => ({
+  linkSplitThreads: vi.fn(() => Promise.resolve(0)),
+  linkThreadsBySubject: vi.fn(() => Promise.resolve(0)),
+}));
 vi.mock("@/services/ai/categorizationManager", () => ({
   categorizeNewThreads: vi.fn(),
 }));

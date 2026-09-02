@@ -41,8 +41,22 @@ const KEYWORDS = [
  */
 const CODE_PATTERN = /\b(?:\d[\d  -]{2,10}\d|[A-Z0-9]{6,8})\b/g;
 
+/**
+ * A bare "code" is far weaker evidence than "verification code", but plenty
+ * of senders write nothing else — "ODER DIESER CODE" above the digits. Taken
+ * only when no word nearby turns it into a different kind of code.
+ */
+const WEAK_KEYWORDS = ["code", "kode", "codigo", "código", "codice", "pin"];
+
+/** Words that make a nearby "code" something other than a login code. */
+const NOT_A_LOGIN_CODE =
+  /\b(promo|discount|coupon|voucher|gutschein|rabatt|order|bestell|tracking|sendungs|referral|invite|einladung|error|fehler|country|zip|post)\w*/i;
+
 /** How far from a keyword a code may sit and still belong to it. */
 const WINDOW = 60;
+
+/** A weak keyword has to sit closer — it is carrying less evidence. */
+const WEAK_WINDOW = 30;
 
 /** Years and other numbers that are never one-time codes. */
 function isImplausible(code: string): boolean {
@@ -93,35 +107,65 @@ function findInText(raw: string): OtpMatch | null {
   const text = raw.replace(/\s+/g, " ");
   const haystack = text.toLowerCase();
 
-  let best: { code: string; distance: number; context: string } | null = null;
+  type Best = { code: string; distance: number; context: string };
+  const found: Best[] = [];
 
-  for (const keyword of KEYWORDS) {
+  const scan = (keyword: string, window: number, weak: boolean) => {
     let from = 0;
     for (;;) {
-      const at = haystack.indexOf(keyword, from);
+      const at = weak
+        ? indexOfWord(haystack, keyword, from)
+        : haystack.indexOf(keyword, from);
       if (at === -1) break;
       from = at + keyword.length;
 
-      const start = Math.max(0, at - WINDOW);
-      const end = Math.min(text.length, at + keyword.length + WINDOW);
+      const start = Math.max(0, at - window);
+      const end = Math.min(text.length, at + keyword.length + window);
       const around = text.slice(start, end);
+
+      // "promo code", "order code" and friends are not login codes
+      if (weak && NOT_A_LOGIN_CODE.test(around)) continue;
 
       CODE_PATTERN.lastIndex = 0;
       let candidate: RegExpExecArray | null;
       while ((candidate = CODE_PATTERN.exec(around)) !== null) {
         const code = tidy(candidate[0]!.trim());
         if (isImplausible(code)) continue;
+        // A weak keyword only qualifies a plainly code-shaped number
+        if (weak && !/^\d{5,8}$/.test(code)) continue;
         // Prefer the code closest to the words that qualified it
         const absolute = start + candidate.index;
-        const distance = Math.abs(absolute - at);
-        if (!best || distance < best.distance) {
-          best = { code, distance, context: keyword };
-        }
+        found.push({ code, distance: Math.abs(absolute - at), context: keyword });
       }
     }
+  };
+
+  for (const keyword of KEYWORDS) scan(keyword, WINDOW, false);
+  // The weak "code" label is only consulted when nothing better spoke up
+  if (found.length === 0) {
+    for (const keyword of WEAK_KEYWORDS) scan(keyword, WEAK_WINDOW, true);
   }
 
+  // The code nearest the words that qualified it
+  const best = found.reduce<Best | null>(
+    (winner, entry) => (!winner || entry.distance < winner.distance ? entry : winner),
+    null,
+  );
   return best ? { code: best.code, context: best.context } : null;
+}
+
+/** Find `word` only where it stands alone, not inside a longer word. */
+function indexOfWord(haystack: string, word: string, from: number): number {
+  let at = from;
+  for (;;) {
+    const found = haystack.indexOf(word, at);
+    if (found === -1) return -1;
+    const before = found === 0 ? " " : haystack[found - 1]!;
+    const afterIdx = found + word.length;
+    const after = afterIdx >= haystack.length ? " " : haystack[afterIdx]!;
+    if (!/[a-z0-9]/i.test(before) && !/[a-z0-9]/i.test(after)) return found;
+    at = found + word.length;
+  }
 }
 
 /**
