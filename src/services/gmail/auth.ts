@@ -13,6 +13,11 @@ const SCOPES = [
   // Required by users.settings.sendAs.list — without it the send-as aliases
   // that back "send from a different address" come back 403 and never load.
   "https://www.googleapis.com/auth/gmail.settings.basic",
+  // Gmail's IMAP endpoint only accepts XOAUTH2 with the full-mailbox scope,
+  // and IMAP IDLE is how the server tells us about new mail instead of being
+  // asked every minute. An account authorised before this was requested keeps
+  // working on the polling path — it simply cannot idle until re-authorised.
+  "https://mail.google.com/",
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
   "https://www.googleapis.com/auth/calendar.readonly",

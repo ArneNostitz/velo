@@ -1,10 +1,49 @@
+use std::sync::Arc;
+
+use tauri::{AppHandle, State};
+
 use crate::imap::client as imap_client;
+use crate::imap::idle as imap_idle;
+use crate::imap::idle::IdleRegistry;
 use crate::imap::types::{
     DeltaCheckRequest, DeltaCheckResult, ImapConfig, ImapFetchResult, ImapFolder,
     ImapFolderSearchResult, ImapFolderStatus, ImapFolderSyncResult, ImapMessage,
 };
 use crate::smtp::client as smtp_client;
 use crate::smtp::types::{SmtpConfig, SmtpSendResult};
+
+// ---------- IMAP IDLE ----------
+
+/// Watch an account's INBOX and emit `velo-idle-activity` when it changes.
+///
+/// The frontend answers that event with the sync it would otherwise have run
+/// on a timer, so this replaces the waiting rather than the syncing.
+#[tauri::command]
+pub async fn imap_start_idle(
+    app: AppHandle,
+    registry: State<'_, Arc<IdleRegistry>>,
+    account_id: String,
+    config: ImapConfig,
+) -> Result<(), String> {
+    imap_idle::start(app, registry.inner().clone(), account_id, config).await
+}
+
+#[tauri::command]
+pub async fn imap_stop_idle(
+    registry: State<'_, Arc<IdleRegistry>>,
+    account_id: String,
+) -> Result<(), String> {
+    imap_idle::stop(registry.inner().clone(), &account_id).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn imap_stop_all_idle(
+    registry: State<'_, Arc<IdleRegistry>>,
+) -> Result<(), String> {
+    imap_idle::stop_all(registry.inner().clone()).await;
+    Ok(())
+}
 
 // ---------- IMAP commands ----------
 
