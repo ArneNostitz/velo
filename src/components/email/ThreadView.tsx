@@ -311,6 +311,14 @@ export function ThreadView({ thread }: ThreadViewProps) {
     accountId: string;
   } | null>(null);
 
+  // A merge made anywhere — the list bar, the history below — changes what
+  // this thread contains
+  useEffect(() => {
+    const handler = () => { reloadMessages().catch(console.error); };
+    window.addEventListener("velo-threads-merged", handler);
+    return () => window.removeEventListener("velo-threads-merged", handler);
+  }, [reloadMessages]);
+
   // Listen for "View Source" event from context menu
   useEffect(() => {
     const handler = (e: Event) => {
