@@ -825,7 +825,7 @@ export const MIGRATIONS = [
       -- Threading is a guess: senders change the subject, ticket systems drop
       -- In-Reply-To, and the same exchange ends up in two threads. This lets
       -- the user say so. A merged thread keeps its rows and points at the one
-      -- it now reads as part of; nothing is rewritten, so it can be undone.
+      -- it now reads as part of. Nothing is rewritten, so it can be undone.
       ALTER TABLE threads ADD COLUMN merged_into TEXT;
       CREATE INDEX IF NOT EXISTS idx_threads_merged_into
         ON threads(account_id, merged_into);
@@ -837,13 +837,44 @@ export const MIGRATIONS = [
  * Split a SQL string into individual statements, correctly handling
  * BEGIN...END blocks (e.g. inside CREATE TRIGGER) that contain semicolons.
  */
-function splitStatements(sql: string): string[] {
+export function splitStatements(sql: string): string[] {
   const statements: string[] = [];
   let current = "";
   let depth = 0;
   const upper = sql.toUpperCase();
 
   for (let i = 0; i < sql.length; i++) {
+    // A comment is prose, not SQL: copy it through untouched. Without this a
+    // semicolon inside an explanatory comment splits the statement that
+    // follows it, which is exactly how migration 29 shipped broken.
+    if (sql[i] === "-" && sql[i + 1] === "-") {
+      const lineEnd = sql.indexOf("\n", i);
+      const stop = lineEnd === -1 ? sql.length : lineEnd;
+      current += sql.slice(i, stop);
+      i = stop - 1;
+      continue;
+    }
+    if (sql[i] === "/" && sql[i + 1] === "*") {
+      const blockEnd = sql.indexOf("*/", i + 2);
+      const stop = blockEnd === -1 ? sql.length : blockEnd + 2;
+      current += sql.slice(i, stop);
+      i = stop - 1;
+      continue;
+    }
+    // A semicolon inside a string literal is data, not a separator
+    if (sql[i] === "'") {
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql[j] === "'" && sql[j + 1] === "'") { j += 2; continue; }
+        if (sql[j] === "'") break;
+        j++;
+      }
+      const stop = Math.min(j + 1, sql.length);
+      current += sql.slice(i, stop);
+      i = stop - 1;
+      continue;
+    }
+
     // Check for BEGIN keyword at word boundary
     if (
       upper.startsWith("BEGIN", i) &&
