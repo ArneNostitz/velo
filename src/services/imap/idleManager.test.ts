@@ -18,7 +18,7 @@ vi.mock("./imapConfigBuilder", () => ({
   buildImapConfig: () => ({ host: "imap.example.com", port: 993 }),
 }));
 
-import { startIdleWatchers, stopIdleWatchers, accountsWithoutIdle } from "./idleManager";
+import { startIdleWatchers, stopIdleWatchers, accountsWithoutIdle, reconnectAccount } from "./idleManager";
 
 const gmail = { id: "g1", email: "a@gmail.com", provider: "gmail_api", auth_method: "oauth2", is_active: 1 };
 const imap = { id: "i1", email: "b@host.tld", provider: "imap", auth_method: "password", is_active: 1, imap_host: "imap.host.tld" };
@@ -124,5 +124,29 @@ describe("startIdleWatchers - what it tells the status store", () => {
     await startIdleWatchers();
     await stopIdleWatchers();
     expect(useIdleStatusStore.getState().statuses).toEqual({});
+  });
+});
+
+describe("reconnectAccount", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    settings.clear();
+    accounts = [];
+    await stopIdleWatchers();
+    vi.clearAllMocks();
+  });
+
+  it("restarts only the account that was asked for", async () => {
+    accounts = [gmail, imap];
+    await reconnectAccount("i1");
+    const starts = mockInvoke.mock.calls.filter(([cmd]) => cmd === "imap_start_idle");
+    expect(starts).toHaveLength(1);
+    expect(starts[0]![1]).toEqual(expect.objectContaining({ accountId: "i1" }));
+  });
+
+  it("does nothing for an account it does not know", async () => {
+    accounts = [gmail];
+    await reconnectAccount("nope");
+    expect(mockInvoke).not.toHaveBeenCalledWith("imap_start_idle", expect.anything());
   });
 });

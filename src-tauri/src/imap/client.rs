@@ -162,7 +162,31 @@ async fn connect_inner(config: &ImapConfig) -> Result<ImapSession, String> {
         return connect_starttls(config).await;
     }
 
-    let stream = connect_stream(config).await?;
+    let mut stream = connect_stream(config).await?;
+
+    // Consume the server greeting before handing the stream to the client.
+    // `Client::new` does not read it, so it sat in the buffer and was taken
+    // as the reply to AUTHENTICATE — an untagged "* OK" where a "+"
+    // continuation was expected — and the XOAUTH2 handshake waited for a
+    // continuation that had already gone by until the 30s timeout. The
+    // STARTTLS path always read its greeting; only direct TLS skipped it,
+    // which is exactly the path Gmail uses.
+    {
+        use tokio::io::AsyncReadExt;
+        let mut buf = [0u8; 1024];
+        let n = tokio::time::timeout(IMAP_CMD_TIMEOUT, stream.read(&mut buf))
+            .await
+            .map_err(|_| format!(
+                "Reading server greeting timed out after {}s — check your server settings or network connection",
+                IMAP_CMD_TIMEOUT.as_secs()
+            ))?
+            .map_err(|e| format!("Failed to read server greeting: {e}"))?;
+        let greeting = String::from_utf8_lossy(&buf[..n]);
+        if !greeting.contains("OK") {
+            return Err(format!("Unexpected server greeting: {}", greeting.trim()));
+        }
+    }
+
     let client = Client::new(stream);
 
     tokio::time::timeout(AUTH_TIMEOUT, authenticate(client, config))
