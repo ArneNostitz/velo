@@ -277,7 +277,8 @@ export function notifyOneTimeCode(opts: {
   if (opts.code && opts.linkUrl) {
     sendNotification({
       title: opts.copied ? `Code copied: ${opts.code}` : `Code: ${opts.code}`,
-      body: `From ${opts.sender} — ${opts.copied ? "ready to paste, " : ""}or open the sign-in link`,
+      // No buttons on desktop notifications; the link is a click away in Velo
+      body: `From ${opts.sender} — ${opts.copied ? "ready to paste. " : ""}Sign-in link waiting in Velo`,
       actionTypeId: "otp-both",
     });
     return;
@@ -294,7 +295,7 @@ export function notifyOneTimeCode(opts: {
 
   sendNotification({
     title: "Sign-in link",
-    body: `From ${opts.sender}`,
+    body: `From ${opts.sender} — open it from Velo`,
     actionTypeId: "otp-link",
   });
 }

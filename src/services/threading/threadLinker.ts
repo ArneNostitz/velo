@@ -134,13 +134,43 @@ const SUBJECT_MATCH_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 /** Subjects too generic to join two threads on their own. */
 const GENERIC_SUBJECT = /^(hi|hello|hey|hallo|servus|moin|thanks|danke|fyi|info|update|invoice|rechnung|reminder|erinnerung|newsletter|question|frage|)$/i;
 
-interface SubjectCandidate {
+export interface SubjectCandidate {
   id: string;
   subject: string | null;
   last_message_at: number;
   peers: string | null;
   /** Messages in the thread written by the user. */
   own_count: number;
+  /** Messages in the thread written by anyone else. */
+  foreign_count: number;
+}
+
+/**
+ * Whether two same-subject threads are one conversation.
+ *
+ * Both sides need the user *and* someone else. "The user wrote in it" alone
+ * was not enough: a magic-link mail arrives *from the user's own address*
+ * (the sender rewrites it), so every "Dein MatchMii-Login" counted as the
+ * user's own words and the rule folded them together a second time. A
+ * thread with only the user's address in it — however many messages — is a
+ * notification stream, not an exchange.
+ */
+export function qualifiesForSubjectMerge(
+  target: SubjectCandidate,
+  candidate: SubjectCandidate,
+  own: Set<string>,
+  windowMs: number = SUBJECT_MATCH_WINDOW_MS,
+): boolean {
+  const isExchange = (t: SubjectCandidate) => t.own_count > 0 && t.foreign_count > 0;
+  if (!isExchange(target) || !isExchange(candidate)) return false;
+  if (Math.abs(candidate.last_message_at - target.last_message_at) > windowMs) return false;
+  // The shared correspondent has to be someone other than the user — the
+  // user is on every thread they are in, so counting them made any two of
+  // their exchanges look like one
+  const others = (t: SubjectCandidate) =>
+    (t.peers ?? "").split(",").filter((p) => p && !own.has(p));
+  const targetPeers = new Set(others(target));
+  return others(candidate).some((peer) => targetPeers.has(peer));
 }
 
 /**
@@ -164,6 +194,7 @@ export async function linkThreadsBySubject(accountId: string): Promise<number> {
 
   const own = await ownAddressesFor(accountId);
   if (own.length === 0) return 0;
+  const ownSet = new Set(own);
   const ownPlaceholders = own.map((_, i) => `$${i + 2}`).join(", ");
 
   const rows = await db.select<SubjectCandidate[]>(
@@ -173,7 +204,10 @@ export async function linkThreadsBySubject(accountId: string): Promise<number> {
              WHERE m.account_id = t.account_id AND m.thread_id = t.id) AS peers,
             (SELECT COUNT(*) FROM messages m
              WHERE m.account_id = t.account_id AND m.thread_id = t.id
-               AND LOWER(COALESCE(m.from_address, '')) IN (${ownPlaceholders})) AS own_count
+               AND LOWER(COALESCE(m.from_address, '')) IN (${ownPlaceholders})) AS own_count,
+            (SELECT COUNT(*) FROM messages m
+             WHERE m.account_id = t.account_id AND m.thread_id = t.id
+               AND LOWER(COALESCE(m.from_address, '')) NOT IN (${ownPlaceholders})) AS foreign_count
      FROM threads t
      WHERE t.account_id = $1 AND t.merged_into IS NULL AND t.subject IS NOT NULL
      ORDER BY t.last_message_at ASC`,
@@ -192,22 +226,8 @@ export async function linkThreadsBySubject(accountId: string): Promise<number> {
     if (candidates.length < 2) continue;
     const [target, ...rest] = candidates;
     if (!target) continue;
-    const targetPeers = new Set((target.peers ?? "").split(",").filter(Boolean));
 
-    // A thread the user never wrote in is not a conversation to join
-    if (target.own_count === 0) continue;
-
-    const sources = rest.filter((candidate) => {
-      if (candidate.own_count === 0) return false;
-      if (Math.abs(candidate.last_message_at - target.last_message_at) > SUBJECT_MATCH_WINDOW_MS) {
-        return false;
-      }
-      // Someone has to be on both sides, or this is two people using the
-      // same words rather than one conversation
-      return (candidate.peers ?? "")
-        .split(",")
-        .some((peer) => peer && targetPeers.has(peer));
-    });
+    const sources = rest.filter((candidate) => qualifiesForSubjectMerge(target, candidate, ownSet));
 
     if (sources.length === 0) continue;
     try {

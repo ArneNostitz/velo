@@ -9,6 +9,7 @@ import { AttachmentList, useAttachmentViewer, getAttachmentsForMessage } from ".
 import { SenderAvatar } from "./SenderAvatar";
 import { AuthBadge } from "./AuthBadge";
 import { ReadReceiptBadge } from "./ReadReceiptBadge";
+import { OneTimeCodeBanner } from "./OneTimeCodeBanner";
 import type { DbMessage } from "@/services/db/messages";
 import type { DbAttachment } from "@/services/db/attachments";
 
@@ -139,6 +140,7 @@ export const ChatMessage = memo(function ChatMessage({
         </button>
       ) : (
         <>
+          <OneTimeCodeBanner message={message} />
           {forwardOnly && !showFull ? (
             // Attachments still render below — a forward usually carries them
             <div className="text-sm text-text-tertiary italic">Forwarded an email</div>

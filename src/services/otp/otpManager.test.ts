@@ -15,6 +15,7 @@ vi.mock("@/services/db/settings", () => ({
 }));
 
 import { processIncomingCodes, resetHandledCodes } from "./otpManager";
+import { useToastStore } from "@/stores/toastStore";
 
 const NOW = 1_700_000_000_000;
 
@@ -86,6 +87,22 @@ describe("processIncomingCodes", () => {
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ code: "271260", linkUrl: "https://app.example.com/login?t=9" }),
     );
+  });
+
+  it("puts Copy and Open buttons in an in-app toast, since the OS notification cannot", async () => {
+    useToastStore.getState().clear();
+    await processIncomingCodes([
+      codeMail({
+        id: "m5",
+        subject: "Dein Login",
+        bodyText: "Anmelden\nOder dieser Code\n271260\n",
+        bodyHtml: '<a href="https://app.example.com/login?t=9">Anmelden</a><p>Oder dieser Code</p><p>271260</p>',
+      }),
+    ], NOW);
+    const toast = useToastStore.getState().toasts[0];
+    expect(toast?.title).toBe("Code copied: 271260");
+    expect(toast?.ttlMs).toBeNull();
+    expect(toast?.actions?.map((a) => a.label)).toEqual(["Copy again", "Open sign-in link"]);
   });
 
   it("surfaces a sign-in link when there is no code", async () => {
