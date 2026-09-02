@@ -172,7 +172,7 @@ Tailwind CSS v4 — uses `@import "tailwindcss"`, `@theme {}` for custom propert
 
 Vitest + jsdom. Setup file: `src/test/setup.ts` (imports `@testing-library/jest-dom/vitest`). Config: `globals: true` (no imports needed for `describe`, `it`, `expect`). Tests are colocated with source files (e.g., `uiStore.test.ts` next to `uiStore.ts`). Zustand test pattern: `useStore.setState()` in beforeEach, assert via `.getState()`.
 
-151 test files across stores (8), services (82), utils (18), components (35), constants (4), router (1), hooks (3), and config (1).
+152 test files across stores (8), services (82), utils (19), components (35), constants (4), router (1), hooks (3), and config (1).
 
 ## Database
 
@@ -205,7 +205,9 @@ Key tables (35 total): `accounts` (with `provider` "gmail_api"|"imap", IMAP/SMTP
 - **Rules of Hooks**: `npm run lint` enforces `react-hooks/rules-of-hooks` and runs as the first step of `npm run build`. TypeScript cannot see a hook sitting below an early return; React only fails at runtime, with minified error #310 ("Rendered more hooks than during the previous render") surfacing as a blank pane inside an ErrorBoundary. The lint config is deliberately narrow — this one rule — so it stays a signal
 - **TypeScript strict mode**: `noUnusedLocals`, `noUnusedParameters`, `noUncheckedIndexedAccess` are all enabled. Target ES2021, bundler module resolution, `moduleDetection: "force"`
 - **Path alias**: `@/*` maps to `src/*`
-- **Email HTML rendering**: DOMPurify sanitization, rendered in sandboxed iframe (`allow-same-origin` only). Strips remote images by default (uses `data-blocked-src` attributes), allowlist per sender
+- **Email HTML rendering**: DOMPurify sanitization, rendered in sandboxed iframe (`allow-same-origin` only). Strips remote images by default (uses `data-blocked-src` attributes), allowlist per sender. Clicks are caught by a listener the *parent* attaches to `iframe.contentDocument` — the frame has no `allow-scripts`, so nothing inside it could do this
+- **Opener scope**: `opener:allow-open-url` enables the command "without any pre-configured scope", and the plugin's `is_url_allowed` denies everything when the allow list is empty — so every link in every message silently failed to open. The capability must carry an explicit `allow` list (`https://*`, `http://*`, `mailto:*`, `tel:*`)
+- **Plain-text bodies**: escaped through `linkifyPlainText()`, not `escapeHtml()` — a text/plain message has URLs in it that no markup marks, and senders of plain text expect the client to find them. Escaping is per-segment so no part of the body can become markup
 - **Thread deletion**: Two-stage — first trash, then permanent delete from DB if already in trash
 - **Snooze**: Removes INBOX label and adds SNOOZED label (not just a flag)
 - **Draft auto-save**: 3-second debounce, not configurable

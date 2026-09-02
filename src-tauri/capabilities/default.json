@@ -27,7 +27,23 @@
     "core:event:allow-emit",
     "clipboard-manager:allow-write-text",
     "opener:default",
-    "opener:allow-open-url",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://*"
+        },
+        {
+          "url": "mailto:*"
+        },
+        {
+          "url": "tel:*"
+        }
+      ]
+    },
     "dialog:default",
     "dialog:allow-save",
     "fs:default",
