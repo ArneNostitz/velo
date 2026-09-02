@@ -97,7 +97,8 @@ describe("detectOtpCode - a bare 'code' label", () => {
   // Verbatim shape from a real magic-link mail: a button, then the code under
   // a heading that says nothing but "code"
   it("takes the code under 'ODER DIESER CODE'", () => {
-    const body = "Tipp auf den Knopf — oder gib den Code in der App ein. ODER DIESER CODE 221818 "
+    // The real mail's shape: the label on one line, the digits alone on the next
+    const body = "Tipp auf den Knopf — oder gib den Code in der App ein.\nAnmelden\nODER DIESER CODE\n221818\n"
       + "Beides gilt 15 Minuten.";
     expect(detectOtpCode("Dein MatchMii-Login", body)?.code).toBe("221818");
   });
@@ -125,5 +126,38 @@ describe("detectOtpCode - a bare 'code' label", () => {
   it("will not take a 4-digit number on a bare 'code' alone", () => {
     // Too weak: four digits next to the word "code" is not enough evidence
     expect(detectOtpCode(null, "Code 1234")).toBeNull();
+  });
+});
+
+describe("detectOtpCode - the false positives that copied junk", () => {
+  it("does not read 'otp' inside a tracking-URL token", () => {
+    // A newsletter footer: a hex token containing "otp", then the address.
+    // This copied a Berlin postal code onto the clipboard.
+    const body = "(https://x.example/?u=4d560eede&id=05e9824dc2&t=b&e=87b4442e8f&c=ccc19e5aotp1d)\n"
+      + "Mein Grundeinkommen e.V. (gemeinnützig)\nLeipziger Str. 56, 10117 Berlin\nImpressum";
+    expect(detectOtpCode("Im September haben Sie erneut die Chance", body)).toBeNull();
+  });
+
+  it("does not take a postal code even next to real code wording", () => {
+    expect(detectOtpCode(null, "Your security code was sent. Leipziger Str. 56, 10117 Berlin")).toBeNull();
+  });
+
+  it("still takes a code on its own line under a bare label", () => {
+    expect(detectOtpCode("Dein MatchMii-Login", "Anmelden\nOder dieser Code\n271260\nBeides gilt 15 Minuten")?.code)
+      .toBe("271260");
+  });
+
+  it("still takes 'Code: 884201' on one line", () => {
+    expect(detectOtpCode(null, "Hallo\nCode: 884201\nDanke")?.code).toBe("884201");
+  });
+
+  it("does not take a number that merely sits near the word code inside prose", () => {
+    // Weak evidence and the number is not set apart — could be anything
+    expect(detectOtpCode(null, "Use the code from the app; ref 123456 was logged earlier.")).toBeNull();
+  });
+
+  it("matches a keyword only as a whole word", () => {
+    expect(detectOtpCode(null, "The hotplate 665544 model")).toBeNull();
+    expect(detectOtpCode(null, "Your OTP is 665544")?.code).toBe("665544");
   });
 });

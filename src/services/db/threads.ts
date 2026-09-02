@@ -542,20 +542,26 @@ export async function getThreadsWithContact(
  * are only valid in the mailbox that issued them, so folding two mailboxes
  * into one row would break every action taken on it.
  */
+/** Who decided two threads were one — the user, or one of the linker's rules. */
+export type MergeReason = "manual" | "header" | "subject";
+
 export async function mergeThreads(
   accountId: string,
   targetThreadId: string,
   sourceThreadIds: string[],
+  mergedBy: MergeReason = "manual",
 ): Promise<void> {
   const sources = sourceThreadIds.filter((id) => id !== targetThreadId);
   if (sources.length === 0) return;
   const db = await getDb();
-  const ids = inClause(sources.length, 3);
+  const ids = inClause(sources.length, 4);
 
+  // The reason is recorded so a rule that turns out to be wrong can be
+  // undone for exactly the merges it made, without touching the user's own
   await db.execute(
-    `UPDATE threads SET merged_into = $2
+    `UPDATE threads SET merged_into = $2, merged_by = $3
      WHERE account_id = $1 AND id IN (${ids.placeholders})`,
-    [accountId, targetThreadId, ...sources],
+    [accountId, targetThreadId, mergedBy, ...sources],
   );
 
   // A thread already carrying others comes with them: re-point its followers
@@ -574,7 +580,7 @@ export async function unmergeThread(
 ): Promise<void> {
   const db = await getDb();
   await db.execute(
-    "UPDATE threads SET merged_into = NULL WHERE account_id = $1 AND id = $2",
+    "UPDATE threads SET merged_into = NULL, merged_by = NULL WHERE account_id = $1 AND id = $2",
     [accountId, threadId],
   );
 }

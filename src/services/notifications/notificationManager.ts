@@ -81,6 +81,13 @@ export async function initNotifications(): Promise<void> {
         id: "otp-link",
         actions: [{ id: "open-link", title: "Open link" }],
       },
+      {
+        id: "otp-both",
+        actions: [
+          { id: "copy-code", title: "Copy code" },
+          { id: "open-link", title: "Open link" },
+        ],
+      },
     ]);
 
     await onAction(async (event) => {
@@ -266,6 +273,15 @@ export function notifyOneTimeCode(opts: {
   };
   lastNotificationContext = ctx;
   if (opts.threadId) recentContexts.set(opts.threadId, ctx);
+
+  if (opts.code && opts.linkUrl) {
+    sendNotification({
+      title: opts.copied ? `Code copied: ${opts.code}` : `Code: ${opts.code}`,
+      body: `From ${opts.sender} — ${opts.copied ? "ready to paste, " : ""}or open the sign-in link`,
+      actionTypeId: "otp-both",
+    });
+    return;
+  }
 
   if (opts.code) {
     sendNotification({

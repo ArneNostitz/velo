@@ -103,6 +103,17 @@ export function detectOtpCode(
 }
 
 function findInText(raw: string): OtpMatch | null {
+  // Lines that are nothing but a code, possibly with a "Code:" label — the
+  // shape a login mail uses so the digits can be read at a glance
+  const standalone = new Set<string>();
+  for (const line of raw.split(/\r?\n/)) {
+    const bare = line
+      .toLowerCase()
+      .replace(new RegExp(`\\b(?:${WEAK_KEYWORDS.join("|")})\\b`, "g"), "")
+      .replace(/[\s  :.\-–—]/g, "");
+    if (/^\d{5,8}$/.test(bare)) standalone.add(bare);
+  }
+
   // Collapse whitespace so a code split across a line break still reads as one
   const text = raw.replace(/\s+/g, " ");
   const haystack = text.toLowerCase();
@@ -113,9 +124,9 @@ function findInText(raw: string): OtpMatch | null {
   const scan = (keyword: string, window: number, weak: boolean) => {
     let from = 0;
     for (;;) {
-      const at = weak
-        ? indexOfWord(haystack, keyword, from)
-        : haystack.indexOf(keyword, from);
+      // Whole words only, weak or strong: "otp" inside a tracking-URL token
+      // was qualifying the nearest number in a newsletter footer
+      const at = indexOfWord(haystack, keyword, from);
       if (at === -1) break;
       from = at + keyword.length;
 
@@ -131,8 +142,13 @@ function findInText(raw: string): OtpMatch | null {
       while ((candidate = CODE_PATTERN.exec(around)) !== null) {
         const code = tidy(candidate[0]!.trim());
         if (isImplausible(code)) continue;
-        // A weak keyword only qualifies a plainly code-shaped number
+        // A weak keyword only qualifies a plainly code-shaped number that
+        // stands on its own line — a login code is set apart to be read,
+        // a postal code sits inside an address
         if (weak && !/^\d{5,8}$/.test(code)) continue;
+        if (weak && !standalone.has(code)) continue;
+        // In an address line the number is followed by the town
+        if (looksLikePostalAddress(around, candidate.index, candidate[0]!.length)) continue;
         // Prefer the code closest to the words that qualified it
         const absolute = start + candidate.index;
         found.push({ code, distance: Math.abs(absolute - at), context: keyword });
@@ -220,4 +236,15 @@ export function detectSignInLink(html: string | null): SignInLink | null {
     return { url, label: label || url };
   }
   return null;
+}
+
+/**
+ * "Leipziger Str. 56, 10117 Berlin": a five-digit number that is followed by
+ * a capitalised word and preceded by a comma is a postal code in an address,
+ * whatever else is nearby.
+ */
+function looksLikePostalAddress(around: string, index: number, length: number): boolean {
+  const before = around.slice(Math.max(0, index - 3), index);
+  const after = around.slice(index + length, index + length + 24);
+  return /,\s*$/.test(before) && /^\s+[A-ZÄÖÜ][a-zäöüß]+/.test(after);
 }
