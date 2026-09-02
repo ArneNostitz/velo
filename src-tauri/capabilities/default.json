@@ -25,6 +25,7 @@
     "core:event:default",
     "core:event:allow-listen",
     "core:event:allow-emit",
+    "clipboard-manager:allow-write-text",
     "opener:default",
     "opener:allow-open-url",
     "dialog:default",
@@ -40,8 +41,12 @@
     {
       "identifier": "fs:scope",
       "allow": [
-        { "path": "$APPDATA" },
-        { "path": "$APPDATA/**" }
+        {
+          "path": "$APPDATA"
+        },
+        {
+          "path": "$APPDATA/**"
+        }
       ]
     },
     "core:window:allow-minimize",
@@ -65,10 +70,18 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "http://localhost:*" },
-        { "url": "http://localhost:*/*" },
-        { "url": "http://127.0.0.1:*" },
-        { "url": "http://127.0.0.1:*/*" }
+        {
+          "url": "http://localhost:*"
+        },
+        {
+          "url": "http://localhost:*/*"
+        },
+        {
+          "url": "http://127.0.0.1:*"
+        },
+        {
+          "url": "http://127.0.0.1:*/*"
+        }
       ]
     },
     "updater:default",

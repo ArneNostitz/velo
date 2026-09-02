@@ -43,6 +43,8 @@ export interface FilterResult {
   removeLabelIds: string[];
   markRead: boolean;
   star: boolean;
+  /** A rule asked for this one to be announced, whatever the filters say. */
+  notify: boolean;
 }
 
 /**
@@ -74,6 +76,7 @@ export function computeFilterActions(actions: FilterActions): FilterResult {
     removeLabelIds,
     markRead: actions.markRead ?? false,
     star: actions.star ?? false,
+    notify: actions.notify ?? false,
   };
 }
 
@@ -114,6 +117,7 @@ export async function applyFiltersToMessages(
           existing.addLabelIds.push(...result.addLabelIds);
           existing.removeLabelIds.push(...result.removeLabelIds);
           existing.markRead = existing.markRead || result.markRead;
+          existing.notify = existing.notify || result.notify;
           existing.star = existing.star || result.star;
         } else {
           threadActions.set(msg.threadId, result);
@@ -151,4 +155,43 @@ export async function applyFiltersToMessages(
       }
     }),
   );
+}
+
+/**
+ * Ids of the messages a rule wants announced.
+ *
+ * Notifications are decided before filters are applied — a rule that archives
+ * a message should still be able to say "but tell me about it" — so this
+ * evaluates the rules without acting on them.
+ */
+export async function messagesRequestingNotify(
+  accountId: string,
+  messages: Pick<ParsedMessage, "id" | "fromAddress" | "subject" | "toAddresses">[],
+): Promise<Set<string>> {
+  const requested = new Set<string>();
+  if (messages.length === 0) return requested;
+
+  const { getEnabledFiltersForAccount } = await import("@/services/db/filters");
+  let rules;
+  try {
+    rules = await getEnabledFiltersForAccount(accountId);
+  } catch {
+    return requested;
+  }
+
+  for (const rule of rules) {
+    let criteria, actions;
+    try {
+      criteria = JSON.parse(rule.criteria_json);
+      actions = JSON.parse(rule.actions_json);
+    } catch {
+      continue;
+    }
+    if (!actions?.notify) continue;
+    for (const msg of messages) {
+      // Only the fields the criteria read are needed to decide a match
+      if (messageMatchesFilter(msg as ParsedMessage, criteria)) requested.add(msg.id);
+    }
+  }
+  return requested;
 }

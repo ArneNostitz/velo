@@ -81,6 +81,9 @@ export function SettingsPage() {
   const setTheme = useUIStore((s) => s.setTheme);
   const readingPanePosition = useUIStore((s) => s.readingPanePosition);
   const setReadingPanePosition = useUIStore((s) => s.setReadingPanePosition);
+  const [otpDetection, setOtpDetection] = useState(true);
+  const [otpAutoCopy, setOtpAutoCopy] = useState(true);
+  const [notifyAccounts, setNotifyAccounts] = useState<Set<string>>(() => new Set());
   const emailDensity = useUIStore((s) => s.emailDensity);
   const setEmailDensity = useUIStore((s) => s.setEmailDensity);
   const threadViewMode = useUIStore((s) => s.threadViewMode);
@@ -185,6 +188,11 @@ export function SettingsPage() {
       if (phishingSens === "low" || phishingSens === "high") setPhishingSensitivity(phishingSens);
       const syncDays = await getSetting("sync_period_days");
       setSyncPeriodDays(syncDays ?? "365");
+      setOtpDetection((await getSetting("otp_detection")) !== "false");
+      setOtpAutoCopy((await getSetting("otp_auto_copy")) !== "false");
+      const accountsSetting = await getSetting("notify_accounts");
+      setNotifyAccounts(new Set(accountsSetting ? accountsSetting.split(",").filter(Boolean) : []));
+
       const receiptDefault = await getSetting("read_receipt_request_default");
       setRequestReadReceipts(receiptDefault === "true");
       const receiptResponse = await getSetting("read_receipt_response");
@@ -739,6 +747,66 @@ export function SettingsPage() {
                         await setSetting("smart_notifications", newVal ? "true" : "false");
                       }}
                     />
+                  </Section>
+
+                  <Section title="One-time codes & sign-in links">
+                    <ToggleRow
+                      label="Detect login codes"
+                      description="Spot a verification code in arriving mail and announce it, so you never have to open the message"
+                      checked={otpDetection}
+                      onToggle={async () => {
+                        const next = !otpDetection;
+                        setOtpDetection(next);
+                        await setSetting("otp_detection", next ? "true" : "false");
+                      }}
+                    />
+                    {otpDetection && (
+                      <ToggleRow
+                        label="Copy the code automatically"
+                        description="Puts it straight on the clipboard, ready to paste. It replaces whatever you were holding"
+                        checked={otpAutoCopy}
+                        onToggle={async () => {
+                          const next = !otpAutoCopy;
+                          setOtpAutoCopy(next);
+                          await setSetting("otp_auto_copy", next ? "true" : "false");
+                        }}
+                      />
+                    )}
+                  </Section>
+
+                  <Section title="Which mailboxes">
+                    <p className="text-xs text-text-tertiary mb-2">
+                      Nothing selected means every account notifies.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {accounts.map((account) => (
+                        <button
+                          key={account.id}
+                          onClick={async () => {
+                            const next = new Set(notifyAccounts);
+                            if (next.has(account.id)) next.delete(account.id);
+                            else next.add(account.id);
+                            setNotifyAccounts(next);
+                            await setSetting("notify_accounts", [...next].join(","));
+                          }}
+                          className={`px-2.5 py-1 text-xs rounded-full transition-colors border ${
+                            notifyAccounts.has(account.id)
+                              ? "bg-accent/15 text-accent border-accent/30"
+                              : "bg-bg-tertiary text-text-tertiary border-border-primary hover:text-text-primary"
+                          }`}
+                        >
+                          {account.email}
+                        </button>
+                      ))}
+                    </div>
+                  </Section>
+
+                  <Section title="Rules">
+                    <p className="text-xs text-text-tertiary">
+                      Any mail rule can carry a <strong>Notify me</strong> action, which always
+                      announces a match whatever the filters above say. Build one under
+                      Settings → Mail rules.
+                    </p>
                   </Section>
 
                   {smartNotifications && (

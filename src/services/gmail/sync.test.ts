@@ -33,6 +33,10 @@ vi.mock("@/services/categorization/ruleEngine", () => ({
 }));
 vi.mock("../filters/filterEngine", () => ({
   applyFiltersToMessages: vi.fn(),
+  messagesRequestingNotify: vi.fn(() => Promise.resolve(new Set<string>())),
+}));
+vi.mock("@/services/otp/otpManager", () => ({
+  processIncomingCodes: vi.fn(() => Promise.resolve([])),
 }));
 vi.mock("@/services/ai/categorizationManager", () => ({
   categorizeNewThreads: vi.fn(),
