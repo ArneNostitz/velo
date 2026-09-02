@@ -81,6 +81,7 @@ export function SettingsPage() {
   const setTheme = useUIStore((s) => s.setTheme);
   const readingPanePosition = useUIStore((s) => s.readingPanePosition);
   const setReadingPanePosition = useUIStore((s) => s.setReadingPanePosition);
+  const [imapIdle, setImapIdle] = useState(true);
   const [otpDetection, setOtpDetection] = useState(true);
   const [otpAutoCopy, setOtpAutoCopy] = useState(true);
   const [notifyAccounts, setNotifyAccounts] = useState<Set<string>>(() => new Set());
@@ -188,6 +189,7 @@ export function SettingsPage() {
       if (phishingSens === "low" || phishingSens === "high") setPhishingSensitivity(phishingSens);
       const syncDays = await getSetting("sync_period_days");
       setSyncPeriodDays(syncDays ?? "365");
+      setImapIdle((await getSetting("imap_idle")) !== "false");
       setOtpDetection((await getSetting("otp_detection")) !== "false");
       setOtpAutoCopy((await getSetting("otp_auto_copy")) !== "false");
       const accountsSetting = await getSetting("notify_accounts");
@@ -777,6 +779,23 @@ export function SettingsPage() {
                         }}
                       />
                     )}
+                  </Section>
+
+                  <Section title="Delivery">
+                    <ToggleRow
+                      label="Instant delivery"
+                      description="Hold a connection open so the mail server can say when something arrives, instead of asking it every minute. Falls back to checking on a timer wherever a server refuses."
+                      checked={imapIdle}
+                      onToggle={async () => {
+                        const next = !imapIdle;
+                        setImapIdle(next);
+                        await setSetting("imap_idle", next ? "true" : "false");
+                        const { startIdleWatchers, stopIdleWatchers } =
+                          await import("@/services/imap/idleManager");
+                        if (next) await startIdleWatchers();
+                        else await stopIdleWatchers();
+                      }}
+                    />
                   </Section>
 
                   <Section title="Which mailboxes">

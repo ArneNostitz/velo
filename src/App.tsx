@@ -191,6 +191,16 @@ export default function App() {
         console.error("Failed to open the sign-in link:", err);
       }
     };
+    // A server said something changed: run that account's sync now
+    const handleIdleSync = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { accountId?: string } | undefined;
+      if (!detail?.accountId) return;
+      import("@/services/gmail/syncManager")
+        .then(({ syncAccount }) => syncAccount(detail.accountId!))
+        .catch((err) => console.error("Sync after IDLE failed:", err));
+    };
+    window.addEventListener("velo-idle-sync", handleIdleSync);
+
     window.addEventListener("velo-open-signin-link", handleSignInLink);
 
     window.addEventListener("velo-move-to-folder", handleMoveToFolder);
@@ -198,6 +208,7 @@ export default function App() {
       window.removeEventListener("velo-toggle-command-palette", togglePalette);
       window.removeEventListener("velo-toggle-shortcuts-help", toggleHelp);
       window.removeEventListener("velo-toggle-ask-inbox", toggleAskInbox);
+      window.removeEventListener("velo-idle-sync", handleIdleSync);
       window.removeEventListener("velo-open-signin-link", handleSignInLink);
       window.removeEventListener("velo-move-to-folder", handleMoveToFolder);
     };
@@ -390,6 +401,14 @@ export default function App() {
         // Start background sync for active accounts
         if (activeIds.length > 0) {
           startBackgroundSync(activeIds);
+
+          // Let the servers say when something changed. The timer stays as
+          // the safety net — IDLE is refused by some accounts and drops on
+          // every sleep, so it shortens the wait rather than replacing it.
+          const { startIdleWatchers } = await import("@/services/imap/idleManager");
+          startIdleWatchers().catch((err) => {
+            console.warn("Could not start IDLE watchers:", err);
+          });
         }
 
         // Start snooze, scheduled send, follow-up, bundle, and queue checkers
@@ -432,6 +451,9 @@ export default function App() {
 
     return () => {
       stopBackgroundSync();
+      import("@/services/imap/idleManager")
+        .then(({ stopIdleWatchers }) => stopIdleWatchers())
+        .catch(() => { /* shutting down anyway */ });
       stopSnoozeChecker();
       stopScheduledSendChecker();
       stopFollowUpChecker();

@@ -85,6 +85,9 @@ pub fn run() {
         // Writing a one-time code to the clipboard has to work while the app is
         // in the background, which the webview's own clipboard API cannot do
         .plugin(tauri_plugin_clipboard_manager::init())
+        // One IDLE watcher per account, held so a restart can replace rather
+        // than duplicate them
+        .manage(std::sync::Arc::new(crate::imap::idle::IdleRegistry::new()))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -106,6 +109,9 @@ pub fn run() {
             set_tray_tooltip,
             close_splashscreen,
             open_devtools,
+            commands::imap_start_idle,
+            commands::imap_stop_idle,
+            commands::imap_stop_all_idle,
             commands::imap_test_connection,
             commands::imap_list_folders,
             commands::imap_fetch_messages,
