@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useUIStore, type SettingsTab } from "@/stores/uiStore";
 import { useIdleStatusStore, describeIdleState, explainIdleFailure } from "@/stores/idleStatusStore";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { reportError, notify } from "@/stores/toastStore";
 import { Spinner } from "@/components/ui/Spinner";
 import { useAccountStore } from "@/stores/accountStore";
 import { getSetting, setSetting, getSecureSetting, setSecureSetting } from "@/services/db/settings";
@@ -379,11 +380,25 @@ export function SettingsPage() {
       try {
         await reauthorizeAccount(accountId, email);
         setReauthStatus((prev) => ({ ...prev, [accountId]: "done" }));
+        notify("success", `${email} re-authorised`, "Starting instant delivery with the new permissions.");
+        // The new token carries the IMAP scope — use it now rather than
+        // waiting for the next launch or a manual Reconnect
+        try {
+          const { reconnectAccount } = await import("@/services/imap/idleManager");
+          await reconnectAccount(accountId);
+        } catch (err) {
+          reportError(`Could not start instant delivery for ${email}`, err);
+        }
         setTimeout(() => {
           setReauthStatus((prev) => ({ ...prev, [accountId]: "idle" }));
         }, 3000);
       } catch (err) {
-        console.error("Re-authorization failed:", err);
+        // The browser can crash mid sign-in, the tab can be closed, the
+        // wrong account can be picked — say which, and offer the retry
+        reportError(`Re-authorisation failed for ${email}`, err, {
+          label: "Try again",
+          run: () => handleReauthorizeAccount(accountId, email),
+        });
         setReauthStatus((prev) => ({ ...prev, [accountId]: "error" }));
         setTimeout(() => {
           setReauthStatus((prev) => ({ ...prev, [accountId]: "idle" }));
@@ -403,7 +418,7 @@ export function SettingsPage() {
           setResyncStatus((prev) => ({ ...prev, [accountId]: "idle" }));
         }, 3000);
       } catch (err) {
-        console.error("Resync failed:", err);
+        reportError("Resync failed", err);
         setResyncStatus((prev) => ({ ...prev, [accountId]: "error" }));
         setTimeout(() => {
           setResyncStatus((prev) => ({ ...prev, [accountId]: "idle" }));
@@ -1176,16 +1191,24 @@ export function SettingsPage() {
                                     Reconnect
                                   </button>
                                 )}
+                                <Tooltip
+                                  content={
+                                    reauthStatus[account.id] === "authorizing"
+                                      ? "Waiting for the sign-in to finish in your browser. If the tab is gone, click again to start over."
+                                      : "Sign in again to grant new permissions — needed once for instant delivery."
+                                  }
+                                  placement="bottom"
+                                >
                                 <button
                                   onClick={() => handleReauthorizeAccount(account.id, account.email)}
-                                  disabled={reauthStatus[account.id] === "authorizing"}
-                                  className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors disabled:opacity-50"
+                                  className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
                                 >
                                   {reauthStatus[account.id] === "authorizing" && <><Spinner size={11} label="Waiting for Google" />Waiting…</>}
                                   {reauthStatus[account.id] === "done" && "Done!"}
                                   {reauthStatus[account.id] === "error" && "Failed"}
                                   {(!reauthStatus[account.id] || reauthStatus[account.id] === "idle") && "Re-authorize"}
                                 </button>
+                                </Tooltip>
                                 <button
                                   onClick={() => handleResyncAccount(account.id)}
                                   disabled={resyncStatus[account.id] === "syncing"}
