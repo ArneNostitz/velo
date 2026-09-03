@@ -106,9 +106,10 @@ export async function processIncomingCodes(
       console.error("Failed to notify about a one-time code:", err);
     }
 
-    // The desktop notification cannot carry buttons — the plugin hands the
-    // text to the OS and that is all — so the buttons live here, in the app,
-    // and stay until used or dismissed
+    // The desktop notification carries buttons only on a bundled macOS build
+    // (see notificationManager); everywhere else the plugin hands the text to
+    // the OS and that is all. So the buttons also live here, in the app, and
+    // stay until used or dismissed — a notification is gone in seconds
     const actions = [];
     if (match) {
       actions.push({

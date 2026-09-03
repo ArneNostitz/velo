@@ -6,6 +6,12 @@ import { reportError, notify } from "@/stores/toastStore";
 import { Spinner } from "@/components/ui/Spinner";
 import { useAccountStore } from "@/stores/accountStore";
 import { getSetting, setSetting, getSecureSetting, setSecureSetting } from "@/services/db/settings";
+import {
+  getNotificationBackend,
+  applyNotificationsEnabled,
+  sendTestNotification,
+  type NotificationBackend,
+} from "@/services/notifications/notificationManager";
 import { PROVIDER_MODELS } from "@/services/ai/types";
 import { deleteAccount, updateAccountColor } from "@/services/db/accounts";
 import { ACCOUNT_COLORS, accountColor } from "@/constants/accountColors";
@@ -129,6 +135,7 @@ export function SettingsPage() {
     clearAddAccountRequest();
   }, [addAccountPending, clearAddAccountRequest]);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [notificationBackend, setNotificationBackend] = useState<NotificationBackend>("off");
   const [undoSendDelay, setUndoSendDelay] = useState("5");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -182,6 +189,7 @@ export function SettingsPage() {
     async function load() {
       const notif = await getSetting("notifications_enabled");
       setNotificationsEnabled(notif !== "false");
+      setNotificationBackend(getNotificationBackend());
       const delay = await getSetting("undo_send_delay_seconds");
       setUndoSendDelay(delay ?? "5");
       const id = await getSetting("google_client_id");
@@ -294,6 +302,10 @@ export function SettingsPage() {
     const newVal = !notificationsEnabled;
     setNotificationsEnabled(newVal);
     await setSetting("notifications_enabled", newVal ? "true" : "false");
+    // Takes effect now, not at the next start; switching on may show the
+    // system permission prompt
+    await applyNotificationsEnabled(newVal);
+    setNotificationBackend(getNotificationBackend());
   }, [notificationsEnabled]);
 
   const handleUndoDelayChange = useCallback(async (value: string) => {
@@ -770,6 +782,9 @@ export function SettingsPage() {
                         await setSetting("smart_notifications", newVal ? "true" : "false");
                       }}
                     />
+                    {notificationsEnabled && (
+                      <NotificationButtonsRow backend={notificationBackend} />
+                    )}
                   </Section>
 
                   <Section title="One-time codes & sign-in links">
@@ -2570,6 +2585,49 @@ function SettingRow({
     <div className="flex items-center justify-between">
       <label className="text-sm text-text-secondary">{label}</label>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Whether notifications carry buttons here — and why not, if not — with a
+ * way to see one. The backend is decided once, at start-up, by
+ * notificationManager; only a bundled macOS build gets the native one.
+ */
+function NotificationButtonsRow({ backend }: { backend: NotificationBackend }) {
+  const [os, setOs] = useState("");
+  useEffect(() => {
+    import("@tauri-apps/plugin-os")
+      .then(({ platform }) => setOs(platform()))
+      .catch(() => {});
+  }, []);
+
+  let note: string;
+  if (backend === "native") {
+    note =
+      "Reply, Archive and Copy code sit on the notification. macOS hides a banner's buttons until you hover, so Velo asks for the Alerts style; System Settings → Notifications → Velo is where to change it.";
+  } else if (backend === "plugin") {
+    note =
+      os === "macos"
+        ? "Buttons need the installed app: a development build runs outside an app bundle, which the macOS notification centre refuses, so notifications here are plain text."
+        : "Notifications are plain text on this platform. The buttons live in Velo's own toasts instead.";
+  } else {
+    note =
+      "Notifications are off, or the system has not allowed them. On macOS, check System Settings → Notifications → Velo.";
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <p className="text-xs text-text-tertiary">{note}</p>
+      <button
+        onClick={async () => {
+          const sent = await sendTestNotification();
+          notify("info", sent === "off" ? "Notifications are off" : "Test notification sent");
+        }}
+        className="shrink-0 text-xs px-3 py-1.5 rounded-md bg-bg-tertiary hover:bg-bg-hover text-text-secondary border border-border-primary"
+      >
+        Send a test
+      </button>
     </div>
   );
 }

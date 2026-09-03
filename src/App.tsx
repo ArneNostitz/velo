@@ -447,8 +447,10 @@ export default function App() {
         startQueueProcessor();
         startPreCacheManager();
 
-        // Initialize notifications
-        await initNotifications();
+        // Initialize notifications. Not awaited: on a bundled macOS build the
+        // first run shows the system permission prompt, and the rest of
+        // start-up (and the splash screen) must not wait on the user's answer
+        void initNotifications();
 
         // Initialize global compose shortcut
         await initGlobalShortcut();
