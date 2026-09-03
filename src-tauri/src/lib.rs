@@ -11,6 +11,7 @@ mod files;
 mod imap;
 mod keychain;
 mod net;
+mod notifications;
 mod oauth;
 mod smtp;
 
@@ -109,6 +110,11 @@ pub fn run() {
             set_tray_tooltip,
             close_splashscreen,
             open_devtools,
+            notifications::notification_native_available,
+            notifications::notification_native_request_permission,
+            notifications::notification_native_register_categories,
+            notifications::notification_native_show,
+            notifications::notification_native_ready,
             commands::imap_start_idle,
             commands::imap_stop_idle,
             commands::imap_stop_all_idle,
@@ -146,6 +152,10 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Before the app finishes launching: a notification click that
+            // starts Velo is delivered to whatever delegate exists by then
+            notifications::install(app.handle().clone());
 
             #[cfg(not(target_os = "linux"))]
             {

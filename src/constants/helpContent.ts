@@ -1009,6 +1009,20 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         relatedSettingsTab: "notifications",
       },
       {
+        id: "notification-buttons",
+        icon: BellRing,
+        title: "Buttons on notifications",
+        summary: "Reply, archive or copy a code straight from the notification.",
+        description:
+          "On macOS a notification carries the actions that fit it: Reply and Archive on a new mail, Copy code and Open sign-in link on a login mail — each acting on the exact message it announced, even with several stacked up. macOS only shows a banner's buttons while you hover, so Velo asks for the Alerts style; change it under System Settings → Notifications → Velo. Windows and Linux draw no buttons on notifications, so there the same actions sit on Velo's in-app toast.",
+        tips: [
+          { text: "Settings > Notifications has a \"Send a test\" button — its Copy code really copies." },
+          { text: "Pick Alerts under System Settings > Notifications > Velo to keep the buttons visible without hovering." },
+          { text: "Buttons need the installed app; a development build shows plain notifications." },
+        ],
+        relatedSettingsTab: "notifications",
+      },
+      {
         id: "contact-sidebar",
         icon: Users,
         title: "Contact sidebar",

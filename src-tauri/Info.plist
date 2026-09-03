@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Merged into the bundle's Info.plist by the Tauri bundler.
+
+      Notification buttons (Reply, Archive, Copy code) are only ever visible
+      on an *alert*; on a banner macOS hides them until the pointer hovers.
+      This asks for alerts by default. The user can still pick either style
+      under System Settings → Notifications → Velo.
+    -->
+    <key>NSUserNotificationAlertStyle</key>
+    <string>alert</string>
+</dict>
+</plist>

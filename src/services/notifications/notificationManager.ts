@@ -2,19 +2,45 @@ import {
   isPermissionGranted,
   requestPermission,
   sendNotification,
-  registerActionTypes,
-  onAction,
 } from "@tauri-apps/plugin-notification";
 import { getSetting } from "../db/settings";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useComposerStore } from "../../stores/composerStore";
 import { navigateToLabel } from "../../router/navigate";
 import { normalizeEmail } from "@/utils/emailUtils";
+import { reportError } from "@/stores/toastStore";
+import {
+  nativeNotificationsAvailable,
+  requestNativePermission,
+  registerNativeCategories,
+  showNativeNotification,
+  listenForNativeActions,
+  type NativeCategory,
+  type NativeNotificationResponse,
+} from "./nativeNotifications";
 
+/**
+ * Desktop notifications, with buttons where the platform can draw them.
+ *
+ * Two backends. On a bundled macOS build the Rust side talks to
+ * UNUserNotificationCenter: a category names the buttons, every notification
+ * carries its own context, and a press comes back as `velo-notification-action`
+ * with that context — so Reply opens the thread it was pressed on and Copy
+ * code copies that code, however many notifications are stacked. Everywhere
+ * else (Windows, Linux, and a bare `tauri dev` binary, which has no bundle for
+ * the centre to accept) the notification plugin shows plain text: it hands the
+ * text to the OS and hears nothing back, so there are no buttons and even a
+ * click goes unseen. The in-app toast and `OneTimeCodeBanner` carry the
+ * buttons there.
+ */
+
+export type NotificationBackend = "native" | "plugin" | "off";
+
+let backend: NotificationBackend = "off";
 let initialized = false;
-let notificationsEnabled = true;
+let stopListening: (() => void) | null = null;
 
-interface NotificationContext {
+export interface NotificationContext {
   threadId?: string;
   accountId?: string;
   fromAddress?: string;
@@ -25,8 +51,31 @@ interface NotificationContext {
   linkUrl?: string;
 }
 
-let lastNotificationContext: NotificationContext | null = null;
-const recentContexts = new Map<string, NotificationContext>();
+/** The button sets. Ids come back verbatim in the press. */
+export const NOTIFICATION_CATEGORIES: NativeCategory[] = [
+  {
+    id: "email",
+    actions: [
+      { id: "reply", title: "Reply", foreground: true },
+      { id: "archive", title: "Archive" },
+    ],
+  },
+  {
+    id: "otp-code",
+    actions: [{ id: "copy-code", title: "Copy code" }],
+  },
+  {
+    id: "otp-link",
+    actions: [{ id: "open-link", title: "Open sign-in link", foreground: true }],
+  },
+  {
+    id: "otp-both",
+    actions: [
+      { id: "copy-code", title: "Copy code" },
+      { id: "open-link", title: "Open link", foreground: true },
+    ],
+  },
+];
 
 async function showAndFocusMainWindow(): Promise<void> {
   const mainWindow = await WebviewWindow.getByLabel("main");
@@ -37,79 +86,100 @@ async function showAndFocusMainWindow(): Promise<void> {
 }
 
 /**
- * Initialize notification permissions and action types.
+ * Pick a backend and, on the native one, ask for permission and start
+ * listening for presses.
  */
 export async function initNotifications(): Promise<void> {
   if (initialized) return;
   initialized = true;
 
   const setting = await getSetting("notifications_enabled");
-  notificationsEnabled = setting !== "false";
+  if (setting === "false") {
+    backend = "off";
+    return;
+  }
 
-  if (!notificationsEnabled) return;
+  if (await nativeNotificationsAvailable()) {
+    try {
+      // The first call shows the system prompt; a refusal there is the OS
+      // saying no, and the plugin path would be refused just the same
+      const granted = await requestNativePermission();
+      if (!granted) {
+        backend = "off";
+        return;
+      }
+      await registerNativeCategories(NOTIFICATION_CATEGORIES);
+      stopListening = await listenForNativeActions(handleNativeAction);
+      backend = "native";
+      return;
+    } catch (err) {
+      reportError("Notification buttons are unavailable", err);
+      // Plain notifications still beat none
+    }
+  }
 
   let granted = await isPermissionGranted();
   if (!granted) {
     const permission = await requestPermission();
     granted = permission === "granted";
   }
+  backend = granted ? "plugin" : "off";
+}
 
-  if (!granted) {
-    notificationsEnabled = false;
+/** Which path notifications take — for the settings page and tests. */
+export function getNotificationBackend(): NotificationBackend {
+  return backend;
+}
+
+/**
+ * The settings toggle. Before this, switching notifications off only took
+ * effect after a restart, because the module read the setting once at start.
+ */
+export async function applyNotificationsEnabled(enabled: boolean): Promise<void> {
+  if (!enabled) {
+    backend = "off";
     return;
   }
+  if (backend !== "off") return;
+  initialized = false;
+  stopListening?.();
+  stopListening = null;
+  await initNotifications();
+}
 
-  // Register action types and handlers (not available on all platforms)
-  try {
-    await registerActionTypes([
-      {
-        id: "default",
-        actions: [],
-      },
-      {
-        id: "email",
-        actions: [
-          { id: "reply", title: "Reply" },
-          { id: "archive", title: "Archive" },
-        ],
-      },
-      {
-        id: "otp-code",
-        actions: [{ id: "copy-code", title: "Copy code" }],
-      },
-      {
-        id: "otp-link",
-        actions: [{ id: "open-link", title: "Open link" }],
-      },
-      {
-        id: "otp-both",
-        actions: [
-          { id: "copy-code", title: "Copy code" },
-          { id: "open-link", title: "Open link" },
-        ],
-      },
-    ]);
+/**
+ * A press on a native notification. The context is the one that
+ * notification was sent with, never "the most recent".
+ */
+export async function handleNativeAction(response: NativeNotificationResponse): Promise<void> {
+  const ctx = (response.context ?? {}) as NotificationContext;
 
-    await onAction(async (event) => {
-      const actionId = event.actionTypeId;
-      const ctx = lastNotificationContext;
+  switch (response.actionId) {
+    case "dismiss":
+      return;
 
-      if (actionId === "copy-code" && ctx?.code) {
-        try {
-          const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
-          await writeText(ctx.code);
-        } catch (err) {
-          console.error("Failed to copy the code from a notification:", err);
-        }
-      } else if (actionId === "open-link" && ctx?.linkUrl) {
-        // Through the app rather than straight to the browser: a link in mail
-        // is exactly the phishing vector, so it goes past the same check a
+    case "copy-code":
+      if (ctx.code) {
+        await copyCode(ctx.code);
+        return;
+      }
+      break;
+
+    case "open-link":
+      if (ctx.linkUrl) {
+        // Through the app rather than straight to the browser: a link in
+        // mail is exactly the phishing vector, so it passes the same check a
         // click inside the message would
         await showAndFocusMainWindow();
         window.dispatchEvent(new CustomEvent("velo-open-signin-link", {
           detail: { url: ctx.linkUrl, threadId: ctx.threadId, accountId: ctx.accountId },
         }));
-      } else if (actionId === "reply" && ctx?.threadId && ctx?.accountId) {
+        return;
+      }
+      break;
+
+    case "reply":
+      if (ctx.threadId && ctx.accountId) {
         await showAndFocusMainWindow();
         useComposerStore.getState().openComposer({
           mode: "reply",
@@ -118,30 +188,91 @@ export async function initNotifications(): Promise<void> {
           threadId: ctx.threadId,
           accountId: ctx.accountId,
         });
-      } else if (actionId === "archive" && ctx?.threadId && ctx?.accountId) {
+        return;
+      }
+      break;
+
+    case "archive":
+      if (ctx.threadId && ctx.accountId) {
         try {
           const { archiveThread } = await import("../emailActions");
           await archiveThread(ctx.accountId, ctx.threadId, []);
         } catch (err) {
-          console.error("Failed to archive from notification:", err);
+          reportError("Could not archive from the notification", err);
         }
-      } else {
-        await showAndFocusMainWindow();
-        if (ctx?.threadId) {
-          navigateToLabel("inbox", { threadId: ctx.threadId });
-        }
+        return;
       }
-    });
-  } catch {
-    // registerActionTypes/onAction not available on this platform (e.g. Windows)
+      break;
   }
+
+  // A click on the body, or a button whose context is missing: open the mail
+  await showAndFocusMainWindow();
+  if (ctx.threadId) {
+    navigateToLabel("inbox", { threadId: ctx.threadId });
+  }
+}
+
+async function copyCode(code: string): Promise<void> {
+  try {
+    // The Rust side: navigator.clipboard needs the document focused, and a
+    // notification button is pressed from another app
+    const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+    await writeText(code);
+  } catch (err) {
+    reportError("Could not copy the login code", err);
+    return;
+  }
+  // The pressed notification is gone; this is the only feedback the user gets
+  void show({ title: `Copied ${code}`, body: "Ready to paste" });
+}
+
+interface ShowOptions {
+  title: string;
+  body: string;
+  /** One of `NOTIFICATION_CATEGORIES`; omit for a plain notification. */
+  category?: string;
+  context?: NotificationContext;
+}
+
+async function show(opts: ShowOptions): Promise<void> {
+  if (backend === "off") return;
+
+  if (backend === "native") {
+    try {
+      await showNativeNotification({
+        title: opts.title,
+        body: opts.body,
+        categoryId: opts.category,
+        context: opts.context,
+        group: opts.context?.threadId,
+      });
+      return;
+    } catch (err) {
+      console.error("Native notification failed, showing a plain one:", err);
+    }
+  }
+
+  sendNotification({ title: opts.title, body: opts.body });
+}
+
+/** Do notifications carry buttons on this backend? Wording depends on it. */
+function hasButtons(): boolean {
+  return backend === "native";
 }
 
 /**
  * Show a notification for new emails.
  * Batches notifications to avoid spam during sync.
  */
-let pendingCount = 0;
+interface PendingEmail {
+  from: string;
+  context: NotificationContext;
+}
+
+/** Up to this many arrivals in one batch are announced one by one, with buttons. */
+const INDIVIDUAL_LIMIT = 3;
+
+let pendingEmails: PendingEmail[] = [];
 let notifyTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function queueNewEmailNotification(
@@ -151,33 +282,29 @@ export function queueNewEmailNotification(
   accountId?: string,
   fromAddress?: string,
 ): void {
-  if (!notificationsEnabled) return;
+  if (backend === "off") return;
 
-  pendingCount++;
-
-  // Store context for action handling
-  const ctx = { threadId, accountId, fromAddress, subject };
-  lastNotificationContext = ctx;
-  if (threadId) recentContexts.set(threadId, ctx);
+  pendingEmails.push({ from, context: { threadId, accountId, fromAddress, subject } });
 
   // Debounce: wait 2s before showing, to batch during sync
   if (notifyTimer) clearTimeout(notifyTimer);
   notifyTimer = setTimeout(() => {
-    if (pendingCount === 1) {
-      sendNotification({
-        title: from,
-        body: subject || "(No subject)",
-        actionTypeId: "email",
-      });
-    } else if (pendingCount > 1) {
-      sendNotification({
-        title: "Velo",
-        body: `${pendingCount} new emails`,
-        actionTypeId: "email",
-      });
-    }
-    pendingCount = 0;
+    const batch = pendingEmails;
+    pendingEmails = [];
     notifyTimer = null;
+
+    if (batch.length <= INDIVIDUAL_LIMIT) {
+      for (const mail of batch) {
+        void show({
+          title: mail.from,
+          body: mail.context.subject || "(No subject)",
+          category: "email",
+          context: mail.context,
+        });
+      }
+    } else {
+      void show({ title: "Velo", body: `${batch.length} new emails` });
+    }
   }, 2000);
 }
 
@@ -217,21 +344,18 @@ export function shouldNotifyForMessage(
 }
 
 /**
- * Show a notification for a follow-up reminder that fired.
+ * Show a notification for a follow-up reminder that fired. A click opens
+ * the thread; there is no sensible button for "you are still waiting".
  */
 export function notifyFollowUpDue(
   subject: string,
   threadId?: string,
   accountId?: string,
 ): void {
-  if (!notificationsEnabled) return;
-  const ctx = { threadId, accountId, subject };
-  lastNotificationContext = ctx;
-  if (threadId) recentContexts.set(threadId, ctx);
-  sendNotification({
+  void show({
     title: "Follow up needed",
     body: subject || "(No subject)",
-    actionTypeId: "email",
+    context: { threadId, accountId, subject },
   });
 }
 
@@ -239,21 +363,15 @@ export function notifyFollowUpDue(
  * Show a notification for a snoozed email returning.
  */
 export function notifySnoozeReturn(subject: string): void {
-  if (!notificationsEnabled) return;
-  sendNotification({
-    title: "Snoozed email returned",
-    body: subject || "(No subject)",
-    actionTypeId: "default",
-  });
+  void show({ title: "Snoozed email returned", body: subject || "(No subject)" });
 }
 
 /**
  * Announce a one-time code or a sign-in link, with the buttons that make it
- * useful and the context the click handler needs.
+ * useful and the context the press needs.
  *
- * Sent through here rather than calling sendNotification directly, because a
- * notification with no actionTypeId carries no buttons and no context — the
- * click then has nothing to open and merely focuses the window.
+ * Without buttons (the plugin backend) the body says where the link is
+ * waiting instead, because the notification itself can do nothing.
  */
 export function notifyOneTimeCode(opts: {
   code?: string;
@@ -263,39 +381,68 @@ export function notifyOneTimeCode(opts: {
   threadId?: string;
   accountId?: string;
 }): void {
-  if (!notificationsEnabled) return;
-
-  const ctx: NotificationContext = {
+  const context: NotificationContext = {
     threadId: opts.threadId,
     accountId: opts.accountId,
     code: opts.code,
     linkUrl: opts.linkUrl,
   };
-  lastNotificationContext = ctx;
-  if (opts.threadId) recentContexts.set(opts.threadId, ctx);
+  const buttons = hasButtons();
 
   if (opts.code && opts.linkUrl) {
-    sendNotification({
+    void show({
       title: opts.copied ? `Code copied: ${opts.code}` : `Code: ${opts.code}`,
-      // No buttons on desktop notifications; the link is a click away in Velo
-      body: `From ${opts.sender} — ${opts.copied ? "ready to paste. " : ""}Sign-in link waiting in Velo`,
-      actionTypeId: "otp-both",
+      body: buttons
+        ? `From ${opts.sender}`
+        : `From ${opts.sender} — ${opts.copied ? "ready to paste. " : ""}Sign-in link waiting in Velo`,
+      category: "otp-both",
+      context,
     });
     return;
   }
 
   if (opts.code) {
-    sendNotification({
+    void show({
       title: opts.copied ? `Code copied: ${opts.code}` : `Code: ${opts.code}`,
       body: opts.copied ? `From ${opts.sender} — ready to paste` : `From ${opts.sender}`,
-      actionTypeId: "otp-code",
+      category: "otp-code",
+      context,
     });
     return;
   }
 
-  sendNotification({
+  void show({
     title: "Sign-in link",
-    body: `From ${opts.sender} — open it from Velo`,
-    actionTypeId: "otp-link",
+    body: buttons ? `From ${opts.sender}` : `From ${opts.sender} — open it from Velo`,
+    category: "otp-link",
+    context,
   });
+}
+
+/**
+ * From Settings: a notification shaped like a real one, so the user can see
+ * whether buttons appear and press one. The code is a real code as far as
+ * the press is concerned — Copy code puts it on the clipboard.
+ */
+export async function sendTestNotification(): Promise<NotificationBackend> {
+  if (backend === "off") return backend;
+  await show({
+    title: hasButtons() ? "Code: 123456" : "Velo notifications are working",
+    body: hasButtons()
+      ? "A test from Velo — press Copy code"
+      : "This platform draws no buttons; the in-app toast carries them",
+    category: "otp-code",
+    context: { code: "123456" },
+  });
+  return backend;
+}
+
+/** Test seam: forget the chosen backend so the next init picks again. */
+export function resetNotificationsForTests(): void {
+  initialized = false;
+  backend = "off";
+  stopListening = null;
+  pendingEmails = [];
+  if (notifyTimer) clearTimeout(notifyTimer);
+  notifyTimer = null;
 }

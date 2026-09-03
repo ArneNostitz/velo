@@ -136,8 +136,9 @@ The Rust layer (`src-tauri/src/`) handles system integration and performance-cri
 - **Minimize to tray** -- Hides on close instead of quitting
 - **Custom titlebar** -- Overlay on macOS, frameless on Windows/Linux
 - **Windows AUMID** -- Set for proper notification identity
+- **Notification buttons** (`notifications.rs`) -- macOS `UNUserNotificationCenter` via objc2: categories name the buttons (Reply/Archive, Copy code/Open link), each notification carries its context, presses reach the webview as `velo-notification-action`. Only a bundled app qualifies; a bare `tauri dev` binary falls back to the plugin's plain text
 
-**Tauri commands:** `start_oauth_server`, `close_splashscreen`, `set_tray_tooltip`, `open_devtools`, 11 IMAP commands (`imap_test_connection`, `imap_list_folders`, `imap_fetch_messages`, etc.), 2 SMTP commands (`smtp_send_email`, `smtp_test_connection`)
+**Tauri commands:** `start_oauth_server`, `close_splashscreen`, `set_tray_tooltip`, `open_devtools`, 5 `notification_native_*` commands (available, request_permission, register_categories, show, ready), 11 IMAP commands (`imap_test_connection`, `imap_list_folders`, `imap_fetch_messages`, etc.), 2 SMTP commands (`smtp_send_email`, `smtp_test_connection`)
 
 **Plugins (13):** sql, notification, opener, log, dialog, fs, http, single-instance, autostart, deep-link, global-shortcut
 
@@ -163,7 +164,7 @@ All business logic lives in `src/services/` as plain async functions (except `Gm
 | `snooze/` | Snooze & scheduled send background checkers |
 | `followup/` | Follow-up reminder checker |
 | `bundles/` | Newsletter bundling with delivery schedules |
-| `notifications/` | OS notifications with VIP filtering |
+| `notifications/` | OS notifications with VIP filtering; native macOS backend with buttons, plugin fallback elsewhere |
 | `contacts/` | Gravatar integration |
 | `attachments/` | Local attachment caching, pre-cache recent attachments, save-to-disk + Quick Look actions |
 | `unsubscribe/` | One-click unsubscribe (RFC 8058) |
