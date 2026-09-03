@@ -597,3 +597,16 @@ export async function getMergedThreadIds(
   );
   return rows.map((r) => r.id);
 }
+
+/** Take one label off a thread, leaving the rest as they are. */
+export async function removeThreadLabel(
+  accountId: string,
+  threadId: string,
+  labelId: string,
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "DELETE FROM thread_labels WHERE account_id = $1 AND thread_id = $2 AND label_id = $3",
+    [accountId, threadId, labelId],
+  );
+}
