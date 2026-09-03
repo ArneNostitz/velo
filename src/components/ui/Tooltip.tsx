@@ -39,8 +39,9 @@ const GAP = 8;
  * shows at once, follows the element through scrolling and resizing, and is
  * rendered through a portal so no ancestor's overflow can clip it.
  *
- * It opens on focus as well as hover, so keyboard users get the same words,
- * and it closes on Escape. It is decoration, not the only way to learn
+ * It sits at the top of the stacking order — a tooltip explains whatever is
+ * in front, so anything painting over it is a bug — and opens on focus as
+ * well as hover, so keyboard users get the same words. It closes on Escape. It is decoration, not the only way to learn
  * something: anything vital still needs to be in the element itself.
  */
 export function Tooltip({
@@ -168,7 +169,7 @@ export function Tooltip({
             ref={bubbleRef}
             id={id}
             role="tooltip"
-            className={`fixed z-[100] max-w-xs px-2.5 py-1.5 rounded-lg border border-border-primary bg-bg-primary text-text-primary text-xs shadow-lg glass-panel pointer-events-none tooltip-enter ${className}`}
+            className={`fixed z-[9999] max-w-xs px-2.5 py-1.5 rounded-lg border border-border-primary bg-bg-primary text-text-primary text-xs shadow-lg glass-panel pointer-events-none tooltip-enter ${className}`}
             style={{
               top: position?.top ?? -9999,
               left: position?.left ?? -9999,

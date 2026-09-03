@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { createRef } from "react";
 import { MessageItem } from "./MessageItem";
 import type { DbMessage } from "@/services/db/messages";
@@ -176,5 +176,23 @@ describe("MessageItem - \"Opened\" marker", () => {
       />,
     );
     expect(screen.getByText("Opened")).toBeInTheDocument();
+  });
+});
+
+describe("MessageItem - the whole header toggles", () => {
+  it("expands when the header is clicked anywhere, not just the button", () => {
+    render(<MessageItem message={makeMessage()} isLast={false} />);
+    const header = screen.getByRole("button", { expanded: false });
+    fireEvent.click(header);
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+  });
+
+  it("responds to Enter and Space, so it is reachable by keyboard", () => {
+    render(<MessageItem message={makeMessage()} isLast={false} />);
+    const header = screen.getByRole("button", { expanded: false });
+    fireEvent.keyDown(header, { key: "Enter" });
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("button", { expanded: true }), { key: " " });
+    expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
   });
 });

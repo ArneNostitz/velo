@@ -155,10 +155,21 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
 
   return (
     <div ref={ref} className={`border-b border-border-secondary last:border-b-0 ${isSpam ? "bg-red-500/8 dark:bg-red-500/10" : ""} ${focused ? "ring-2 ring-inset ring-accent/50" : ""}`} onContextMenu={onContextMenu}>
-      {/* Header — always visible, click to expand/collapse */}
-      <button
+      {/* Header — always visible, click anywhere on it to expand or collapse.
+          A div rather than a button: the recipient list inside has its own
+          toggle, and a button cannot legally nest in a button. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
         onClick={handleToggle}
-        className="w-full text-left px-4 py-3 hover:bg-bg-hover transition-colors"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleToggle();
+          }
+        }}
+        className="w-full text-left px-4 py-3 cursor-pointer hover:bg-bg-hover transition-colors"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
@@ -182,16 +193,13 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
             {formatFullDate(message.date)}
           </span>
         </div>
-      </button>
 
-      {/* Outside the toggle button: a recipient list folds on its own, so a
-          mail to three hundred people does not have to be closed to be read
-          (and a button cannot legally nest inside another button) */}
-      {expanded && (
-        <div className="px-4 -mt-1 pb-2">
+        {/* Part of the header, so clicking beside it still collapses — the
+            recipient list's own toggle stops the click going further */}
+        {expanded && (
           <RecipientLine toAddresses={message.to_addresses} ccAddresses={message.cc_addresses} />
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Body — shown when expanded and image setting resolved */}
       {expanded && (
