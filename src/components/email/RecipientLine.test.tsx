@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { RecipientLine } from "./RecipientLine";
 
@@ -41,5 +41,31 @@ describe("RecipientLine", () => {
   it("strips display names down to addresses", () => {
     render(<RecipientLine toAddresses={'"Arne Nostitz" <arne@x.com>'} />);
     expect(screen.getByText(/To: arne@x.com/)).toBeInTheDocument();
+  });
+});
+
+describe("RecipientLine inside a clickable header", () => {
+  it("expanding the list does not reach the header's toggle", () => {
+    const onHeaderClick = vi.fn();
+    render(
+      <div onClick={onHeaderClick}>
+        <RecipientLine toAddresses={MANY} />
+      </div>,
+    );
+    fireEvent.click(screen.getByTitle("Show every recipient"));
+    expect(screen.getByText("250 recipients")).toBeInTheDocument();
+    expect(onHeaderClick).not.toHaveBeenCalled();
+  });
+
+  it("collapsing it again does not reach the header either", () => {
+    const onHeaderClick = vi.fn();
+    render(
+      <div onClick={onHeaderClick}>
+        <RecipientLine toAddresses={MANY} />
+      </div>,
+    );
+    fireEvent.click(screen.getByTitle("Show every recipient"));
+    fireEvent.click(screen.getByTitle("Hide the recipient list"));
+    expect(onHeaderClick).not.toHaveBeenCalled();
   });
 });
