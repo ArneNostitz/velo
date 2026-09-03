@@ -67,6 +67,18 @@ async function processAndStoreThread(
     hasAttachments,
   });
 
+  // Gmail files anything the account transmitted as Sent, relayed app mail
+  // included. To the reader that mail arrived; Sent is for what they wrote.
+  if (allLabelIds.has("SENT") && allLabelIds.has("INBOX")) {
+    try {
+      const { shouldKeepSentLabel, cachedOwnAddresses } = await import("@/services/gmail/sentPrune");
+      const own = await cachedOwnAddresses(accountId);
+      if (!shouldKeepSentLabel(parsedMessages, own)) allLabelIds.delete("SENT");
+    } catch (err) {
+      console.warn("Could not check Sent placement:", err);
+    }
+  }
+
   await setThreadLabels(accountId, thread.id, [...allLabelIds]);
 
   // Rule-based categorization for inbox threads
@@ -173,6 +185,9 @@ async function processAndStoreThread(
     // Receipts stored before they were understood carry no report part, so
     // they need recognising from what did get stored
     await backfillStoredReadReceipts(accountId);
+    // Threads stored before the Sent rule existed
+    const { pruneRelayedSentLabels, cachedOwnAddresses } = await import("@/services/gmail/sentPrune");
+    await pruneRelayedSentLabels(accountId, await cachedOwnAddresses(accountId));
   } catch (err) {
     reportError("Could not process read receipts", err);
   }

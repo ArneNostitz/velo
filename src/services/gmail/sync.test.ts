@@ -38,6 +38,11 @@ vi.mock("../filters/filterEngine", () => ({
 vi.mock("@/services/otp/otpManager", () => ({
   processIncomingCodes: vi.fn(() => Promise.resolve([])),
 }));
+vi.mock("@/services/gmail/sentPrune", () => ({
+  shouldKeepSentLabel: vi.fn(() => true),
+  pruneRelayedSentLabels: vi.fn(() => Promise.resolve(0)),
+  cachedOwnAddresses: vi.fn(() => Promise.resolve(new Set<string>())),
+}));
 vi.mock("@/services/threading/threadLinker", () => ({
   linkSplitThreads: vi.fn(() => Promise.resolve(0)),
   linkThreadsBySubject: vi.fn(() => Promise.resolve(0)),
