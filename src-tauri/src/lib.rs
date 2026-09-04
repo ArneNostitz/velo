@@ -51,16 +51,55 @@ fn open_devtools(app: tauri::AppHandle) {
     }
 }
 
+/// The identifier the app carried before it was renamed to Velo Pro.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+const LEGACY_IDENTIFIER: &str = "com.velomail.app";
+
+/// Carry the data directory over to the new bundle identifier.
+///
+/// Tauri names the application-support directory after the identifier, so
+/// renaming the app pointed it at an empty one: the database, the attachment
+/// cache and every account with it would have looked simply gone. This runs
+/// before the SQL plugin opens anything, and it is a rename rather than a
+/// copy — the same volume, so it costs nothing however large the mailbox is.
+///
+/// It only ever moves a directory *into* a name that does not exist yet, so a
+/// second run, or a fresh install that never had the old name, does nothing.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn migrate_legacy_data_dir(identifier: &str) {
+    let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
+        return;
+    };
+    #[cfg(target_os = "macos")]
+    let roots = [home.join("Library/Application Support"), home.join("Library/Logs")];
+    #[cfg(target_os = "linux")]
+    let roots = [home.join(".local/share"), home.join(".config")];
+
+    for root in roots {
+        let (old, new) = (root.join(LEGACY_IDENTIFIER), root.join(identifier));
+        if old.is_dir() && !new.exists() {
+            match std::fs::rename(&old, &new) {
+                Ok(()) => log::info!("Moved {} to {}", old.display(), new.display()),
+                Err(e) => log::error!("Could not move {} to {}: {e}", old.display(), new.display()),
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Set explicit AUMID on Windows so toast notifications show "Velo"
+    // Before any plugin opens a file under it
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    migrate_legacy_data_dir("com.anydaysomething.velopro");
+
+    // Set explicit AUMID on Windows so toast notifications show "Velo Pro"
     // instead of "Windows PowerShell"
     #[cfg(windows)]
     {
         use windows::core::w;
         use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
         unsafe {
-            let _ = SetCurrentProcessExplicitAppUserModelID(w!("com.velomail.app"));
+            let _ = SetCurrentProcessExplicitAppUserModelID(w!("com.anydaysomething.velopro"));
         }
     }
 
@@ -173,7 +212,7 @@ pub fn run() {
 
                 TrayIconBuilder::with_id("main-tray")
                     .icon(icon)
-                    .tooltip("Velo")
+                    .tooltip("Velo Pro")
                     .menu(&menu)
                     .show_menu_on_left_click(false)
                     .on_menu_event(|app, event| match event.id.as_ref() {
@@ -212,7 +251,7 @@ pub fn run() {
                 let app_handle = app.handle().clone();
 
                 std::thread::spawn(move || {
-                    let mut tray = match TrayItem::new("Velo", IconSource::Resource("mail-read")) {
+                    let mut tray = match TrayItem::new("Velo Pro", IconSource::Resource("mail-read")) {
                         Ok(t) => t,
                         Err(e) => {
                             log::warn!("Failed to create system tray: {e}");

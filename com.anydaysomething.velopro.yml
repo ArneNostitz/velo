@@ -1,4 +1,4 @@
-app-id: com.velomail.app
+app-id: com.anydaysomething.velopro
 runtime: org.gnome.Platform
 runtime-version: "46"
 sdk: org.gnome.Sdk
@@ -23,11 +23,11 @@ modules:
       - npm ci
       - export PATH="$CARGO_HOME/bin:$PATH" && npx tauri build --no-bundle
       - install -Dm755 src-tauri/target/release/velo /app/bin/velo
-      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.velomail.app.png
-      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.velomail.app.png
-      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/com.velomail.app.png
-      - install -Dm644 com.velomail.app.desktop /app/share/applications/com.velomail.app.desktop
-      - install -Dm644 com.velomail.app.metainfo.xml /app/share/metainfo/com.velomail.app.metainfo.xml
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.anydaysomething.velopro.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.anydaysomething.velopro.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/com.anydaysomething.velopro.png
+      - install -Dm644 com.anydaysomething.velopro.desktop /app/share/applications/com.anydaysomething.velopro.desktop
+      - install -Dm644 com.anydaysomething.velopro.metainfo.xml /app/share/metainfo/com.anydaysomething.velopro.metainfo.xml
     sources:
       - type: dir
         path: .

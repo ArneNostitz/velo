@@ -34,7 +34,7 @@ export function TitleBar() {
       {/* App title — left side (extra padding on macOS for traffic light buttons) */}
       <div data-tauri-drag-region className={`flex items-center gap-2 ${isMac ? "pl-20" : "pl-4"}`}>
         <span data-tauri-drag-region className="text-xs font-semibold text-sidebar-text tracking-wide">
-          Velo
+          Velo Pro
         </span>
 
         {/* Step back to the message you were reading before following a link

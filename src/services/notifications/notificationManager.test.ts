@@ -231,7 +231,7 @@ describe("what gets sent", () => {
     vi.advanceTimersByTime(2000);
     expect(mockShowNative).toHaveBeenCalledTimes(1);
     expect(mockShowNative).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Velo", body: "5 new emails" }),
+      expect.objectContaining({ title: "Velo Pro", body: "5 new emails" }),
     );
   });
 

@@ -14,6 +14,7 @@ import {
   type NotificationBackend,
 } from "@/services/notifications/notificationManager";
 import { PROVIDER_MODELS } from "@/services/ai/types";
+import { FIX_NUMBER } from "@/constants/build";
 import { deleteAccount, updateAccountColor } from "@/services/db/accounts";
 import { ACCOUNT_COLORS, accountColor } from "@/constants/accountColors";
 import { removeClient, reauthorizeAccount } from "@/services/gmail/tokenManager";
@@ -2067,7 +2068,7 @@ function DeveloperTab() {
   return (
     <>
       <Section title="App Info">
-        <InfoRow label="App version" value={appVersion || "..."} />
+        <InfoRow label="App version" value={appVersion ? `${appVersion} (${FIX_NUMBER})` : "..."} />
         <InfoRow label="Tauri version" value={tauriVersion || "..."} />
         <InfoRow label="WebView version" value={webviewVersion || "..."} />
         <InfoRow label="Platform" value={platformLabel} />

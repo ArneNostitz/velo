@@ -334,7 +334,7 @@ export function queueNewEmailNotification(
         });
       }
     } else {
-      void show({ title: "Velo", body: `${batch.length} new emails` });
+      void show({ title: "Velo Pro", body: `${batch.length} new emails` });
     }
   }, 2000);
 }

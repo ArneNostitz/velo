@@ -154,7 +154,7 @@ These steps guide you through building the Flatpak package locally using `flatpa
     You can now run the application directly.
 
     ```bash
-    flatpak run com.velomail.app
+    flatpak run com.anydaysomething.velopro
     ```
 
 ### Building and Testing the RPM Locally

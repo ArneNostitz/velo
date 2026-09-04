@@ -12,11 +12,21 @@
 
 use keyring::Entry;
 
-const SERVICE: &str = "com.velomail.app";
+const SERVICE: &str = "com.anydaysomething.velopro";
 const ACCOUNT: &str = "db-encryption-key";
+
+/// The service the key was stored under before the app was renamed. The
+/// credential store is keyed by this string, not by the bundle identifier, so
+/// renaming the app orphaned the key that decrypts every OAuth token and IMAP
+/// password — the account list would have come back empty and unreadable.
+const LEGACY_SERVICE: &str = "com.velomail.app";
 
 fn entry() -> Result<Entry, String> {
     Entry::new(SERVICE, ACCOUNT).map_err(|e| format!("Keychain unavailable: {e}"))
+}
+
+fn legacy_entry() -> Result<Entry, String> {
+    Entry::new(LEGACY_SERVICE, ACCOUNT).map_err(|e| format!("Keychain unavailable: {e}"))
 }
 
 /// Read the encryption key from the OS credential store.
@@ -26,7 +36,20 @@ fn entry() -> Result<Entry, String> {
 pub fn keychain_get_key() -> Result<Option<String>, String> {
     match entry()?.get_password() {
         Ok(secret) => Ok(Some(secret)),
-        Err(keyring::Error::NoEntry) => Ok(None),
+        // Nothing under the current name: the key may still be filed under the
+        // one the app had before it was renamed. Copy it across rather than
+        // read it every time, and leave the old entry alone — an older build
+        // pointed at the same database must keep working.
+        Err(keyring::Error::NoEntry) => match legacy_entry()?.get_password() {
+            Ok(secret) => {
+                if let Err(e) = entry()?.set_password(&secret) {
+                    log::warn!("Could not copy the encryption key to the new keychain entry: {e}");
+                }
+                Ok(Some(secret))
+            }
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(format!("Failed to read key from keychain: {e}")),
+        },
         Err(e) => Err(format!("Failed to read key from keychain: {e}")),
     }
 }
