@@ -19,6 +19,19 @@ describe("ToastHost", () => {
     expect(alert).toHaveTextContent("history expired");
   });
 
+  it("never wears a react-transition-group class as a plain one", () => {
+    // `toast-enter` sets `opacity: 0` and is only undone by the `-active`
+    // half a CSSTransition adds. ToastHost has no transition, so wearing it
+    // statically left every toast invisible — and still clickable, 320px wide
+    // down the right of the window, swallowing clicks meant for the mail.
+    render(<ToastHost />);
+    act(() => { reportError("Still there"); });
+    const alert = screen.getByRole("alert");
+    expect(alert.className).not.toMatch(/toast-(enter|exit)/);
+    // and it paints on something rather than only blurring what is behind it
+    expect(alert.className).toContain("bg-bg-primary");
+  });
+
   it("dismisses on the close button", () => {
     render(<ToastHost />);
     act(() => { reportError("Gone soon"); });

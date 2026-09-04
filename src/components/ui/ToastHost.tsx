@@ -39,7 +39,7 @@ export function ToastHost() {
           <div
             key={toast.id}
             role={toast.kind === "error" ? "alert" : "status"}
-            className={`pointer-events-auto glass-panel rounded-lg shadow-lg border border-border-primary border-l-4 ${ACCENT[toast.kind]} toast-enter`}
+            className={`pointer-events-auto bg-bg-primary glass-panel rounded-lg shadow-lg border border-border-primary border-l-4 ${ACCENT[toast.kind]} toast-in`}
           >
             <div className="flex items-start gap-2.5 px-3 py-2.5">
               <Icon size={16} className="shrink-0 mt-0.5" />

@@ -297,6 +297,20 @@ body {
 .slide-down-exit-active { opacity: 0; max-height: 0; overflow: hidden; transition: all var(--anim-fast) ease-in; }
 
 /* CSSTransition: toast (slide up from bottom + fade) */
+/* `toast-enter` / `toast-enter-active` are react-transition-group's pair and
+ * mean nothing without a CSSTransition to add the `-active` half. `ToastHost`
+ * has no transition — it renders its own list — and wearing `toast-enter` as a
+ * plain class left every toast stuck at `opacity: 0`: invisible, but still
+ * `pointer-events-auto` and 320px wide down the right of the window, so it
+ * quietly swallowed clicks on message headers and on dialogs' close buttons.
+ * A standalone entrance for that case: */
+.toast-in { animation: toast-in var(--anim-normal) ease-out; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: none; }
+}
+.reduce-motion .toast-in { animation: none; }
+
 .toast-enter { opacity: 0; transform: translateY(16px); }
 .toast-enter-active { opacity: 1; transform: translateY(0); transition: all var(--anim-normal) ease-out; }
 .toast-exit { opacity: 1; transform: translateY(0); }
