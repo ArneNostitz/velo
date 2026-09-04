@@ -307,38 +307,46 @@ describe("GoogleCalendarProvider", () => {
       expect(result.newSyncToken).toBe("initial-token");
     });
 
-    it("handles 410 error (expired sync token) gracefully", async () => {
-      mockClient.request.mockRejectedValue(new Error("410 Gone: sync token expired"));
+    it("starts over without the token when Google refuses it", async () => {
+      // Returning an empty result here left the dead token in the database,
+      // so every following sync asked with it again and got the same 410 —
+      // once a minute, for good, and the calendar never updated
+      mockClient.request
+        .mockRejectedValueOnce(
+          new Error('Gmail API error: 410 {"error":{"errors":[{"reason":"fullSyncRequired"}]}}'),
+        )
+        .mockResolvedValueOnce({
+          items: [
+            {
+              id: "evt-1",
+              summary: "Back again",
+              start: { dateTime: "2025-06-15T10:00:00Z" },
+              end: { dateTime: "2025-06-15T11:00:00Z" },
+              status: "confirmed",
+            },
+          ],
+          nextSyncToken: "fresh-token",
+        });
 
       const result = await provider.syncEvents("cal-1", "expired-token");
 
-      expect(result).toEqual({
-        created: [],
-        updated: [],
-        deletedRemoteIds: [],
-        newSyncToken: null,
-        newCtag: null,
-      });
-    });
-
-    it("handles 'sync token' message in error gracefully", async () => {
-      mockClient.request.mockRejectedValue(new Error("Invalid sync token"));
-
-      const result = await provider.syncEvents("cal-1", "bad-token");
-
-      expect(result).toEqual({
-        created: [],
-        updated: [],
-        deletedRemoteIds: [],
-        newSyncToken: null,
-        newCtag: null,
-      });
+      const retryUrl = mockClient.request.mock.calls[1][0] as string;
+      expect(retryUrl).not.toContain("syncToken");
+      expect(retryUrl).toContain("timeMin=");
+      expect(result.created).toHaveLength(1);
+      expect(result.newSyncToken).toBe("fresh-token");
+      // Tells the caller to write the token even if it came back null
+      expect(result.resyncRequired).toBe(true);
     });
 
     it("rethrows non-sync-token errors", async () => {
+      // Only `fullSyncRequired` earns a retry. A 410 from a calendar that was
+      // deleted, or any other failure, must surface rather than be reported
+      // as an empty calendar — swallowing those is what hid the token bug
       mockClient.request.mockRejectedValue(new Error("Network error"));
 
       await expect(provider.syncEvents("cal-1", "token")).rejects.toThrow("Network error");
+      expect(mockClient.request).toHaveBeenCalledTimes(1);
     });
 
     it("follows pagination with nextPageToken", async () => {

@@ -189,8 +189,11 @@ async function syncCalendarForAccount(accountId: string): Promise<void> {
           await deleteEventByRemoteId(cal.id, remoteId);
         }
 
-        // Update sync token
-        if (syncResult.newSyncToken || syncResult.newCtag) {
+        // Update sync token. `resyncRequired` means the stored token was
+        // refused, so the new one has to be written even when it is null —
+        // leaving the dead token in place is what turned one expired token
+        // into a 410 on every sync, once a minute, for good.
+        if (syncResult.newSyncToken || syncResult.newCtag || syncResult.resyncRequired) {
           await updateCalendarSyncToken(cal.id, syncResult.newSyncToken, syncResult.newCtag);
         }
       } catch (err) {
