@@ -49,6 +49,13 @@ export interface CalendarSyncResult {
   deletedRemoteIds: string[];
   newSyncToken: string | null;
   newCtag: string | null;
+  /**
+   * The stored sync token was refused and this result comes from a full
+   * sync instead. The caller must write the new token even when it is null,
+   * or the dead one is asked with again on the next pass — and again, once a
+   * minute, forever.
+   */
+  resyncRequired?: boolean;
 }
 
 export interface CalendarProvider {

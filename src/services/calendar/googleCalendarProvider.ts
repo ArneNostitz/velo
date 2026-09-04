@@ -12,6 +12,18 @@ import type { GmailClient } from "@/services/gmail/client";
 
 const CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";
 
+/**
+ * Google's way of saying "that sync token is no good, start over": HTTP 410,
+ * with `fullSyncRequired` as the reason. `GmailClient.request` puts the status
+ * and the body into the message, so both are matched — the status alone would
+ * also catch a calendar that has been deleted, which this must not retry
+ * forever, and the reason alone would miss a body that changes shape.
+ */
+function isFullSyncRequired(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("410") && message.includes("fullSyncRequired");
+}
+
 interface GoogleCalendarListItem {
   id: string;
   summary: string;
@@ -151,7 +163,32 @@ export class GoogleCalendarProvider implements CalendarProvider {
     await client.request(url, { method: "DELETE" });
   }
 
+  /**
+   * Incremental sync, falling back to a full one when the token is refused.
+   *
+   * Google answers a dead `syncToken` with `410 fullSyncRequired`. This used
+   * to swallow that and return an empty result with `newSyncToken: null` —
+   * and since the caller only writes a token when it gets one, the dead token
+   * stayed in the database and was sent again on the next pass. Every sync
+   * from then on was a 410, once a minute, and the calendar never updated
+   * again. Now the refusal starts the sync over without a token, which both
+   * fetches the events and hands back one that works.
+   */
   async syncEvents(calendarRemoteId: string, syncToken?: string): Promise<CalendarSyncResult> {
+    if (!syncToken) return this.collectEvents(calendarRemoteId, undefined);
+    try {
+      return await this.collectEvents(calendarRemoteId, syncToken);
+    } catch (err) {
+      if (!isFullSyncRequired(err)) throw err;
+      const result = await this.collectEvents(calendarRemoteId, undefined);
+      return { ...result, resyncRequired: true };
+    }
+  }
+
+  private async collectEvents(
+    calendarRemoteId: string,
+    syncToken: string | undefined,
+  ): Promise<CalendarSyncResult> {
     const client = await this.getClient();
     const encodedId = encodeURIComponent(calendarRemoteId);
     const created: CalendarEventData[] = [];
@@ -179,17 +216,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
 
       const url = `${CALENDAR_API_BASE}/calendars/${encodedId}/events?${params}`;
 
-      let response: GoogleEventListResponse;
-      try {
-        response = await client.request<GoogleEventListResponse>(url);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "";
-        if (message.includes("410") || message.includes("sync token")) {
-          // Sync token expired — caller should do full sync
-          return { created: [], updated: [], deletedRemoteIds: [], newSyncToken: null, newCtag: null };
-        }
-        throw err;
-      }
+      const response = await client.request<GoogleEventListResponse>(url);
 
       for (const item of response.items ?? []) {
         if (item.status === "cancelled") {
