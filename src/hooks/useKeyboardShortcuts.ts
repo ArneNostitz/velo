@@ -79,6 +79,15 @@ function getCachedReverseMap(keyMap: Record<string, string>): ReturnType<typeof 
 }
 
 /**
+ * Shortcuts that belong to the app rather than to the mail list — they still
+ * run while a message is being typed, because none of them acts on the thread
+ * behind the thing with the keyboard.
+ */
+function isAppLevelAction(actionId: string): boolean {
+  return actionId.startsWith("app.");
+}
+
+/**
  * Global keyboard shortcuts handler (Superhuman-inspired).
  * Uses customizable key bindings from the shortcut store.
  */
@@ -115,10 +124,17 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Ctrl/Cmd shortcuts work everywhere
+      const composerOpen = useComposerStore.getState().isOpen;
+
+      // Ctrl/Cmd shortcuts reach further than the rest, but not past what has
+      // the keyboard: `Ctrl+A` in the composer means "select this message",
+      // and it used to select — and a following Delete then trashed — every
+      // thread in the list behind it. Only the app-level combos (palette,
+      // settings, sidebar, send) run while something is being typed into.
       if (e.ctrlKey || e.metaKey) {
         for (const [actionId, binding] of ctrlCombos) {
           if (matchesKey(binding, e)) {
+            if (!isAppLevelAction(actionId) && (isInputFocused || composerOpen)) return;
             e.preventDefault();
             executeAction(actionId);
             return;
@@ -146,6 +162,17 @@ export function useKeyboardShortcuts() {
         const syncActionId = singleKey.get("F5");
         if (syncActionId) {
           await executeAction(syncActionId);
+        }
+        return;
+      }
+
+      // The composer owns the keyboard while it is open. Only Escape gets
+      // through, and only to close it — every other key belongs to the
+      // message being written, not to the mail behind it.
+      if (composerOpen) {
+        if (matchesKey(keyMap["nav.escape"] ?? "Escape", e)) {
+          e.preventDefault();
+          executeAction("nav.escape");
         }
         return;
       }
