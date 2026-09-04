@@ -11,10 +11,10 @@ import {
 } from "@/services/db/contacts";
 import { isVipSender, addVipSender, removeVipSender } from "@/services/db/notificationVips";
 import { fetchAndCacheGravatarUrl } from "@/services/contacts/gravatar";
-import { useThreadStore } from "@/stores/threadStore";
 import { useUIStore } from "@/stores/uiStore";
 import { useComposerStore } from "@/stores/composerStore";
-import { getThreadById, getThreadLabelIds, getThreadsWithContact } from "@/services/db/threads";
+import { getThreadsWithContact } from "@/services/db/threads";
+import { cacheThreadForOpening } from "@/services/threads/openThread";
 import { navigateToThread } from "@/router/navigate";
 import { formatRelativeDate } from "@/utils/date";
 import { formatFileSize, getFileIcon } from "@/utils/fileTypeHelpers";
@@ -89,33 +89,9 @@ export function ContactSidebar({ email, name, accountId, threadId, ownAddresses,
     // Stay on this person while their conversations are browsed
     useUIStore.getState().pinContact({ email, name: name ?? null });
 
-    const { threadMap, cacheThread } = useThreadStore.getState();
-    if (threadMap.has(threadId)) {
-      navigateToThread(threadId);
-      return;
-    }
-    const dbThread = await getThreadById(accountId, threadId);
-    if (!dbThread) return;
-    const labelIds = await getThreadLabelIds(accountId, threadId);
-    const mapped = {
-      id: dbThread.id,
-      accountId: dbThread.account_id,
-      subject: dbThread.subject,
-      snippet: dbThread.snippet,
-      lastMessageAt: dbThread.last_message_at ?? 0,
-      messageCount: dbThread.message_count,
-      isRead: dbThread.is_read === 1,
-      isStarred: dbThread.is_starred === 1,
-      isPinned: dbThread.is_pinned === 1,
-      isMuted: dbThread.is_muted === 1,
-      hasAttachments: dbThread.has_attachments === 1,
-      labelIds,
-      fromName: dbThread.from_name,
-      fromAddress: dbThread.from_address,
-    };
-    // Cache it rather than appending to the list: browsing someone's past
+    // Cached rather than appended to the list: browsing someone's past
     // conversations should not rearrange the mailbox you are looking at.
-    cacheThread(mapped);
+    if (!(await cacheThreadForOpening(accountId, threadId))) return;
     navigateToThread(threadId);
   }, [accountId, email, name]);
 

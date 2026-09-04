@@ -115,7 +115,6 @@ export const ChatMessage = memo(function ChatMessage({
         <SenderAvatar
           email={message.from_address}
           name={message.from_name}
-          isRead
           className="w-6 h-6 text-[0.625rem] shrink-0"
         />
         <div className={`flex items-baseline gap-1.5 min-w-0 flex-1 ${isMine ? "flex-row-reverse" : ""}`}>

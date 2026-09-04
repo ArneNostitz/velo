@@ -37,6 +37,7 @@ import {
 export type NotificationBackend = "native" | "plugin" | "off";
 
 let backend: NotificationBackend = "off";
+let nativeFailure: string | null = null;
 let initialized = false;
 let stopListening: (() => void) | null = null;
 
@@ -106,16 +107,25 @@ export async function initNotifications(): Promise<void> {
       const granted = await requestNativePermission();
       if (!granted) {
         backend = "off";
+        nativeFailure = null;
         return;
       }
       await registerNativeCategories(NOTIFICATION_CATEGORIES);
       stopListening = await listenForNativeActions(handleNativeAction);
       backend = "native";
+      nativeFailure = null;
       return;
     } catch (err) {
+      // The centre is there and it refused us. Worth saying out loud and
+      // worth keeping: it is the difference between "this platform draws no
+      // buttons" and "this build was rejected", and the settings page has no
+      // other way to tell the two apart.
+      nativeFailure = err instanceof Error ? err.message : String(err);
       reportError("Notification buttons are unavailable", err);
       // Plain notifications still beat none
     }
+  } else {
+    nativeFailure = null;
   }
 
   let granted = await isPermissionGranted();
@@ -129,6 +139,16 @@ export async function initNotifications(): Promise<void> {
 /** Which path notifications take — for the settings page and tests. */
 export function getNotificationBackend(): NotificationBackend {
   return backend;
+}
+
+/**
+ * Why the buttons are missing when the notification centre was there but
+ * turned Velo down — `null` when nothing was refused. An ad-hoc "linker
+ * signed" bundle is the usual cause: the centre identifies an app by its
+ * code-signing identifier, and an unsigned bundle has none it recognises.
+ */
+export function getNativeNotificationFailure(): string | null {
+  return nativeFailure;
 }
 
 /**
@@ -207,9 +227,20 @@ export async function handleNativeAction(response: NativeNotificationResponse): 
 
   // A click on the body, or a button whose context is missing: open the mail
   await showAndFocusMainWindow();
-  if (ctx.threadId) {
-    navigateToLabel("inbox", { threadId: ctx.threadId });
+  if (!ctx.threadId) return;
+  // The thread need not be in the list on screen — a rule may have archived
+  // it, it may belong to another mailbox, or the app may have only just
+  // started and loaded nothing yet. Cache it first so the reading pane has
+  // something to render instead of "Select an email to read".
+  if (ctx.accountId) {
+    try {
+      const { cacheThreadForOpening } = await import("../threads/openThread");
+      await cacheThreadForOpening(ctx.accountId, ctx.threadId);
+    } catch (err) {
+      reportError("Could not open the email from the notification", err);
+    }
   }
+  navigateToLabel("inbox", { threadId: ctx.threadId });
 }
 
 async function copyCode(code: string): Promise<void> {
@@ -441,6 +472,7 @@ export async function sendTestNotification(): Promise<NotificationBackend> {
 export function resetNotificationsForTests(): void {
   initialized = false;
   backend = "off";
+  nativeFailure = null;
   stopListening = null;
   pendingEmails = [];
   if (notifyTimer) clearTimeout(notifyTimer);

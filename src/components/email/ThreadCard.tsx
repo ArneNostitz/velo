@@ -116,7 +116,8 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
       )}
 
       <div className="flex items-start gap-3">
-        {/* Avatar (sender photo → domain logo → initial) with unread dot below */}
+        {/* Avatar (sender photo → domain logo → initial); unread is a ring
+            around it plus a dot below, so the avatar itself never changes */}
         <div className="relative shrink-0">
           {isMultiSelected ? (
             <div
@@ -130,16 +131,21 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
             <SenderAvatar
               email={thread.fromAddress}
               name={thread.fromName}
-              isRead={thread.isRead}
-              className={
+              className={`${
                 emailDensity === "compact" ? "w-7 h-7 text-xs" : emailDensity === "spacious" ? "w-10 h-10 text-sm" : "w-9 h-9 text-sm"
-              }
+              } ${
+                // Unread rings the avatar rather than recolouring it: a photo or
+                // a company logo cannot be tinted, so only the ring is a mark
+                // every sender can carry. Offset transparent so the row's own
+                // background — hover, selected, spam — shows through the gap.
+                thread.isRead ? "" : "ring-2 ring-accent ring-offset-1 ring-offset-transparent"
+              }`}
             />
           )}
           {!thread.isRead && !isMultiSelected && (
             <span
               aria-hidden="true"
-              className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-1.5 h-1.5 rounded-full bg-accent"
+              className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-1.5 h-1.5 rounded-full bg-accent"
             />
           )}
         </div>

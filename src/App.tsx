@@ -42,6 +42,7 @@ import {
   unregisterComposeShortcut,
 } from "./services/globalShortcut";
 import { initDeepLinkHandler } from "./services/deepLinkHandler";
+import { initScrollbarVisibility } from "./utils/scrollbars";
 import { updateBadgeCount } from "./services/badgeManager";
 import {
   startQueueProcessor,
@@ -162,6 +163,9 @@ export default function App() {
       window.removeEventListener("offline", handleOffline);
     };
   }, []);
+
+  // Scrollbars show while a pane is being scrolled, then fade out again
+  useEffect(() => initScrollbarVisibility(), []);
 
   // Suppress default browser context menu globally (Tauri app should feel native)
   // Elements with data-native-context-menu opt out so the browser menu is available
