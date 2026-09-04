@@ -117,8 +117,10 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
 
       <div className="flex items-start gap-3">
         {/* Avatar (sender photo → domain logo → initial); unread is a ring
-            around it plus a dot below, so the avatar itself never changes */}
-        <div className="relative shrink-0">
+            around it plus a dot below, so the avatar itself never changes.
+            The column stretches to the row's height so the dot can sit in the
+            space under the avatar rather than hanging off its edge. */}
+        <div className="flex flex-col items-center self-stretch shrink-0">
           {isMultiSelected ? (
             <div
               className={`rounded-full flex items-center justify-center font-medium text-white bg-accent ${
@@ -143,10 +145,9 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
             />
           )}
           {!thread.isRead && !isMultiSelected && (
-            <span
-              aria-hidden="true"
-              className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-1.5 h-1.5 rounded-full bg-accent"
-            />
+            <div aria-hidden="true" className="flex-1 flex items-center">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+            </div>
           )}
         </div>
 

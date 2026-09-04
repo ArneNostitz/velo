@@ -14,22 +14,26 @@ const uiState = {
 vi.mock("@/stores/uiStore", () => ({
   useUIStore: { getState: () => uiState },
 }));
+const threadState = {
+  threads: [],
+  selectedThreadIds: new Set(),
+  removeThread: vi.fn(),
+  removeThreads: vi.fn(),
+  updateThread: vi.fn(),
+  clearMultiSelect: vi.fn(),
+  selectAll: vi.fn(),
+  selectAllFromHere: vi.fn(),
+};
 vi.mock("@/stores/threadStore", () => ({
-  useThreadStore: {
-    getState: () => ({
-      threads: [],
-      selectedThreadIds: new Set(),
-      removeThread: vi.fn(),
-      removeThreads: vi.fn(),
-      updateThread: vi.fn(),
-      clearMultiSelect: vi.fn(),
-      selectAll: vi.fn(),
-      selectAllFromHere: vi.fn(),
-    }),
-  },
+  useThreadStore: { getState: () => threadState },
 }));
+const composerState = {
+  isOpen: false,
+  openComposer: vi.fn(),
+  closeComposer: vi.fn(),
+};
 vi.mock("@/stores/composerStore", () => ({
-  useComposerStore: { getState: () => ({ isOpen: false, openComposer: vi.fn(), closeComposer: vi.fn() }) },
+  useComposerStore: { getState: () => composerState },
 }));
 vi.mock("@/stores/accountStore", () => ({
   useAccountStore: { getState: () => ({ activeAccountId: null }) },
@@ -43,6 +47,9 @@ vi.mock("@/stores/shortcutStore", () => ({
         "app.toggleSidebar": "Ctrl+Shift+E",
         "app.settings": "Ctrl+,",
         "app.help": "?",
+        "action.selectAll": "Ctrl+A",
+        "action.archive": "e",
+        "nav.escape": "Escape",
       },
     }),
   },
@@ -85,6 +92,7 @@ describe("useKeyboardShortcuts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     uiState.settingsOpen = false;
+    composerState.isOpen = false;
   });
 
   it("dispatches velo-toggle-ask-inbox when 'i' is pressed", () => {
@@ -179,5 +187,69 @@ describe("useKeyboardShortcuts", () => {
     expect(listener).not.toHaveBeenCalled();
 
     window.removeEventListener("velo-toggle-ask-inbox", listener);
+  });
+
+  it("selects every thread on Ctrl+A in the mail list", () => {
+    renderHook(() => useKeyboardShortcuts());
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true }),
+    );
+
+    expect(threadState.selectAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Ctrl+A alone while the composer is open", () => {
+    // The message being written is what "select all" means there — this once
+    // selected every thread behind the composer instead
+    composerState.isOpen = true;
+    renderHook(() => useKeyboardShortcuts());
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "a", metaKey: true, bubbles: true }),
+    );
+
+    expect(threadState.selectAll).not.toHaveBeenCalled();
+  });
+
+  it("leaves Ctrl+A alone while typing in an input", () => {
+    renderHook(() => useKeyboardShortcuts());
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "a", metaKey: true, bubbles: true }),
+    );
+
+    expect(threadState.selectAll).not.toHaveBeenCalled();
+    input.remove();
+  });
+
+  it("suppresses mail shortcuts while the composer is open", () => {
+    composerState.isOpen = true;
+    renderHook(() => useKeyboardShortcuts());
+
+    const listener = vi.fn();
+    window.addEventListener("velo-toggle-ask-inbox", listener);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "i", bubbles: true }),
+    );
+
+    expect(listener).not.toHaveBeenCalled();
+
+    window.removeEventListener("velo-toggle-ask-inbox", listener);
+  });
+
+  it("still closes the composer on Escape", () => {
+    composerState.isOpen = true;
+    renderHook(() => useKeyboardShortcuts());
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+
+    expect(composerState.closeComposer).toHaveBeenCalledTimes(1);
   });
 });

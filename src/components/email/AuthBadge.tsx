@@ -1,14 +1,21 @@
-import { useState } from "react";
 import { ShieldCheck, ShieldAlert, ShieldX, ShieldQuestion } from "lucide-react";
+import { Tooltip } from "@/components/ui/Tooltip";
 import type { AuthResult } from "@/services/gmail/authParser";
 
 interface AuthBadgeProps {
   authResults: string | null;
 }
 
+/**
+ * SPF/DKIM/DMARC at a glance, with the three results behind a tooltip.
+ *
+ * The tooltip goes through `ui/Tooltip` rather than an absolutely positioned
+ * span of its own: the badge sits inside the header's truncating name line,
+ * whose `overflow: hidden` clipped the bubble away entirely — all that
+ * reached the screen was a hint of its shadow. `Tooltip` portals to the body,
+ * so no ancestor's overflow can reach it.
+ */
 export function AuthBadge({ authResults }: AuthBadgeProps) {
-  const [showTooltip, setShowTooltip] = useState(false);
-
   if (!authResults) return null;
 
   let parsed: AuthResult;
@@ -19,12 +26,6 @@ export function AuthBadge({ authResults }: AuthBadgeProps) {
   }
 
   const { aggregate, spf, dkim, dmarc } = parsed;
-
-  const tooltipLines = [
-    `SPF: ${spf.result}${spf.detail ? ` (${spf.detail})` : ""}`,
-    `DKIM: ${dkim.result}${dkim.detail ? ` (${dkim.detail})` : ""}`,
-    `DMARC: ${dmarc.result}${dmarc.detail ? ` (${dmarc.detail})` : ""}`,
-  ].join("\n");
 
   const iconProps = { size: 14, className: "shrink-0" };
 
@@ -55,20 +56,24 @@ export function AuthBadge({ authResults }: AuthBadgeProps) {
       break;
   }
 
+  const detail = (result: { result: string; detail?: string | null }) =>
+    `${result.result}${result.detail ? ` (${result.detail})` : ""}`;
+
   return (
-    <span
-      className={`relative inline-flex items-center ${colorClass}`}
-      onMouseEnter={() => setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
-      aria-label={label}
-      role="img"
-    >
-      {icon}
-      {showTooltip && (
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1.5 text-xs rounded-md bg-bg-tertiary text-text-primary border border-border-secondary shadow-md whitespace-pre z-50 pointer-events-none">
-          {tooltipLines}
+    <Tooltip
+      content={
+        <span className="block whitespace-pre-line">
+          {`${label}\nSPF: ${detail(spf)}\nDKIM: ${detail(dkim)}\nDMARC: ${detail(dmarc)}`}
         </span>
-      )}
-    </span>
+      }
+    >
+      <span
+        className={`inline-flex items-center ${colorClass}`}
+        aria-label={label}
+        role="img"
+      >
+        {icon}
+      </span>
+    </Tooltip>
   );
 }
