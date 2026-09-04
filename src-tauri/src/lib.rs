@@ -92,6 +92,10 @@ pub fn run() {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     migrate_legacy_data_dir("com.anydaysomething.velopro");
 
+    // And before any window exists: this one can put a system dialog on
+    // screen, which must not end up behind the always-on-top splash
+    keychain::migrate_legacy_key();
+
     // Set explicit AUMID on Windows so toast notifications show "Velo Pro"
     // instead of "Windows PowerShell"
     #[cfg(windows)]
