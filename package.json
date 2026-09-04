@@ -14,7 +14,9 @@
     "lint": "eslint",
     "tauri": "tauri",
     "dev:landing": "npm run dev --prefix landing",
-    "flatpak": "flatpak-builder --force-clean --user --install --install-deps-from=flathub build-dir com.velomail.app.yml"
+    "flatpak": "flatpak-builder --force-clean --user --install --install-deps-from=flathub build-dir com.anydaysomething.velopro.yml",
+    "build:signed": "node scripts/build-signed.mjs",
+    "signing:macos": "node scripts/macos-signing.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

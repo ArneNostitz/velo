@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Velo",
+  "productName": "Velo Pro",
   "version": "0.4.21",
-  "identifier": "com.velomail.app",
+  "identifier": "com.anydaysomething.velopro",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Velo",
+        "title": "Velo Pro",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -56,7 +56,8 @@
     "macOS": {
       "entitlements": "Entitlements.plist",
       "minimumSystemVersion": "10.13",
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "bundleVersion": "006"
     }
   },
   "plugins": {
