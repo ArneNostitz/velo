@@ -34,16 +34,19 @@ function nextSource(current: AvatarSource, domain: string): AvatarSource {
 /**
  * Airmail-style sender avatar for the thread list: the sender's Gravatar
  * photo, then their domain's favicon (company logo), then the initial circle.
+ *
+ * The avatar says who wrote, never whether the mail was read — a photo cannot
+ * change colour, so a read/unread tint only ever applied to the third of
+ * senders that fall back to an initial. Unread is drawn around the avatar
+ * (a ring, a dot) by the caller instead.
  */
 export function SenderAvatar({
   email,
   name,
-  isRead,
   className,
 }: {
   email: string | null;
   name: string | null;
-  isRead: boolean;
   className: string;
 }) {
   const address = (email ?? "").trim().toLowerCase();
@@ -102,9 +105,7 @@ export function SenderAvatar({
 
   return (
     <div
-      className={`${className} rounded-full flex items-center justify-center font-medium text-white ${
-        isRead ? "bg-text-tertiary" : "bg-accent"
-      }`}
+      className={`${className} rounded-full flex items-center justify-center font-medium text-white bg-text-tertiary`}
     >
       {initial}
     </div>

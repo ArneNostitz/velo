@@ -13,4 +13,13 @@ describe("tauri.conf.json", () => {
     expect(mainWindow).toBeDefined();
     expect(mainWindow.dragDropEnabled).toBe(false);
   });
+
+  it("signs the macOS bundle so the notification centre will accept it", () => {
+    // Without an identity the bundler skips codesign entirely and the app
+    // ships linker-signed: its code-signing identifier is a hash, its
+    // Info.plist is unbound, and UNUserNotificationCenter refuses to
+    // register it — which silently drops Velo to plain-text notifications
+    // with no buttons and no click to hear.
+    expect(config.bundle.macOS.signingIdentity).toBeTruthy();
+  });
 });

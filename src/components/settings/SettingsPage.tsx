@@ -8,6 +8,7 @@ import { useAccountStore } from "@/stores/accountStore";
 import { getSetting, setSetting, getSecureSetting, setSecureSetting } from "@/services/db/settings";
 import {
   getNotificationBackend,
+  getNativeNotificationFailure,
   applyNotificationsEnabled,
   sendTestNotification,
   type NotificationBackend,
@@ -2596,6 +2597,7 @@ function SettingRow({
  */
 function NotificationButtonsRow({ backend }: { backend: NotificationBackend }) {
   const [os, setOs] = useState("");
+  const failure = getNativeNotificationFailure();
   useEffect(() => {
     import("@tauri-apps/plugin-os")
       .then(({ platform }) => setOs(platform()))
@@ -2609,7 +2611,12 @@ function NotificationButtonsRow({ backend }: { backend: NotificationBackend }) {
   } else if (backend === "plugin") {
     note =
       os === "macos"
-        ? "Buttons need the installed app: a development build runs outside an app bundle, which the macOS notification centre refuses, so notifications here are plain text."
+        ? failure
+          // The centre was there and said no — almost always an unsigned
+          // build, which it cannot identify. Saying "development build"
+          // here would send the user looking in the wrong place.
+          ? `The macOS notification centre turned this build down (${failure}), so notifications are plain text. An app bundle has to be code-signed before the centre will accept it.`
+          : "Buttons need the installed app: a development build runs outside an app bundle, which the macOS notification centre refuses, so notifications here are plain text."
         : "Notifications are plain text on this platform. The buttons live in Velo's own toasts instead.";
   } else {
     note =
