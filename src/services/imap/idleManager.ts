@@ -29,11 +29,66 @@ const GMAIL_IMAP = { host: "imap.gmail.com", port: 993, security: "tls" as const
 /** Ignore a second doorbell for the same account within this window. */
 const DEBOUNCE_MS = 3000;
 
+/**
+ * How long to wait before each automatic retry after a watcher stops.
+ *
+ * The common failure is not a broken account at all: an OAuth access token
+ * lives about an hour, the Rust watcher holds the config it was handed, and
+ * the first reconnect after the token expires is refused with
+ * `AUTHENTICATIONFAILED`. Rust reads that as permanent and ends the loop, so
+ * the account silently drops back to the 60-second poll — which is exactly
+ * "instant delivery stopped working overnight". Retrying goes back through
+ * `startIdleWatcher`, which mints a fresh token, so the first retry normally
+ * succeeds. Only when all of these are used up is it worth telling the user.
+ */
+const RETRY_DELAYS_MS = [5_000, 30_000, 2 * 60_000, 10 * 60_000];
+
 let unlistenActivity: UnlistenFn | null = null;
 let unlistenFailure: UnlistenFn | null = null;
 let unlistenStatus: UnlistenFn | null = null;
 let lastFired = new Map<string, number>();
 const failedAccounts = new Set<string>();
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const retryAttempts = new Map<string, number>();
+
+/** Stop retrying an account — it connected, or the watchers are going away. */
+function clearRetries(accountId: string): void {
+  const timer = retryTimers.get(accountId);
+  if (timer) clearTimeout(timer);
+  retryTimers.delete(accountId);
+  retryAttempts.delete(accountId);
+}
+
+/**
+ * A watcher stopped. Try again with a freshly minted token before saying so
+ * out loud; report only once the retries are spent.
+ */
+function scheduleRetry(account: DbAccount, error: string): void {
+  const attempt = retryAttempts.get(account.id) ?? 0;
+  const delay = RETRY_DELAYS_MS[attempt];
+
+  if (delay === undefined) {
+    useIdleStatusStore.getState().setStatus(account.id, "failed", error);
+    reportError(`Instant delivery unavailable for ${account.email}`, explainIdleFailure(error), {
+      label: "Reconnect",
+      run: () => reconnectAccount(account.id),
+    });
+    return;
+  }
+
+  retryAttempts.set(account.id, attempt + 1);
+  // Still "connecting": a retry is pending, and the account is not stuck
+  useIdleStatusStore.getState().setStatus(account.id, "connecting");
+  const existing = retryTimers.get(account.id);
+  if (existing) clearTimeout(existing);
+  retryTimers.set(
+    account.id,
+    setTimeout(() => {
+      retryTimers.delete(account.id);
+      void startIdleWatcher(account);
+    }, delay),
+  );
+}
 
 /** Accounts that could not idle, so the UI can explain the fallback. */
 export function accountsWithoutIdle(): Set<string> {
@@ -110,14 +165,10 @@ async function startIdleWatcher(account: DbAccount): Promise<void> {
     await invoke("imap_start_idle", { accountId: account.id, config });
     failedAccounts.delete(account.id);
   } catch (err) {
-    // Not fatal: the account keeps syncing on the timer
+    // Not fatal: the account keeps syncing on the timer while this retries
     failedAccounts.add(account.id);
-    setStatus(account.id, "failed", String(err));
     console.warn(`IDLE unavailable for ${account.email}:`, err);
-    reportError(`Instant delivery unavailable for ${account.email}`, explainIdleFailure(String(err)), {
-      label: "Reconnect",
-      run: () => reconnectAccount(account.id),
-    });
+    scheduleRetry(account, String(err));
   }
 }
 
@@ -132,6 +183,8 @@ export async function reconnectAccount(accountId: string): Promise<void> {
   await attachListeners();
   const account = (await getAllAccounts()).find((a) => a.id === accountId);
   if (!account || account.is_active === 0) return;
+  // Asking by hand starts the retry budget over
+  clearRetries(accountId);
   await startIdleWatcher(account);
 }
 
@@ -148,6 +201,7 @@ export async function stopIdleWatchers(): Promise<void> {
   unlistenFailure = null;
   unlistenStatus?.();
   unlistenStatus = null;
+  for (const id of [...retryTimers.keys()]) clearRetries(id);
   lastFired = new Map();
   useIdleStatusStore.getState().clearAll();
 }
@@ -174,16 +228,17 @@ async function attachListeners(): Promise<void> {
   unlistenFailure = await listen<{ account_id: string; error: string }>(
     "velo-idle-failed",
     (event) => {
-      failedAccounts.add(event.payload.account_id);
-      useIdleStatusStore.getState().setStatus(event.payload.account_id, "failed", event.payload.error);
-      console.warn(
-        `IDLE dropped for ${event.payload.account_id}: ${event.payload.error}`,
-      );
-      // Same title + detail on every retry collapses into one toast
-      reportError("Instant delivery stopped", explainIdleFailure(event.payload.error), {
-        label: "Reconnect",
-        run: () => reconnectAccount(event.payload.account_id),
-      });
+      const { account_id, error } = event.payload;
+      failedAccounts.add(account_id);
+      console.warn(`IDLE dropped for ${account_id}: ${error}`);
+      // Rust ends its loop on a refusal, so recovery has to start here — and
+      // the usual refusal is just an expired access token, which is fixed by
+      // connecting again with a new one rather than by telling the user
+      void (async () => {
+        const account = (await getAllAccounts()).find((a) => a.id === account_id);
+        if (!account || account.is_active === 0) return;
+        scheduleRetry(account, error);
+      })();
     },
   );
 
@@ -197,6 +252,7 @@ async function attachListeners(): Promise<void> {
       const store = useIdleStatusStore.getState();
       if (state === "connected") {
         failedAccounts.delete(account_id);
+        clearRetries(account_id);
         store.setStatus(account_id, "connected");
       } else if (store.statuses[account_id] !== "failed") {
         store.setStatus(account_id, "connecting");

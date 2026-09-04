@@ -1,12 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockInvoke = vi.fn(() => Promise.resolve());
-const mockListen = vi.fn(() => Promise.resolve(() => {}));
+const listeners = new Map<string, (event: { payload: unknown }) => void>();
+const mockListen = vi.fn((name: string, handler: (event: { payload: unknown }) => void) => {
+  listeners.set(name, handler);
+  return Promise.resolve(() => listeners.delete(name));
+});
 const settings = new Map<string, string>();
 let accounts: Record<string, unknown>[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => mockInvoke(...a) }));
-vi.mock("@tauri-apps/api/event", () => ({ listen: (...a: unknown[]) => mockListen(...a) }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (name: string, handler: (event: { payload: unknown }) => void) => mockListen(name, handler),
+}));
 vi.mock("@/services/db/settings", () => ({
   getSetting: (k: string) => Promise.resolve(settings.get(k) ?? null),
 }));
@@ -104,13 +110,13 @@ describe("startIdleWatchers - what it tells the status store", () => {
     expect(useIdleStatusStore.getState().statuses.g1).toBe("connecting");
   });
 
-  it("marks a refused account failed, and keeps the server's reason", async () => {
+  it("keeps a refused account on 'connecting' while a retry is pending", async () => {
+    // The refusal is usually an expired access token, and the retry mints a
+    // new one — saying "failed" before trying again would be a lie
     mockInvoke.mockImplementationOnce(() => Promise.reject(new Error("AUTHENTICATIONFAILED")));
     accounts = [gmail];
     await startIdleWatchers();
-    const store = useIdleStatusStore.getState();
-    expect(store.statuses.g1).toBe("failed");
-    expect(store.reasons.g1).toContain("AUTHENTICATIONFAILED");
+    expect(useIdleStatusStore.getState().statuses.g1).toBe("connecting");
   });
 
   it("marks an account off when it cannot idle at all", async () => {
@@ -124,6 +130,71 @@ describe("startIdleWatchers - what it tells the status store", () => {
     await startIdleWatchers();
     await stopIdleWatchers();
     expect(useIdleStatusStore.getState().statuses).toEqual({});
+  });
+});
+
+describe("recovering from a stopped watcher", () => {
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+    settings.clear();
+    accounts = [];
+    await stopIdleWatchers();
+    vi.clearAllMocks();
+  });
+
+  it("reconnects with a freshly minted token after Rust gives up", async () => {
+    // Rust ends its loop on AUTHENTICATIONFAILED, which is what an expired
+    // OAuth token looks like — recovery has to start on this side
+    vi.useFakeTimers();
+    accounts = [gmail];
+    await startIdleWatchers();
+    mockInvoke.mockClear();
+
+    listeners.get("velo-idle-failed")?.({
+      payload: { account_id: "g1", error: "AUTHENTICATIONFAILED" },
+    });
+    await vi.advanceTimersByTimeAsync(0); // the account lookup
+    expect(mockInvoke).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(mockInvoke).toHaveBeenCalledWith("imap_start_idle", {
+      accountId: "g1",
+      config: expect.objectContaining({ password: "tok-123" }),
+    });
+    vi.useRealTimers();
+  });
+
+  it("gives up and says so once the retries are spent", async () => {
+    vi.useFakeTimers();
+    mockInvoke.mockImplementation(() => Promise.reject(new Error("AUTHENTICATIONFAILED")));
+    accounts = [gmail];
+    await startIdleWatchers();
+
+    // 5s + 30s + 2min + 10min of retries, all refused
+    await vi.advanceTimersByTimeAsync(13 * 60_000);
+    expect(useIdleStatusStore.getState().statuses.g1).toBe("failed");
+    expect(useIdleStatusStore.getState().reasons.g1).toContain("AUTHENTICATIONFAILED");
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation(() => Promise.resolve());
+    vi.useRealTimers();
+  });
+
+  it("stops retrying once the watcher reports itself connected", async () => {
+    vi.useFakeTimers();
+    mockInvoke.mockImplementationOnce(() => Promise.reject(new Error("AUTHENTICATIONFAILED")));
+    accounts = [gmail];
+    await startIdleWatchers();
+    mockInvoke.mockClear();
+
+    listeners.get("velo-idle-status")?.({
+      payload: { account_id: "g1", state: "connected" },
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(useIdleStatusStore.getState().statuses.g1).toBe("connected");
+    expect(mockInvoke).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
 
