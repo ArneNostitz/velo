@@ -29,6 +29,34 @@ fn legacy_entry() -> Result<Entry, String> {
     Entry::new(LEGACY_SERVICE, ACCOUNT).map_err(|e| format!("Keychain unavailable: {e}"))
 }
 
+/// Copy the key out of the pre-rename entry, before any window exists.
+///
+/// Reading a keychain item written by a differently-signed binary makes macOS
+/// ask the user first. Done lazily — on the frontend's first decrypt — that
+/// question arrives while the splash screen is up, and the splash is
+/// `alwaysOnTop`: the dialog can end up behind it, with nothing to click and
+/// an app that never finishes starting. Asking here, before Tauri builds a
+/// single window, puts the dialog in front of the user where it belongs.
+///
+/// Best-effort throughout: a refusal or a missing credential store leaves the
+/// lazy path in `keychain_get_key` to try again and report properly.
+pub fn migrate_legacy_key() {
+    let (Ok(current), Ok(legacy)) = (entry(), legacy_entry()) else {
+        return;
+    };
+    if current.get_password().is_ok() {
+        return; // already carried over, or this install never had the old name
+    }
+    match legacy.get_password() {
+        Ok(secret) => match current.set_password(&secret) {
+            Ok(()) => log::info!("Carried the database encryption key over to {SERVICE}"),
+            Err(e) => log::warn!("Could not store the encryption key under {SERVICE}: {e}"),
+        },
+        Err(keyring::Error::NoEntry) => {}
+        Err(e) => log::warn!("Could not read the encryption key from {LEGACY_SERVICE}: {e}"),
+    }
+}
+
 /// Read the encryption key from the OS credential store.
 /// Returns `Ok(None)` when no key has been stored yet (a normal first launch),
 /// and `Err` only when the credential store itself cannot be reached.
