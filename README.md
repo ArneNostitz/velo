@@ -181,6 +181,11 @@ npm run tauri build
 
 [Apache-2.0](LICENSE)
 
+Velo Pro is a modified version of [Velo](https://github.com/avihaymenahem/velo)
+by Avihay Menahem, used under the Apache License 2.0. Changes have been made to
+the original software. Velo Pro is not affiliated with, endorsed by, or
+supported by the Velo project.
+
 ---
 
 <p align="center">
