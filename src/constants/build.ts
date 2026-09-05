@@ -8,4 +8,4 @@
  * It is also written to `bundle.macOS.bundleVersion` in `tauri.conf.json`,
  * which is what Finder's Get Info shows — a test keeps the two in step.
  */
-export const FIX_NUMBER = "009";
+export const FIX_NUMBER = "010";
