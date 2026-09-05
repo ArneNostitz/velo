@@ -119,7 +119,19 @@ describe("providerManager", () => {
       });
 
       await getActiveProvider();
-      expect(createGeminiProvider).toHaveBeenCalledWith("AItest", "gemini-2.5-flash-preview-05-20");
+      expect(createGeminiProvider).toHaveBeenCalledWith("AItest", "gemini-3.8-flash");
+    });
+
+    it("swaps a retired model id from settings for its replacement", async () => {
+      mockGetSetting.mockImplementation(async (key: string) => {
+        if (key === "ai_provider") return "gemini";
+        if (key === "gemini_api_key") return "AItest";
+        if (key === "gemini_model") return "gemini-2.5-pro-preview-05-06";
+        return null;
+      });
+
+      await getActiveProvider();
+      expect(createGeminiProvider).toHaveBeenCalledWith("AItest", "gemini-3.1-pro-preview");
     });
 
     it("uses custom model from settings when configured", async () => {

@@ -99,6 +99,6 @@ To enable AI features, add your API key for one or more providers in Settings:
 
 - **Anthropic Claude** -- [Get API key](https://console.anthropic.com/) -- Haiku 4.5 (default), Sonnet 4, Opus 4
 - **OpenAI** -- [Get API key](https://platform.openai.com/) -- GPT-4o Mini (default), GPT-4o, GPT-4.1 series
-- **Google Gemini** -- [Get API key](https://aistudio.google.com/) -- 2.5 Flash (default), 2.5 Pro
+- **Google Gemini** -- [Get API key](https://aistudio.google.com/) -- 3.8 Flash (default), 3.7 Flash, 3.5 Flash-Lite, 3.1 Pro (preview), 2.5 Flash, 2.5 Pro
 
 After adding an API key, select which model to use for each provider in Settings > AI.

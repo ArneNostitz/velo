@@ -220,7 +220,7 @@ Key tables (35 total): `accounts` (with `provider` "gmail_api"|"imap", IMAP/SMTP
 - **Vite HMR**: Uses port 1421 when `TAURI_DEV_HOST` is set
 - **Vite build**: Multi-page — `index.html` (main app) + `splashscreen.html`
 - **Filter engine**: AND logic for criteria, merges actions when multiple filters match same message
-- **AI providers**: API keys stored in SQLite settings table. Provider selected per-feature in settings. Results cached in `ai_cache` table
+- **AI providers**: API keys stored in SQLite settings table. Provider selected per-feature in settings. Results cached in `ai_cache` table. `RETIRED_MODELS` in `services/ai/types.ts` maps ids Google has shut down to their replacement, and `resolveModelId()` is applied wherever a stored model id is read (`providerManager`, Settings) — a stored `gemini_model` outlives the model it names, and Velo shipped `gemini-2.5-flash-preview-05-20` as default for months after it was turned off, so every Gemini call 404ed until the user re-picked. Check https://ai.google.dev/gemini-api/docs/deprecations when touching the list; a test asserts no offered id is retired
 - **Deep links**: `mailto:` scheme registered via tauri-plugin-deep-link. Opens compose window with pre-filled recipient
 - **Autostart**: Uses `--hidden` flag to start minimized to tray
 - **Phishing detection**: 10 heuristic rules (IP URLs, homograph, suspicious TLDs, URL shorteners, display/href mismatch, suspicious paths, brand impersonation, dangerous protocols, free email impostor, subdomain spoofing). Sensitivity configurable (low/default/high). Results cached in `link_scan_results`

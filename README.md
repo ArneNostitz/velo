@@ -82,7 +82,7 @@ Three providers with selectable models -- choose one or mix and match:
 |----------|--------|
 | **Anthropic Claude** | Haiku 4.5, Sonnet 4, Opus 4 |
 | **OpenAI** | GPT-4o Mini, GPT-4o, GPT-4.1 Nano, GPT-4.1 Mini, GPT-4.1 |
-| **Google Gemini** | 2.5 Flash, 2.5 Pro |
+| **Google Gemini** | 3.8 Flash, 3.7 Flash, 3.5 Flash-Lite, 3.1 Pro (preview), 2.5 Flash, 2.5 Pro |
 
 Thread summaries, smart reply suggestions, AI compose & reply, text transform (improve/shorten/formalize), Ask My Inbox (natural language search). Pick which model to use per provider in Settings. All results cached locally.
 

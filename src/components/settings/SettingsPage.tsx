@@ -13,7 +13,7 @@ import {
   sendTestNotification,
   type NotificationBackend,
 } from "@/services/notifications/notificationManager";
-import { PROVIDER_MODELS } from "@/services/ai/types";
+import { PROVIDER_MODELS, resolveModelId } from "@/services/ai/types";
 import { FIX_NUMBER } from "@/constants/build";
 import { deleteAccount, updateAccountColor } from "@/services/db/accounts";
 import { ACCOUNT_COLORS, accountColor } from "@/constants/accountColors";
@@ -160,7 +160,7 @@ export function SettingsPage() {
   const [ollamaModel, setOllamaModel] = useState("llama3.2");
   const [claudeModel, setClaudeModel] = useState("claude-haiku-4-5-20251001");
   const [openaiModel, setOpenaiModel] = useState("gpt-4o-mini");
-  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash-preview-05-20");
+  const [geminiModel, setGeminiModel] = useState("gemini-3.8-flash");
   const [copilotModel, setCopilotModel] = useState("openai/gpt-4o-mini");
   const [aiEnabled, setAiEnabled] = useState(true);
   const [aiAutoCategorize, setAiAutoCategorize] = useState(true);
@@ -241,7 +241,7 @@ export function SettingsPage() {
       const openaiModelVal = await getSetting("openai_model");
       if (openaiModelVal) setOpenaiModel(openaiModelVal);
       const geminiModelVal = await getSetting("gemini_model");
-      if (geminiModelVal) setGeminiModel(geminiModelVal);
+      if (geminiModelVal) setGeminiModel(resolveModelId(geminiModelVal));
       const aiKey = await getSecureSetting("claude_api_key");
       setClaudeApiKey(aiKey ?? "");
       const oaiKey = await getSecureSetting("openai_api_key");
