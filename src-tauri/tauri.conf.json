@@ -57,7 +57,7 @@
       "entitlements": "Entitlements.plist",
       "minimumSystemVersion": "10.13",
       "signingIdentity": "-",
-      "bundleVersion": "009"
+      "bundleVersion": "010"
     },
     "resources": {
       "../LICENSE": "LICENSE",
