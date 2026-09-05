@@ -1,13 +1,13 @@
 {
   "name": "velo",
-  "version": "0.4.21",
+  "version": "0.4.21+010",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "eslint && tsc && vite build",
-    "build:app": "git pull --ff-only origin main && npm run tauri build",
+    "build:app": "git pull --ff-only origin main && npm install --no-audit --no-fund && npm run tauri build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

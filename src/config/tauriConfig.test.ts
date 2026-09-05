@@ -30,6 +30,14 @@ describe("tauri.conf.json", () => {
     expect(config.bundle.macOS.bundleVersion).toBe(FIX_NUMBER);
   });
 
+  it("stamps the fix number onto the package version so every npm run names the build", () => {
+    // `npm run build:app` prints `velo@<version>` as its first line; with the
+    // fix number as semver build metadata that line says which build this is.
+    // The release version itself stays in tauri.conf.json, unstamped.
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf-8"));
+    expect(pkg.version).toBe(`${config.version}+${FIX_NUMBER}`);
+  });
+
   it("is named and identified as Velo Pro", () => {
     expect(config.identifier).toBe("com.anydaysomething.velopro");
     expect(config.productName).toBe("Velo Pro");
