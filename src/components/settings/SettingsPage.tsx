@@ -42,6 +42,7 @@ import {
   Info,
   ExternalLink,
   Github,
+  GitFork,
   Scale,
   Globe,
   Download,
@@ -2227,6 +2228,21 @@ function AboutTab() {
           </p>
           <p className="text-xs text-text-tertiary leading-relaxed">
             Copyright 2025 Velo Mail. You may use, distribute, and modify this software under the terms of the Apache 2.0 license. This software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.
+          </p>
+        </div>
+      </Section>
+
+      <Section title="Attribution">
+        <div className="px-4 py-3 bg-bg-secondary rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <GitFork size={15} className="text-text-tertiary" />
+            <span className="text-sm font-medium text-text-primary">Modified from Velo</span>
+          </div>
+          <p className="text-xs text-text-secondary leading-relaxed">
+            Velo Pro is a modified version of Velo by Avihay Menahem, used under
+            the Apache License 2.0. Velo Pro is not affiliated with, endorsed by,
+            or supported by the Velo project. Changes have been made to the
+            original software.
           </p>
         </div>
       </Section>
