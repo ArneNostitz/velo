@@ -6,7 +6,7 @@ import { useAccountStore } from "@/stores/accountStore";
 import { getActiveLabel } from "@/router/navigate";
 import { useComposerStore } from "@/stores/composerStore";
 import { useLabelStore } from "@/stores/labelStore";
-import { archiveThread, trashThread, permanentDeleteThread, markThreadRead, starThread, spamThread, addThreadLabel, removeThreadLabel } from "@/services/emailActions";
+import { archiveThread, trashThread, permanentDeleteThread, markThreadRead, starThread, spamThread, addThreadLabel, removeThreadLabel, runBulkAction, type BulkTarget } from "@/services/emailActions";
 import { deleteThread as deleteThreadFromDb, pinThread as pinThreadDb, unpinThread as unpinThreadDb, muteThread as muteThreadDb, unmuteThread as unmuteThreadDb } from "@/services/db/threads";
 import { deleteDraftsForThread } from "@/services/gmail/draftDeletion";
 import { getGmailClient } from "@/services/gmail/tokenManager";
@@ -313,31 +313,34 @@ function ThreadMenu({
     });
   };
 
+  const targets = (): BulkTarget[] =>
+    targetIds.map((threadId) => ({ accountId: accountFor(threadId), threadId }));
+
   const handleArchive = async () => {
-    for (const id of targetIds) {
-      await archiveThread(accountFor(id), id, []);
-    }
+    await runBulkAction(
+      targets(),
+      ({ accountId, threadId }) => archiveThread(accountId, threadId, []),
+      { removes: true },
+    );
   };
 
   const handleDelete = async () => {
     if (!(await confirmDelete(targetIds.length, isTrashView))) return;
-    for (const id of targetIds) {
-      const accountId = accountFor(id);
-      if (isTrashView) {
-        await permanentDeleteThread(accountId, id, []);
-        await deleteThreadFromDb(accountId, id);
-      } else if (isDraftsView) {
-        useThreadStore.getState().removeThread(id);
-        try {
+    await runBulkAction(
+      targets(),
+      async ({ accountId, threadId }) => {
+        if (isTrashView) {
+          await permanentDeleteThread(accountId, threadId, []);
+          await deleteThreadFromDb(accountId, threadId);
+        } else if (isDraftsView) {
           const client = await getGmailClient(accountId);
-          await deleteDraftsForThread(client, accountId, id);
-        } catch (err) {
-          console.error("Failed to delete drafts:", err);
+          await deleteDraftsForThread(client, accountId, threadId);
+        } else {
+          await trashThread(accountId, threadId, []);
         }
-      } else {
-        await trashThread(accountId, id, []);
-      }
-    }
+      },
+      { removes: true },
+    );
   };
 
   const handleToggleRead = async () => {

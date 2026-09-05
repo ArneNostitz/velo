@@ -301,10 +301,41 @@ async function executeViaProvider(
   }
 }
 
-export async function executeEmailAction(
+/**
+ * Fill in `messageIds` when the caller passed none.
+ *
+ * Every caller passes `[]` — a thread action is expressed per thread — and
+ * the Gmail provider ignores the list, so nothing noticed that the IMAP
+ * provider does its work *per message*: it groups the ids by folder and moves
+ * those UIDs, and with no ids it moved nothing. The thread left the list, the
+ * local DB agreed, and the mail sat untouched on the server. Resolved here,
+ * before the queue sees the action, so an operation replayed later carries the
+ * ids even after the thread's rows are gone.
+ */
+async function withMessageIds(
   accountId: string,
   action: EmailAction,
+): Promise<EmailAction> {
+  if (!("messageIds" in action) || action.messageIds.length > 0) return action;
+  try {
+    const db = await getDb();
+    const rows = await db.select<{ id: string }[]>(
+      "SELECT id FROM messages WHERE account_id = $1 AND thread_id = $2",
+      [accountId, action.threadId],
+    );
+    return { ...action, messageIds: rows.map((r) => r.id) };
+  } catch (err) {
+    console.warn("Could not resolve message ids for action:", err);
+    return action;
+  }
+}
+
+export async function executeEmailAction(
+  accountId: string,
+  rawAction: EmailAction,
 ): Promise<ActionResult> {
+  const action = await withMessageIds(accountId, rawAction);
+
   // 1. Optimistic UI update
   applyOptimisticUpdate(action);
 
@@ -349,6 +380,62 @@ export async function executeEmailAction(
     console.error(`Email action ${action.type} failed permanently:`, err);
     return { success: false, error: classified.message };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Bulk actions
+// ---------------------------------------------------------------------------
+
+/** How many provider calls a bulk action keeps in flight at once. */
+export const BULK_CONCURRENCY = 6;
+
+export interface BulkTarget {
+  accountId: string;
+  threadId: string;
+}
+
+/**
+ * Run one action over many threads.
+ *
+ * A selection used to be handled with `for … await`, one server round trip
+ * after another, so trashing forty mails took forty seconds and the rows left
+ * the list one per second. The optimistic removal now happens for the whole
+ * selection at once, and the provider calls run a few at a time — enough to
+ * be quick, few enough that Gmail's per-user rate limit does not start
+ * refusing them (a refused call is queued and retried, which reads as "it
+ * came back"). Failures are collected, never thrown: one bad thread must not
+ * stop the rest of the sweep.
+ *
+ * @param removes whether the action takes the thread out of the list, so the
+ *   rows can fade together up front
+ */
+export async function runBulkAction(
+  targets: BulkTarget[],
+  run: (target: BulkTarget) => Promise<unknown>,
+  { removes = false, concurrency = BULK_CONCURRENCY } = {},
+): Promise<{ failed: number }> {
+  if (targets.length === 0) return { failed: 0 };
+  if (removes) {
+    useThreadStore.getState().beginThreadRemoval(targets.map((t) => t.threadId));
+  }
+
+  let failed = 0;
+  let next = 0;
+  const worker = async () => {
+    while (next < targets.length) {
+      const target = targets[next++]!;
+      try {
+        await run(target);
+      } catch (err) {
+        failed++;
+        console.error("Bulk action failed for thread", target.threadId, err);
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, targets.length) }, worker),
+  );
+  return { failed };
 }
 
 // ---------------------------------------------------------------------------
