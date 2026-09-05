@@ -52,7 +52,9 @@ import {
   spamThread,
   moveThread,
   executeEmailAction,
+  runBulkAction,
 } from "./emailActions";
+import { getDb } from "@/services/db/connection";
 import { navigateToThread, getSelectedThreadId } from "@/router/navigate";
 import { createMockEmailProvider, createMockUIStoreState, createMockThreadStoreState } from "@/test/mocks";
 
@@ -299,6 +301,84 @@ describe("emailActions", () => {
       });
       expect(result.success).toBe(true);
       expect(mockProvider.createDraft).toHaveBeenCalledWith("base64data", undefined);
+    });
+  });
+
+  describe("message ids", () => {
+    it("fills in the thread's message ids when the caller passed none", async () => {
+      // The IMAP provider moves messages, not threads: with no ids it moved
+      // nothing and the mail stayed on the server
+      vi.mocked(getDb).mockResolvedValueOnce({
+        execute: vi.fn(() => Promise.resolve()),
+        select: vi.fn(() => Promise.resolve([{ id: "imap-a-INBOX-1" }, { id: "imap-a-INBOX-2" }])),
+      } as never);
+      await trashThread("acct-1", "t1", []);
+      expect(mockProvider.trash).toHaveBeenCalledWith("t1", ["imap-a-INBOX-1", "imap-a-INBOX-2"]);
+    });
+
+    it("queues the resolved ids so a replay after the rows are gone still works", async () => {
+      vi.mocked(getDb).mockResolvedValueOnce({
+        execute: vi.fn(() => Promise.resolve()),
+        select: vi.fn(() => Promise.resolve([{ id: "m9" }])),
+      } as never);
+      vi.mocked(useUIStore.getState).mockReturnValue({ isOnline: false } as never);
+      await archiveThread("acct-1", "t1", []);
+      expect(enqueuePendingOperation).toHaveBeenCalledWith(
+        "acct-1",
+        "archive",
+        "t1",
+        expect.objectContaining({ messageIds: ["m9"] }),
+      );
+    });
+
+    it("leaves ids the caller supplied alone", async () => {
+      await trashThread("acct-1", "t1", ["m1"]);
+      expect(mockProvider.trash).toHaveBeenCalledWith("t1", ["m1"]);
+    });
+  });
+
+  describe("runBulkAction", () => {
+    const targets = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ accountId: "acct-1", threadId: `t${i}` }));
+
+    it("fades every row out before the first server call returns", async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => { release = r; });
+      const run = vi.fn(() => gate);
+      const done = runBulkAction(targets(3), run, { removes: true });
+      expect(mockRemoveThread).toHaveBeenCalledWith(["t0", "t1", "t2"]);
+      release();
+      await done;
+    });
+
+    it("runs calls concurrently, bounded by the limit", async () => {
+      let inFlight = 0;
+      let peak = 0;
+      const run = vi.fn(async () => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+      });
+      await runBulkAction(targets(10), run, { concurrency: 4 });
+      expect(run).toHaveBeenCalledTimes(10);
+      expect(peak).toBe(4);
+    });
+
+    it("keeps going past a failure and counts it", async () => {
+      const run = vi.fn(async ({ threadId }: { threadId: string }) => {
+        if (threadId === "t1") throw new Error("boom");
+      });
+      const result = await runBulkAction(targets(3), run);
+      expect(run).toHaveBeenCalledTimes(3);
+      expect(result.failed).toBe(1);
+    });
+
+    it("does nothing for an empty selection", async () => {
+      const run = vi.fn();
+      await runBulkAction([], run, { removes: true });
+      expect(run).not.toHaveBeenCalled();
+      expect(mockRemoveThread).not.toHaveBeenCalled();
     });
   });
 });

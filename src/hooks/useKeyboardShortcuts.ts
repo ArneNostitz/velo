@@ -6,7 +6,7 @@ import { useAccountStore } from "@/stores/accountStore";
 import { useShortcutStore } from "@/stores/shortcutStore";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 import { navigateToLabel, navigateToThread, navigateBack, getActiveLabel, getSelectedThreadId } from "@/router/navigate";
-import { archiveThread, trashThread, permanentDeleteThread, starThread, spamThread } from "@/services/emailActions";
+import { archiveThread, trashThread, permanentDeleteThread, starThread, spamThread, runBulkAction, type BulkTarget } from "@/services/emailActions";
 import { confirmDelete } from "@/utils/confirmDelete";
 import { deleteThread as deleteThreadFromDb, pinThread as pinThreadDb, unpinThread as unpinThreadDb, muteThread as muteThreadDb, unmuteThread as unmuteThreadDb } from "@/services/db/threads";
 import { deleteDraftsForThread } from "@/services/gmail/draftDeletion";
@@ -250,6 +250,14 @@ async function executeAction(actionId: string): Promise<void> {
   // has to be acted on through its own account.
   const accountFor = (threadId: string): string | null =>
     threads.find((t) => t.id === threadId)?.accountId ?? activeAccountId;
+  const targetsFor = (ids: Iterable<string>): BulkTarget[] => {
+    const targets: BulkTarget[] = [];
+    for (const threadId of ids) {
+      const accountId = accountFor(threadId);
+      if (accountId) targets.push({ accountId, threadId });
+    }
+    return targets;
+  };
 
   switch (actionId) {
     case "nav.next": {
@@ -351,11 +359,13 @@ async function executeAction(actionId: string): Promise<void> {
     case "action.archive": {
       const multiIds = useThreadStore.getState().selectedThreadIds;
       if (multiIds.size > 0 && activeAccountId) {
-        const ids = [...multiIds];
-        for (const id of ids) {
-          const acc = accountFor(id);
-          if (acc) await archiveThread(acc, id, []);
-        }
+        const targets = targetsFor(multiIds);
+        useThreadStore.getState().clearMultiSelect();
+        await runBulkAction(
+          targets,
+          ({ accountId, threadId }) => archiveThread(accountId, threadId, []),
+          { removes: true },
+        );
       } else if (selectedId && activeAccountId) {
         await archiveThread(activeAccountId, selectedId, []);
       }
@@ -367,26 +377,24 @@ async function executeAction(actionId: string): Promise<void> {
       const isDraftsView = deleteLabelCtx === "drafts";
       const multiDeleteIds = useThreadStore.getState().selectedThreadIds;
       if (multiDeleteIds.size > 0 && activeAccountId) {
-        const ids = [...multiDeleteIds];
-        if (!(await confirmDelete(ids.length, isTrashView))) break;
-        for (const id of ids) {
-          const acc = accountFor(id);
-          if (!acc) continue;
-          if (isTrashView) {
-            await permanentDeleteThread(acc, id, []);
-            await deleteThreadFromDb(acc, id);
-          } else if (isDraftsView) {
-            try {
-              const client = await getGmailClient(acc);
-              await deleteDraftsForThread(client, acc, id);
-              useThreadStore.getState().removeThread(id);
-            } catch (err) {
-              console.error("Draft delete failed:", err);
+        const targets = targetsFor(multiDeleteIds);
+        if (!(await confirmDelete(targets.length, isTrashView))) break;
+        useThreadStore.getState().clearMultiSelect();
+        await runBulkAction(
+          targets,
+          async ({ accountId, threadId }) => {
+            if (isTrashView) {
+              await permanentDeleteThread(accountId, threadId, []);
+              await deleteThreadFromDb(accountId, threadId);
+            } else if (isDraftsView) {
+              const client = await getGmailClient(accountId);
+              await deleteDraftsForThread(client, accountId, threadId);
+            } else {
+              await trashThread(accountId, threadId, []);
             }
-          } else {
-            await trashThread(acc, id, []);
-          }
-        }
+          },
+          { removes: true },
+        );
       } else if (selectedId && activeAccountId) {
         if (isTrashView && !(await confirmDelete(1, true))) break;
         if (isTrashView) {

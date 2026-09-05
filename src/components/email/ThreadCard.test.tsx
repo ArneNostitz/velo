@@ -34,6 +34,11 @@ vi.mock("@/hooks/useRouteNavigation", () => ({
   useActiveLabel: () => "inbox",
 }));
 
+vi.mock("@/stores/labelStore", () => ({
+  useLabelStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({ labels: [{ id: "Label_1", name: "Receipts" }] }),
+}));
+
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {
     id: "t1",
@@ -119,5 +124,28 @@ describe("ThreadCard - who spoke last", () => {
       <ThreadCard thread={makeThread({ lastFromMe: false })} isSelected={false} onClick={onClick} />,
     );
     expect(screen.queryByText("me:")).not.toBeInTheDocument();
+  });
+
+  describe("folder tag", () => {
+    it("is absent unless asked for", () => {
+      render(<ThreadCard thread={makeThread({ labelIds: ["TRASH"] })} isSelected={false} onClick={onClick} />);
+      expect(screen.queryByTestId("thread-folder")).not.toBeInTheDocument();
+    });
+
+    it("names Trash for a search hit in the trash", () => {
+      render(
+        <ThreadCard thread={makeThread({ labelIds: ["INBOX", "TRASH"] })} isSelected={false} onClick={onClick} showFolder />,
+      );
+      const tag = screen.getByTestId("thread-folder");
+      expect(tag).toHaveTextContent("Trash");
+      expect(tag.className).toContain("text-danger");
+    });
+
+    it("names the user label a hit is filed under", () => {
+      render(
+        <ThreadCard thread={makeThread({ labelIds: ["Label_1"] })} isSelected={false} onClick={onClick} showFolder />,
+      );
+      expect(screen.getByTestId("thread-folder")).toHaveTextContent("Receipts");
+    });
   });
 });

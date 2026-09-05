@@ -15,7 +15,7 @@ import { getCategoriesForThreads, getCategoryUnreadCounts } from "@/services/db/
 import { getTaskThreadIds, getReminderThreadIds } from "@/services/db/tasks";
 import { getBundleRules, getHeldThreadIds, getBundleSummaries, type DbBundleRule } from "@/services/db/bundleRules";
 import { getGmailClient } from "@/services/gmail/tokenManager";
-import { archiveThread, trashThread, permanentDeleteThread, spamThread } from "@/services/emailActions";
+import { archiveThread, trashThread, permanentDeleteThread, spamThread, runBulkAction, type BulkTarget } from "@/services/emailActions";
 import { confirmDelete } from "@/utils/confirmDelete";
 import { useLabelStore } from "@/stores/labelStore";
 import { useSmartFolderStore } from "@/stores/smartFolderStore";
@@ -267,41 +267,47 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     [],
   );
 
+  // The selection as (account, thread) pairs — a unified list spans mailboxes
+  const selectedTargets = useCallback((): BulkTarget[] => {
+    const targets: BulkTarget[] = [];
+    for (const threadId of useThreadStore.getState().selectedThreadIds) {
+      const accountId = accountForThread(threadId);
+      if (accountId) targets.push({ accountId, threadId });
+    }
+    return targets;
+  }, [accountForThread]);
+
   const handleBulkDelete = async () => {
     if (multiSelectCount === 0) return;
     const isTrashView = activeLabel === "trash";
-    const ids = [...selectedThreadIds];
-    if (!(await confirmDelete(ids.length, isTrashView))) return;
-    for (const id of ids) {
-      const accountId = accountForThread(id);
-      if (!accountId) continue;
-      try {
-        if (isTrashView) {
-          await permanentDeleteThread(accountId, id, []);
-          await deleteThreadFromDb(accountId, id);
-        } else {
-          await trashThread(accountId, id, []);
-        }
-      } catch (err) {
-        console.error("Bulk delete failed:", err);
-      }
-    }
+    const targets = selectedTargets();
+    if (!(await confirmDelete(targets.length, isTrashView))) return;
+    // Rows fade together and the selection clears at once — the server calls
+    // finish in the background
     clearMultiSelect();
+    await runBulkAction(
+      targets,
+      async ({ accountId, threadId }) => {
+        if (isTrashView) {
+          await permanentDeleteThread(accountId, threadId, []);
+          await deleteThreadFromDb(accountId, threadId);
+        } else {
+          await trashThread(accountId, threadId, []);
+        }
+      },
+      { removes: true },
+    );
   };
 
   const handleBulkArchive = async () => {
     if (multiSelectCount === 0) return;
-    const ids = [...selectedThreadIds];
-    for (const id of ids) {
-      const accountId = accountForThread(id);
-      if (!accountId) continue;
-      try {
-        await archiveThread(accountId, id, []);
-      } catch (err) {
-        console.error("Bulk archive failed:", err);
-      }
-    }
+    const targets = selectedTargets();
     clearMultiSelect();
+    await runBulkAction(
+      targets,
+      ({ accountId, threadId }) => archiveThread(accountId, threadId, []),
+      { removes: true },
+    );
   };
 
   // Fold the selected conversations into the oldest of them. Same mailbox
@@ -337,18 +343,14 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
 
   const handleBulkSpam = async () => {
     if (multiSelectCount === 0) return;
-    const ids = [...selectedThreadIds];
+    const targets = selectedTargets();
     const isSpamView = activeLabel === "spam";
-    for (const id of ids) {
-      const accountId = accountForThread(id);
-      if (!accountId) continue;
-      try {
-        await spamThread(accountId, id, [], !isSpamView);
-      } catch (err) {
-        console.error("Bulk spam failed:", err);
-      }
-    }
     clearMultiSelect();
+    await runBulkAction(
+      targets,
+      ({ accountId, threadId }) => spamThread(accountId, threadId, [], !isSpamView),
+      { removes: true },
+    );
   };
 
   const searchThreadIds = useThreadStore((s) => s.searchThreadIds);
@@ -996,6 +998,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
                     onContextMenu={handleThreadContextMenu}
                     category={categoryMap.get(thread.id)}
                     showCategoryBadge={activeLabel === "inbox" && activeCategory === "All"}
+                    showFolder={searchThreadIds !== null}
                     hasFollowUp={followUpThreadIds.has(thread.id)}
                     hasTask={taskThreadIds.has(thread.id)}
                   />

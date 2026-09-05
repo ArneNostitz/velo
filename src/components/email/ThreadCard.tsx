@@ -11,6 +11,16 @@ import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { Paperclip, Star, Check, Pin, BellRing, VolumeX, CheckSquare } from "lucide-react";
 import { SenderAvatar } from "./SenderAvatar";
 import type { DragData } from "@/components/dnd/DndProvider";
+import { useLabelStore } from "@/stores/labelStore";
+import { threadFolder, type ThreadFolderId } from "@/utils/threadFolder";
+
+// A search result names where it lives. Trash and Spam shout: acting on a
+// hit there is not the same as acting on one in the inbox.
+const FOLDER_COLORS: Partial<Record<ThreadFolderId, string>> = {
+  trash: "bg-danger/15 text-danger",
+  spam: "bg-warning/15 text-warning",
+  drafts: "bg-accent/15 text-accent",
+};
 
 const CATEGORY_COLORS: Record<string, string> = {
   Updates: "bg-yellow-500/15 text-yellow-600 dark:text-yellow-400",
@@ -28,9 +38,11 @@ interface ThreadCardProps {
   showCategoryBadge?: boolean;
   hasFollowUp?: boolean;
   hasTask?: boolean;
+  /** Tag the row with the folder it is in — for search hits, which can come from anywhere */
+  showFolder?: boolean;
 }
 
-export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick, onContextMenu, category, showCategoryBadge, hasFollowUp, hasTask }: ThreadCardProps) {
+export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick, onContextMenu, category, showCategoryBadge, hasFollowUp, hasTask, showFolder }: ThreadCardProps) {
   const isMultiSelected = useThreadStore((s) => s.selectedThreadIds.has(thread.id));
   const isRemoving = useThreadStore((s) => s.removingThreadIds.has(thread.id));
   const hasMultiSelect = useThreadStore((s) => s.selectedThreadIds.size > 0);
@@ -51,6 +63,13 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
   // Repaint when the 12/24-hour preference changes
   useTimeFormat();
   const isSpam = thread.labelIds.includes("SPAM");
+  // Names for user labels, so a hit filed under one says "Receipts" not "Archive"
+  const labels = useLabelStore((s) => s.labels);
+  const folder = useMemo(() => {
+    if (!showFolder) return null;
+    const names = new Map(labels.map((l) => [l.id, l.name]));
+    return threadFolder(thread.labelIds, names);
+  }, [showFolder, labels, thread.labelIds]);
 
   // Read selectedThreadIds lazily for drag — avoids subscribing all cards to the Set reference
   const dragData: DragData = useMemo(() => ({
@@ -164,8 +183,21 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
             >
               {thread.fromName ?? thread.fromAddress ?? "Unknown"}
             </span>
-            <span className="text-xs text-text-tertiary whitespace-nowrap shrink-0">
-              {formatRelativeDate(thread.lastMessageAt)}
+            <span className="flex items-center gap-1.5 shrink-0">
+              {folder && (
+                <span
+                  data-testid="thread-folder"
+                  className={`text-[0.625rem] px-1.5 rounded-full leading-normal whitespace-nowrap max-w-24 truncate ${
+                    FOLDER_COLORS[folder.id] ?? "bg-bg-tertiary text-text-secondary"
+                  }`}
+                  title={`In ${folder.name}`}
+                >
+                  {folder.name}
+                </span>
+              )}
+              <span className="text-xs text-text-tertiary whitespace-nowrap">
+                {formatRelativeDate(thread.lastMessageAt)}
+              </span>
             </span>
           </div>
 
