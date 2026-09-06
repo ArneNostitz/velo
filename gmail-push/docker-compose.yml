@@ -6,7 +6,6 @@ services:
       - "8787:8787"
     environment:
       PORT: "8787"
-      APP_VERSION: ${APP_VERSION:-main}
       DATA_FILE: /data/registrations.json
       PUSH_SHARED_SECRET: ${PUSH_SHARED_SECRET:?set PUSH_SHARED_SECRET}
       PUBSUB_AUDIENCE: ${PUBSUB_AUDIENCE:-}
