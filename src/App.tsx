@@ -19,6 +19,7 @@ import {
   triggerSync,
   onSyncStatus,
 } from "./services/gmail/syncManager";
+import { startGmailPushRelay, stopGmailPushRelay } from "./services/gmail/gmailPushRelay";
 import { initializeClients } from "./services/gmail/tokenManager";
 import {
   startSnoozeChecker,
@@ -433,6 +434,7 @@ export default function App() {
         // Start background sync for active accounts
         if (activeIds.length > 0) {
           startBackgroundSync(activeIds);
+          void startGmailPushRelay();
 
           // Let the servers say when something changed. The timer stays as
           // the safety net — IDLE is refused by some accounts and drops on
@@ -485,6 +487,7 @@ export default function App() {
 
     return () => {
       stopBackgroundSync();
+      stopGmailPushRelay();
       import("@/services/imap/idleManager")
         .then(({ stopIdleWatchers }) => stopIdleWatchers())
         .catch(() => { /* shutting down anyway */ });

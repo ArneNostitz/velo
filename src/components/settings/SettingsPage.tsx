@@ -20,6 +20,7 @@ import { ACCOUNT_COLORS, accountColor } from "@/constants/accountColors";
 import { removeClient, reauthorizeAccount } from "@/services/gmail/tokenManager";
 import { validateClientId, validateClientSecret } from "@/services/gmail/clientCredentials";
 import { triggerSync, forceFullSync, resyncAccount } from "@/services/gmail/syncManager";
+import { startGmailPushRelay } from "@/services/gmail/gmailPushRelay";
 import {
   registerComposeShortcut,
   getCurrentShortcut,
@@ -186,6 +187,10 @@ export function SettingsPage() {
   const [readReceiptResponse, setReadReceiptResponse] = useState<"ask" | "always" | "never">("ask");
   // null = system Downloads folder
   const [downloadDirSetting, setDownloadDirSetting] = useState<string | null>(null);
+  const [gmailPushRelayUrl, setGmailPushRelayUrl] = useState("");
+  const [gmailPushRelaySecret, setGmailPushRelaySecret] = useState("");
+  const [gmailPushTopicName, setGmailPushTopicName] = useState("");
+  const [gmailPushRelaySaved, setGmailPushRelaySaved] = useState(false);
 
   // Load settings from DB
   useEffect(() => {
@@ -199,6 +204,9 @@ export function SettingsPage() {
       setClientId(id ?? "");
       const secret = await getSecureSetting("google_client_secret");
       setClientSecret(secret ?? "");
+      setGmailPushRelayUrl((await getSetting("gmail_push_relay_url")) ?? "");
+      setGmailPushRelaySecret((await getSecureSetting("gmail_push_relay_secret")) ?? "");
+      setGmailPushTopicName((await getSetting("gmail_push_topic_name")) ?? "");
       const blockImg = await getSetting("block_remote_images");
       setBlockRemoteImages(blockImg !== "false");
       const phishingEnabled = await getSetting("phishing_detection_enabled");
@@ -343,6 +351,17 @@ export function SettingsPage() {
     setApiSettingsSaved(true);
     setTimeout(() => setApiSettingsSaved(false), 2000);
   }, [clientId, clientSecret]);
+
+  const handleSaveGmailPushRelay = useCallback(async () => {
+    const url = gmailPushRelayUrl.trim().replace(/\/+$/, "");
+    if (url) await setSetting("gmail_push_relay_url", url);
+    else await setSetting("gmail_push_relay_url", "");
+    if (gmailPushRelaySecret.trim()) await setSecureSetting("gmail_push_relay_secret", gmailPushRelaySecret.trim());
+    await setSetting("gmail_push_topic_name", gmailPushTopicName.trim());
+    void startGmailPushRelay();
+    setGmailPushRelaySaved(true);
+    setTimeout(() => setGmailPushRelaySaved(false), 2000);
+  }, [gmailPushRelaySecret, gmailPushRelayUrl, gmailPushTopicName]);
 
   const handleManualSync = useCallback(async () => {
     const activeIds = accounts.filter((a) => a.isActive).map((a) => a.id);
@@ -1330,6 +1349,40 @@ export function SettingsPage() {
                         disabled={!clientId.trim() || !!clientIdError || !!clientSecretError}
                       >
                         {apiSettingsSaved ? "Saved!" : "Save"}
+                      </Button>
+                    </div>
+                  </Section>
+
+                  <Section title="Gmail push relay">
+                    <div className="space-y-3">
+                      <p className="text-xs text-text-tertiary">
+                        Optional relay for push notifications. The URL and secret are stored in your local settings; leave them blank to use normal sync polling.
+                      </p>
+                      <TextField
+                        label="Relay URL"
+                        size="md"
+                        type="url"
+                        value={gmailPushRelayUrl}
+                        onChange={(e) => setGmailPushRelayUrl(e.target.value)}
+                        placeholder="https://your-relay.example.com"
+                      />
+                      <TextField
+                        label="Pub/Sub topic"
+                        size="md"
+                        value={gmailPushTopicName}
+                        onChange={(e) => setGmailPushTopicName(e.target.value)}
+                        placeholder="projects/PROJECT_ID/topics/velo-gmail"
+                      />
+                      <TextField
+                        label="Relay secret"
+                        size="md"
+                        type="password"
+                        value={gmailPushRelaySecret}
+                        onChange={(e) => setGmailPushRelaySecret(e.target.value)}
+                        placeholder="Bearer secret configured on the relay"
+                      />
+                      <Button variant="secondary" size="md" onClick={handleSaveGmailPushRelay}>
+                        {gmailPushRelaySaved ? "Saved!" : "Save relay"}
                       </Button>
                     </div>
                   </Section>

@@ -20,6 +20,6 @@ The service does not receive or store mailbox contents. Gmail notifications only
    `serviceAccount:gmail-api-push@system.gserviceaccount.com` with `roles/pubsub.publisher`.
 3. Create a Pub/Sub push subscription targeting `https://YOUR_HOST/pubsub`.
 4. Deploy this directory with Docker Compose and set `PUSH_SHARED_SECRET`.
-5. Configure the Velo desktop client to use the service URL and shared secret.
+5. In Velo Settings → Google API → Gmail push relay, enter the service URL, the shared secret, and the full Pub/Sub topic name. Velo registers each active Gmail account and renews its watch automatically.
 
-The current desktop app does not yet call this bridge; this service is the deployable backend seam for that integration.
+The relay does not receive or store mailbox contents. Velo performs the targeted History API sync after each notification.

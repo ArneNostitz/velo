@@ -1,11 +1,14 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const port = Number(process.env.PORT || 8787);
 const dataFile = process.env.DATA_FILE || "/data/registrations.json";
 const secret = process.env.PUSH_SHARED_SECRET;
 const audience = process.env.PUBSUB_AUDIENCE || undefined;
+const pubsubServiceAccount = process.env.PUBSUB_SERVICE_ACCOUNT || undefined;
+const googleKeys = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
 const renewMs = Number(process.env.WATCH_RENEW_MS || 3_600_000);
 const clients = new Set();
 let registrations = new Map();
@@ -29,6 +32,21 @@ async function save() {
 function authorized(req) {
   const provided = req.headers.authorization?.replace(/^Bearer\s+/i, "") || req.headers["x-push-secret"];
   return typeof provided === "string" && provided.length === secret.length && crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret));
+}
+
+async function authorizedPubSub(req) {
+  if (!audience || !pubsubServiceAccount) return false;
+  const header = req.headers.authorization || "";
+  if (!/^Bearer\s+/i.test(header)) return false;
+  try {
+    const { payload } = await jwtVerify(header.replace(/^Bearer\s+/i, ""), googleKeys, {
+      issuer: ["https://accounts.google.com", "accounts.google.com"],
+      audience,
+    });
+    return payload.email === pubsubServiceAccount && payload.email_verified === true;
+  } catch {
+    return false;
+  }
 }
 
 function json(res, status, body) {
@@ -74,7 +92,11 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true });
-    if (!authorized(req) && url.pathname !== "/pubsub") return json(res, 401, { error: "unauthorized" });
+    if (url.pathname === "/pubsub") {
+      if (!(await authorizedPubSub(req))) return json(res, 401, { error: "unauthorized" });
+    } else if (!authorized(req)) {
+      return json(res, 401, { error: "unauthorized" });
+    }
 
     if (req.method === "POST" && url.pathname === "/register") {
       const input = await body(req);

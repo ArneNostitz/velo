@@ -9,6 +9,7 @@ services:
       DATA_FILE: /data/registrations.json
       PUSH_SHARED_SECRET: ${PUSH_SHARED_SECRET:?set PUSH_SHARED_SECRET}
       PUBSUB_AUDIENCE: ${PUBSUB_AUDIENCE:-}
+      PUBSUB_SERVICE_ACCOUNT: ${PUBSUB_SERVICE_ACCOUNT:-}
       WATCH_RENEW_MS: "3600000"
     volumes:
       - gmail_push_data:/data
