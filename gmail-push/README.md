@@ -23,3 +23,5 @@ The service does not receive or store mailbox contents. Gmail notifications only
 5. In Velo Settings → Google API → Gmail push relay, enter the service URL, the shared secret, and the full Pub/Sub topic name. Velo registers each active Gmail account and renews its watch automatically.
 
 The relay does not receive or store mailbox contents. Velo performs the targeted History API sync after each notification.
+
+`GET /health` returns `{ "ok": true, "version": "..." }`. Set `APP_VERSION` in Coolify to the deployed commit or release identifier when you need to verify the running image.

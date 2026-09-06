@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const port = Number(process.env.PORT || 8787);
+const version = process.env.APP_VERSION || "development";
 const dataFile = process.env.DATA_FILE || "/data/registrations.json";
 const secret = process.env.PUSH_SHARED_SECRET;
 const audience = process.env.PUBSUB_AUDIENCE || undefined;
@@ -91,7 +92,7 @@ async function renew() {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true });
+    if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, version });
     if (url.pathname === "/pubsub") {
       if (!(await authorizedPubSub(req))) return json(res, 401, { error: "unauthorized" });
     } else if (!authorized(req)) {
