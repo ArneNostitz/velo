@@ -149,27 +149,18 @@ async function exchangeCodeForTokens(
   codeVerifier: string,
   clientSecret?: string,
 ): Promise<TokenResponse> {
-  const params: Record<string, string> = {
+  // Keep the OAuth token exchange in Rust. The WebView cannot reliably make
+  // cross-origin requests to Google's token endpoint, and the Rust command is
+  // already the native path used by the other OAuth providers.
+  return invoke<TokenResponse>("oauth_exchange_token", {
+    tokenUrl: GOOGLE_TOKEN_URL,
     code,
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    grant_type: "authorization_code",
-    code_verifier: codeVerifier,
-  };
-  if (clientSecret) params.client_secret = clientSecret;
-
-  const response = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(params),
+    clientId,
+    redirectUri,
+    codeVerifier,
+    clientSecret: clientSecret || null,
+    scope: null,
   });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Token exchange failed: ${error}`);
-  }
-
-  return response.json();
 }
 
 /**
@@ -180,25 +171,16 @@ export async function refreshAccessToken(
   clientId: string,
   clientSecret?: string,
 ): Promise<TokenResponse> {
-  const params: Record<string, string> = {
-    refresh_token: refreshToken,
-    client_id: clientId,
-    grant_type: "refresh_token",
-  };
-  if (clientSecret) params.client_secret = clientSecret;
-
-  const response = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(params),
+  // Refreshing Gmail access tokens must use the native backend for the same
+  // reason as the initial exchange. This is also what prevents relay watch
+  // registration from failing with the WebView's unhelpful "Load failed".
+  return invoke<TokenResponse>("oauth_refresh_token", {
+    tokenUrl: GOOGLE_TOKEN_URL,
+    refreshToken,
+    clientId,
+    clientSecret: clientSecret || null,
+    scope: null,
   });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Token refresh failed: ${error}`);
-  }
-
-  return response.json();
 }
 
 async function fetchUserInfo(accessToken: string): Promise<UserInfo> {
