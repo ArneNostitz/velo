@@ -108,6 +108,23 @@ const server = http.createServer(async (req, res) => {
         lastUnauthorizedPath,
       });
     }
+    if (req.method === "GET" && url.pathname === "/status") {
+      if (!authorized(req)) {
+        lastUnauthorizedAt = new Date().toISOString();
+        lastUnauthorizedPath = url.pathname;
+        console.warn("gmail-push unauthorized request", { path: url.pathname });
+        return json(res, 401, { error: "unauthorized" });
+      }
+      return json(res, 200, {
+        ok: true,
+        version,
+        registrationCount: registrations.size,
+        connectedClients: clients.size,
+        registrations: [...registrations.values()].map(({ email, historyId, expiresAt }) => ({ email, historyId, expiresAt })),
+        lastRegistrationAt,
+        lastPubSubAt,
+      });
+    }
     if (url.pathname === "/pubsub") {
       if (!(await authorizedPubSub(req))) {
         lastUnauthorizedAt = new Date().toISOString();
