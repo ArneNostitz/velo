@@ -20,7 +20,13 @@ import { ACCOUNT_COLORS, accountColor } from "@/constants/accountColors";
 import { removeClient, reauthorizeAccount } from "@/services/gmail/tokenManager";
 import { validateClientId, validateClientSecret } from "@/services/gmail/clientCredentials";
 import { triggerSync, forceFullSync, resyncAccount } from "@/services/gmail/syncManager";
-import { startGmailPushRelay } from "@/services/gmail/gmailPushRelay";
+import {
+  getGmailPushRelayStatus,
+  probeGmailPushRelay,
+  startGmailPushRelay,
+  subscribeGmailPushRelayStatus,
+  type GmailPushRelayStatus,
+} from "@/services/gmail/gmailPushRelay";
 import {
   registerComposeShortcut,
   getCurrentShortcut,
@@ -191,6 +197,11 @@ export function SettingsPage() {
   const [gmailPushRelaySecret, setGmailPushRelaySecret] = useState("");
   const [gmailPushTopicName, setGmailPushTopicName] = useState("");
   const [gmailPushRelaySaved, setGmailPushRelaySaved] = useState(false);
+  const [gmailPushRelayStatus, setGmailPushRelayStatus] = useState<GmailPushRelayStatus>(getGmailPushRelayStatus);
+  const [gmailPushRelayProbing, setGmailPushRelayProbing] = useState(false);
+  const [gmailPushRelayProbeError, setGmailPushRelayProbeError] = useState<string | null>(null);
+
+  useEffect(() => subscribeGmailPushRelayStatus(setGmailPushRelayStatus), []);
 
   // Load settings from DB
   useEffect(() => {
@@ -362,6 +373,19 @@ export function SettingsPage() {
     setGmailPushRelaySaved(true);
     setTimeout(() => setGmailPushRelaySaved(false), 2000);
   }, [gmailPushRelaySecret, gmailPushRelayUrl, gmailPushTopicName]);
+
+  const handleProbeGmailPushRelay = useCallback(async () => {
+    setGmailPushRelayProbing(true);
+    setGmailPushRelayProbeError(null);
+    try {
+      await probeGmailPushRelay();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setGmailPushRelayProbeError(message);
+    } finally {
+      setGmailPushRelayProbing(false);
+    }
+  }, []);
 
   const handleManualSync = useCallback(async () => {
     const activeIds = accounts.filter((a) => a.isActive).map((a) => a.id);
@@ -1356,7 +1380,7 @@ export function SettingsPage() {
                   <Section title="Gmail push relay">
                     <div className="space-y-3">
                       <p className="text-xs text-text-tertiary">
-                        Optional relay for push notifications. The URL and secret are stored in your local settings; leave them blank to use normal sync polling.
+                        Optional Gmail API push relay. This is separate from Instant delivery (IMAP IDLE). The URL and secret stay in your local settings; leave them blank to use normal sync polling.
                       </p>
                       <TextField
                         label="Relay URL"
@@ -1381,6 +1405,54 @@ export function SettingsPage() {
                         onChange={(e) => setGmailPushRelaySecret(e.target.value)}
                         placeholder="Bearer secret configured on the relay"
                       />
+                      <div className="rounded-md border border-border-primary bg-bg-secondary px-3 py-2 text-xs text-text-secondary">
+                        <div className="flex items-center justify-between gap-3">
+                          <span>
+                            Gmail relay: {gmailPushRelayStatus.state === "connected"
+                              ? "connected"
+                              : gmailPushRelayStatus.state === "connecting"
+                                ? "connecting..."
+                                : gmailPushRelayStatus.state === "error"
+                                  ? "error"
+                                  : "not checked"}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleProbeGmailPushRelay}
+                            disabled={gmailPushRelayProbing}
+                            icon={<RefreshCw size={13} className={gmailPushRelayProbing ? "animate-spin" : ""} />}
+                          >
+                            {gmailPushRelayProbing ? "Checking..." : "Check relay"}
+                          </Button>
+                        </div>
+                        {gmailPushRelayStatus.attempted > 0 && (
+                          <p className="mt-1">
+                            Watches registered: {gmailPushRelayStatus.registered.length}/{gmailPushRelayStatus.attempted}
+                          </p>
+                        )}
+                        {gmailPushRelayStatus.registered.length > 0 && (
+                          <p className="mt-1 text-success">
+                            Registered: {gmailPushRelayStatus.registered.map((registration) => registration.email).join(", ")}
+                          </p>
+                        )}
+                        {gmailPushRelayStatus.registered.length === 0 && gmailPushRelayStatus.server && gmailPushRelayStatus.server.registrations.length > 0 && (
+                          <p className="mt-1 text-success">
+                            Relay registered: {gmailPushRelayStatus.server.registrations.map((registration) => registration.email).join(", ")}
+                          </p>
+                        )}
+                        {gmailPushRelayStatus.failures.length > 0 && (
+                          <p className="mt-1 text-danger">
+                            Failed: {gmailPushRelayStatus.failures.map((failure) => `${failure.email} (${failure.message})`).join(", ")}
+                          </p>
+                        )}
+                        {gmailPushRelayStatus.server && (
+                          <p className="mt-1">
+                            Relay sees {gmailPushRelayStatus.server.registrationCount} registered watch{gmailPushRelayStatus.server.registrationCount === 1 ? "" : "es"} and {gmailPushRelayStatus.server.connectedClients} listener{gmailPushRelayStatus.server.connectedClients === 1 ? "" : "s"}.
+                          </p>
+                        )}
+                        {gmailPushRelayProbeError && <p className="mt-1 text-danger">Probe failed: {gmailPushRelayProbeError}</p>}
+                      </div>
                       <Button variant="secondary" size="md" onClick={handleSaveGmailPushRelay}>
                         {gmailPushRelaySaved ? "Saved!" : "Save relay"}
                       </Button>
