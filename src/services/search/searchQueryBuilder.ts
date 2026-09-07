@@ -5,6 +5,13 @@ interface BuiltQuery {
   params: unknown[];
 }
 
+export interface SearchScope {
+  labelIds?: string[];
+  excludeSpamTrash?: boolean;
+  accountIds?: string[];
+  savedQuery?: ParsedSearchQuery;
+}
+
 /**
  * Build a parameterized SQL query from a parsed search query.
  * Returns { sql, params } for safe execution.
@@ -13,6 +20,7 @@ export function buildSearchQuery(
   parsed: ParsedSearchQuery,
   accountId?: string,
   limit = 50,
+  scope: SearchScope = {},
 ): BuiltQuery {
   const params: unknown[] = [];
   let paramIdx = 1;
@@ -25,11 +33,67 @@ export function buildSearchQuery(
 
   // Free text search via FTS5
   if (parsed.freeText) {
-    needsFts = true;
-    fromClause = "FROM messages_fts JOIN messages m ON m.rowid = messages_fts.rowid";
-    whereClauses.push(`messages_fts MATCH $${paramIdx}`);
-    params.push(parsed.freeText);
-    paramIdx++;
+    const terms = (parsed.freeText.match(/"[^"]+"|\S+/g) ?? []).map((term) =>
+      term.replace(/^"|"$/g, ""),
+    );
+    const indexed = terms.filter((term) => [...term].length >= 3);
+    if (indexed.length) {
+      needsFts = true;
+      fromClause =
+        "FROM messages_fts JOIN messages m ON m.rowid = messages_fts.rowid";
+      whereClauses.push(`messages_fts MATCH $${paramIdx}`);
+      params.push(
+        indexed.map((term) => `"${term.replace(/"/g, '""')}"`).join(" AND "),
+      );
+      paramIdx++;
+    }
+    // Trigram MATCH cannot find terms shorter than three characters. Only
+    // those terms use a literal scan; longer terms still narrow via FTS.
+    for (const term of terms.filter((term) => [...term].length < 3)) {
+      whereClauses.push(
+        `instr(lower(COALESCE(m.subject,'') || ' ' || COALESCE(m.from_name,'') || ' ' || COALESCE(m.from_address,'') || ' ' || COALESCE(m.body_text,'') || ' ' || COALESCE(m.snippet,'')), lower($${paramIdx++})) > 0`,
+      );
+      params.push(term);
+    }
+  }
+
+  if (scope.accountIds) {
+    whereClauses.push(
+      `m.account_id IN (${
+        scope.accountIds
+          .map((id) => {
+            params.push(id);
+            return `$${paramIdx++}`;
+          })
+          .join(",") || "NULL"
+      })`,
+    );
+  }
+  if (scope.labelIds?.length) {
+    const placeholders = scope.labelIds.map((id) => {
+      params.push(id);
+      return `$${paramIdx++}`;
+    });
+    whereClauses.push(
+      `EXISTS (SELECT 1 FROM thread_labels scoped WHERE scoped.account_id=m.account_id AND scoped.thread_id=m.thread_id AND scoped.label_id IN (${placeholders.join(",")}))`,
+    );
+  }
+  if (scope.excludeSpamTrash) {
+    whereClauses.push(
+      "NOT EXISTS (SELECT 1 FROM thread_labels excluded WHERE excluded.account_id=m.account_id AND excluded.thread_id=m.thread_id AND excluded.label_id IN ('SPAM','TRASH'))",
+    );
+  }
+  if (scope.savedQuery) {
+    const saved = buildSearchQuery(scope.savedQuery, accountId, -1);
+    const shifted = saved.sql.replace(
+      /\$(\d+)/g,
+      (_, index: string) => `$${Number(index) + paramIdx - 1}`,
+    );
+    whereClauses.push(
+      `(m.account_id, m.id) IN (SELECT saved.account_id, saved.message_id FROM (${shifted}) saved)`,
+    );
+    params.push(...saved.params);
+    paramIdx += saved.params.length;
   }
 
   // Account filter
@@ -41,7 +105,9 @@ export function buildSearchQuery(
 
   // from: operator
   if (parsed.from) {
-    whereClauses.push(`(m.from_address LIKE '%' || $${paramIdx} || '%' OR m.from_name LIKE '%' || $${paramIdx} || '%')`);
+    whereClauses.push(
+      `(m.from_address LIKE '%' || $${paramIdx} || '%' OR m.from_name LIKE '%' || $${paramIdx} || '%')`,
+    );
     params.push(parsed.from);
     paramIdx++;
   }
@@ -105,7 +171,8 @@ export function buildSearchQuery(
     paramIdx++;
   }
 
-  const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+  const whereStr =
+    whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
   const orderBy = needsFts ? "ORDER BY rank" : "ORDER BY m.date DESC";
 
   params.push(limit);

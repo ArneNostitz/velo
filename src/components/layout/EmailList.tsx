@@ -10,7 +10,7 @@ import { collectOwnAddresses } from "@/services/accounts/ownAddresses";
 import { useUIStore } from "@/stores/uiStore";
 import { useActiveLabel, useSelectedThreadId, useActiveCategory } from "@/hooks/useRouteNavigation";
 import { navigateToThread, navigateToLabel } from "@/router/navigate";
-import { getThreadsForAccounts, getThreadsForCategoryAcrossAccounts, getThreadsByIds, getThreadLabelIds, deleteThread as deleteThreadFromDb, mergeThreads } from "@/services/db/threads";
+import { getThreadsForAccounts, getThreadsForCategoryAcrossAccounts, getThreadsByIds, deleteThread as deleteThreadFromDb, mergeThreads } from "@/services/db/threads";
 import { getCategoriesForThreads, getCategoryUnreadCounts } from "@/services/db/threadCategories";
 import { getTaskThreadIds, getReminderThreadIds } from "@/services/db/tasks";
 import { getBundleRules, getHeldThreadIds, getBundleSummaries, type DbBundleRule } from "@/services/db/bundleRules";
@@ -25,7 +25,7 @@ import { getMessagesForThread } from "@/services/db/messages";
 import { getSmartFolderSearchQuery, mapSmartFolderRows, type SmartFolderRow } from "@/services/search/smartFolderQuery";
 import { getDb } from "@/services/db/connection";
 import { Archive, Trash2, X, Ban, Filter, ChevronRight, Package, FolderSearch, UserSearch, MailMinus, Check, AlertCircle, Merge } from "lucide-react";
-import { searchMessages } from "@/services/db/search";
+import { getLabelsForThreadPage } from "@/services/db/threads";
 import { EmptyState } from "../ui/EmptyState";
 import {
   InboxClearIllustration,
@@ -143,15 +143,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       clearSearch();
       return;
     }
-    setSearch(query, null);
-    try {
-      // The unified list spans every mailbox, so the search must too
-      const scope = unifiedInbox ? undefined : activeAccountId ?? undefined;
-      const hits = await searchMessages(query, scope, 200);
-      useThreadStore.getState().setSearch(query, new Set(hits.map((h) => h.thread_id)));
-    } catch {
-      // Query stays in the box; the user can adjust it
-    }
+    setSearch(query, new Set());
   }, [selectedThread, activeAccountId, unifiedInbox]);
 
   const handleQuickUnsubscribe = useCallback(async () => {
@@ -245,6 +237,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     if (activeLabel === "drafts") {
       handleDraftClick(thread);
     } else {
+      useThreadStore.getState().cacheThread(thread);
       navigateToThread(thread.id);
     }
   }, [activeLabel, handleDraftClick]);
@@ -362,9 +355,10 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   );
 
   const mapDbThreads = useCallback(async (dbThreads: Awaited<ReturnType<typeof getThreadsForAccounts>>): Promise<Thread[]> => {
+    const pageLabels = await getLabelsForThreadPage(dbThreads);
     return Promise.all(
       dbThreads.map(async (t) => {
-        const labelIds = await getThreadLabelIds(t.account_id, t.id);
+        const labelIds = pageLabels.get(JSON.stringify([t.account_id, t.id])) ?? [];
         return {
           id: t.id,
           accountId: t.account_id,
@@ -394,7 +388,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   // Search hits can live anywhere in the mailbox, so they are loaded straight
   // from the DB — filtering the currently loaded label page would hide every
   // hit outside it.
-  const [searchResults, setSearchResults] = useState<Thread[] | null>(null);
+  const [searchResults, setSearchResults] = useState<{ ids: Set<string>; threads: Thread[] } | null>(null);
   useEffect(() => {
     if (searchThreadIds === null) {
       setSearchResults(null);
@@ -405,14 +399,16 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       try {
         const rows = await getThreadsByIds(accountIds, [...searchThreadIds], ownAddresses);
         const mapped = await mapDbThreads(rows);
+        const order = new Map([...searchThreadIds].map((id, index) => [id, index]));
+        mapped.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
         if (cancelled) return;
         // Cache each result so opening one outside the current label works
         const { cacheThread } = useThreadStore.getState();
         mapped.forEach(cacheThread);
-        setSearchResults(mapped);
+        setSearchResults({ ids: searchThreadIds, threads: mapped });
       } catch (err) {
         console.error("Failed to load search results:", err);
-        if (!cancelled) setSearchResults([]);
+        if (!cancelled) setSearchResults({ ids: searchThreadIds, threads: [] });
       }
     })();
     return () => { cancelled = true; };
@@ -420,14 +416,13 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   }, [searchThreadIds, accountScopeKey, ownAddressKey, mapDbThreads]);
 
   const filteredThreads = useMemo(() => {
-    // While the search results are still loading, fall back to filtering the
-    // loaded page so the list doesn't flash empty
+    // Never display results belonging to an older query while loading.
     let filtered = searchThreadIds !== null
-      ? searchResults ?? threads.filter((t) => searchThreadIds.has(t.id))
+      ? searchResults?.ids === searchThreadIds ? searchResults.threads : []
       : threads;
     // Apply read filter
-    if (readFilter === "unread") filtered = filtered.filter((t) => !t.isRead);
-    else if (readFilter === "read") filtered = filtered.filter((t) => t.isRead);
+    if (searchThreadIds === null && readFilter === "unread") filtered = filtered.filter((t) => !t.isRead);
+    else if (searchThreadIds === null && readFilter === "read") filtered = filtered.filter((t) => t.isRead);
     // Category filtering is now server-side (Phase 4) — no client-side filter needed
     return filtered;
   }, [threads, readFilter, searchThreadIds, searchResults]);
@@ -998,7 +993,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
                     onContextMenu={handleThreadContextMenu}
                     category={categoryMap.get(thread.id)}
                     showCategoryBadge={activeLabel === "inbox" && activeCategory === "All"}
-                    showFolder={searchThreadIds !== null}
+                    showFolder={searchThreadIds !== null || activeLabel === "all"}
                     hasFollowUp={followUpThreadIds.has(thread.id)}
                     hasTask={taskThreadIds.has(thread.id)}
                   />

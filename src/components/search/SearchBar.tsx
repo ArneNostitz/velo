@@ -1,17 +1,119 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { searchMessages } from "@/services/db/search";
-import { useAccountStore } from "@/stores/accountStore";
+import { useAccountStore, listedAccountIds } from "@/stores/accountStore";
 import { useThreadStore } from "@/stores/threadStore";
 import { useSmartFolderStore } from "@/stores/smartFolderStore";
 import { InputDialog } from "@/components/ui/InputDialog";
 import { Search, X, FolderPlus } from "lucide-react";
+
+import { useActiveLabel } from "@/hooks/useRouteNavigation";
+import { useLabelStore } from "@/stores/labelStore";
+import { parseSearchQuery } from "@/services/search/searchParser";
+import { resolveQueryTokens } from "@/services/search/smartFolderQuery";
+
+const folderIds: Record<string, string[]> = {
+  inbox: ["INBOX"],
+  conversations: ["INBOX", "SENT"],
+  sent: ["SENT"],
+  drafts: ["DRAFT"],
+  spam: ["SPAM"],
+  trash: ["TRASH"],
+  starred: ["STARRED"],
+  snoozed: ["SNOOZED"],
+  all: [],
+  everywhere: [],
+};
 
 export function SearchBar() {
   const searchQuery = useThreadStore((s) => s.searchQuery);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const unifiedInbox = useAccountStore((s) => s.unifiedInbox);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeLabel = useActiveLabel();
+  const labels = useLabelStore((s) => s.labels);
+  const smartFolder = useSmartFolderStore((s) =>
+    s.folders.find((f) => `smart-folder:${f.id}` === activeLabel),
+  );
+  const accountKey = useAccountStore((s) => listedAccountIds(s).join(","));
+  const [scope, setScope] = useState("current");
+  const [error, setError] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const currentName =
+    smartFolder?.name ??
+    labels.find((l) => l.id === activeLabel)?.name ??
+    (activeLabel === "all"
+      ? "All mail"
+      : activeLabel.charAt(0).toUpperCase() + activeLabel.slice(1));
+  useEffect(() => {
+    setScope("current");
+  }, [activeLabel, accountKey]);
+  useEffect(() => {
+    const refresh = () => setRevision((v) => v + 1);
+    window.addEventListener("velo-sync-done", refresh);
+    return () => window.removeEventListener("velo-sync-done", refresh);
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    if (!searchQuery.trim()) {
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const folder = scope === "current" ? activeLabel : scope;
+        const labelIds =
+          folderIds[folder] ??
+          (folder.startsWith("smart-folder:") ? [] : [folder]);
+        const hits = await searchMessages(
+          searchQuery,
+          unifiedInbox ? undefined : (activeAccountId ?? undefined),
+          500,
+          {
+            accountIds: accountKey ? accountKey.split(",") : [],
+            labelIds,
+            excludeSpamTrash:
+              folder !== "everywhere" &&
+              folder !== "spam" &&
+              folder !== "trash",
+            ...(scope === "current" && smartFolder
+              ? {
+                  savedQuery: parseSearchQuery(
+                    resolveQueryTokens(smartFolder.query),
+                  ),
+                }
+              : {}),
+          },
+        );
+        if (!cancelled)
+          useThreadStore
+            .getState()
+            .setSearch(searchQuery, new Set(hits.map((hit) => hit.thread_id)));
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+          useThreadStore.getState().setSearch(searchQuery, new Set());
+        }
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    searchQuery,
+    scope,
+    activeLabel,
+    activeAccountId,
+    unifiedInbox,
+    accountKey,
+    revision,
+    smartFolder,
+  ]);
 
   const [showSaveModal, setShowSaveModal] = useState(false);
 
@@ -20,32 +122,9 @@ export function SearchBar() {
     setShowSaveModal(true);
   }, []);
 
-  const handleChange = useCallback(
-    (value: string) => {
-      const { setSearch } = useThreadStore.getState();
-      setSearch(value, useThreadStore.getState().searchThreadIds);
-
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-
-      if (value.trim().length < 2) {
-        setSearch(value, null);
-        return;
-      }
-
-      debounceRef.current = setTimeout(async () => {
-        try {
-          // The unified list spans every mailbox, so the search must too
-          const scope = unifiedInbox ? undefined : activeAccountId ?? undefined;
-          const hits = await searchMessages(value, scope, 200);
-          const threadIds = new Set(hits.map((h) => h.thread_id));
-          useThreadStore.getState().setSearch(value, threadIds);
-        } catch {
-          useThreadStore.getState().setSearch(value, null);
-        }
-      }, 200);
-    },
-    [activeAccountId, unifiedInbox],
-  );
+  const handleChange = (value: string) => {
+    useThreadStore.getState().setSearch(value, value.trim() ? new Set() : null);
+  };
 
   const handleClear = useCallback(() => {
     useThreadStore.getState().clearSearch();
@@ -60,44 +139,91 @@ export function SearchBar() {
   };
 
   return (
-    <div className="relative">
-      <Search
-        size={14}
-        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none"
-      />
-      <input
-        ref={inputRef}
-        type="text"
-        value={searchQuery}
-        onChange={(e) => handleChange(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Search... (from: to: has:attachment)"
-        className="w-full bg-bg-tertiary text-text-primary text-sm pl-8 pr-14 py-1.5 rounded-md border border-border-primary focus:border-accent focus:outline-none placeholder:text-text-tertiary"
-      />
-      {searchQuery && (
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-          {searchQuery.trim().length >= 2 && (
+    <div>
+      <div className="relative">
+        <Search
+          size={14}
+          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none"
+        />
+        <input
+          ref={inputRef}
+          type="text"
+          aria-label="Search mail"
+          value={searchQuery}
+          onChange={(e) => handleChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Search... (from: to: has:attachment)"
+          className="w-full bg-bg-tertiary text-text-primary text-sm pl-8 pr-14 py-1.5 rounded-md border border-border-primary focus:border-accent focus:outline-none placeholder:text-text-tertiary"
+        />
+        {searchQuery && (
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            {searchQuery.trim().length >= 2 && (
+              <button
+                onClick={handleSaveAsSmartFolder}
+                className="text-text-tertiary hover:text-accent transition-colors"
+                title="Save as Smart Folder"
+              >
+                <FolderPlus size={14} />
+              </button>
+            )}
             <button
-              onClick={handleSaveAsSmartFolder}
-              className="text-text-tertiary hover:text-accent transition-colors"
-              title="Save as Smart Folder"
+              onClick={handleClear}
+              aria-label="Clear search"
+              className="text-text-tertiary hover:text-text-primary transition-colors"
             >
-              <FolderPlus size={14} />
+              <X size={14} />
             </button>
-          )}
-          <button
-            onClick={handleClear}
-            className="text-text-tertiary hover:text-text-primary transition-colors"
-          >
-            <X size={14} />
-          </button>
-        </div>
+          </div>
+        )}
+      </div>
+      <div
+        className="flex flex-wrap gap-1 mt-1.5"
+        role="group"
+        aria-label="Search folders"
+      >
+        {[
+          ["current", currentName],
+          ["all", "All mail"],
+          ["spam", "Spam"],
+          ["trash", "Trash"],
+          ["everywhere", "All folders"],
+        ]
+          .filter(([id]) => id !== "all" || activeLabel !== "all")
+          .map(([id, name]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={scope === id}
+              onClick={() => setScope(id!)}
+              className={`rounded-full px-2 py-0.5 text-xs ${scope === id ? "bg-accent text-white" : "bg-bg-tertiary text-text-secondary hover:bg-bg-hover"}`}
+            >
+              {name}
+            </button>
+          ))}
+      </div>
+      {searchQuery && (
+        <p role="status" className="text-xs text-text-tertiary mt-1">
+          {searching
+            ? "Searching…"
+            : "Searching downloaded mail • up to 500 message matches"}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="text-xs text-danger mt-1">
+          Search failed: {error}
+        </p>
       )}
       <InputDialog
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
         onSubmit={(values) => {
-          useSmartFolderStore.getState().createFolder(values.name!.trim(), useThreadStore.getState().searchQuery.trim(), activeAccountId ?? undefined);
+          useSmartFolderStore
+            .getState()
+            .createFolder(
+              values.name!.trim(),
+              useThreadStore.getState().searchQuery.trim(),
+              activeAccountId ?? undefined,
+            );
         }}
         title="Save as Smart Folder"
         fields={[
