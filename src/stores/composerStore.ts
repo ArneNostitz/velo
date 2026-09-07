@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 export type ComposerMode = "new" | "reply" | "replyAll" | "forward";
 export type ComposerViewMode = "modal" | "fullpage";
+type UndoSendAction = () => void;
 
 export interface ComposerAttachment {
   id: string;
@@ -38,6 +39,10 @@ export interface ComposerState {
   draftId: string | null;
   undoSendTimer: ReturnType<typeof setTimeout> | null;
   undoSendVisible: boolean;
+  undoSendDeadline: number | null;
+  undoSendDurationMs: number;
+  undoSendCancel: UndoSendAction | null;
+  undoSendSkip: UndoSendAction | null;
   attachments: ComposerAttachment[];
   lastSavedAt: number | null;
   isSaving: boolean;
@@ -77,6 +82,9 @@ export interface ComposerState {
   setDraftId: (id: string | null) => void;
   setUndoSendTimer: (timer: ReturnType<typeof setTimeout> | null) => void;
   setUndoSendVisible: (visible: boolean) => void;
+  setUndoSendDeadline: (deadline: number | null, durationMs?: number) => void;
+  setUndoSendActions: (cancel: UndoSendAction | null, skip: UndoSendAction | null) => void;
+  clearUndoSend: () => void;
   addAttachment: (attachment: ComposerAttachment) => void;
   removeAttachment: (id: string) => void;
   clearAttachments: () => void;
@@ -107,6 +115,10 @@ export const useComposerStore = create<ComposerState>((set) => ({
   draftId: null,
   undoSendTimer: null,
   undoSendVisible: false,
+  undoSendDeadline: null,
+  undoSendDurationMs: 0,
+  undoSendCancel: null,
+  undoSendSkip: null,
   attachments: [],
   viewMode: "modal",
   fromEmail: null,
@@ -175,6 +187,25 @@ export const useComposerStore = create<ComposerState>((set) => ({
   setDraftId: (draftId) => set({ draftId }),
   setUndoSendTimer: (undoSendTimer) => set({ undoSendTimer }),
   setUndoSendVisible: (undoSendVisible) => set({ undoSendVisible }),
+  setUndoSendDeadline: (undoSendDeadline, undoSendDurationMs) =>
+    set((state) => ({
+      undoSendDeadline,
+      undoSendDurationMs: undoSendDurationMs ?? state.undoSendDurationMs,
+    })),
+  setUndoSendActions: (undoSendCancel, undoSendSkip) =>
+    set({ undoSendCancel, undoSendSkip }),
+  clearUndoSend: () =>
+    set((state) => {
+      if (state.undoSendTimer) clearTimeout(state.undoSendTimer);
+      return {
+        undoSendTimer: null,
+        undoSendVisible: false,
+        undoSendDeadline: null,
+        undoSendDurationMs: 0,
+        undoSendCancel: null,
+        undoSendSkip: null,
+      };
+    }),
   addAttachment: (attachment) =>
     set((state) => ({ attachments: [...state.attachments, attachment] })),
   removeAttachment: (id) =>

@@ -327,10 +327,12 @@ export function Composer() {
     const delay = parseInt(delaySetting ?? "5", 10) * 1000;
     const currentDraftId = state.draftId;
 
-    // Show undo send UI
-    state.setUndoSendVisible(true);
-
-    const timer = setTimeout(async () => {
+    let sendTimer: ReturnType<typeof setTimeout> | null = null;
+    let sendStarted = false;
+    const sendNow = async () => {
+      if (sendStarted) return;
+      sendStarted = true;
+      useComposerStore.getState().clearUndoSend();
       try {
         await sendEmail(sendAccountId, raw, state.threadId ?? undefined);
 
@@ -351,12 +353,27 @@ export function Composer() {
       } catch (err) {
         reportError("Email not sent", err);
       } finally {
-        useComposerStore.getState().setUndoSendVisible(false);
+        useComposerStore.getState().clearUndoSend();
         sendingRef.current = false;
       }
-    }, delay);
+    };
+    const cancelSend = () => {
+      if (sendTimer) clearTimeout(sendTimer);
+      sendingRef.current = false;
+    };
+    const skipSend = () => {
+      if (sendTimer) clearTimeout(sendTimer);
+      void sendNow();
+    };
 
-    state.setUndoSendTimer(timer);
+    // Show undo send UI
+    state.setUndoSendVisible(true);
+    state.setUndoSendDeadline(Date.now() + delay, delay);
+    state.setUndoSendActions(cancelSend, skipSend);
+
+    sendTimer = setTimeout(() => void sendNow(), delay);
+
+    state.setUndoSendTimer(sendTimer);
     closeComposer();
   }, [sendAccountId, sendAccount, closeComposer, getFullHtml]);
 

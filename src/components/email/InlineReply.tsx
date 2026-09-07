@@ -229,7 +229,12 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
       const { setUndoSendVisible, setUndoSendTimer } = useComposerStore.getState();
       setUndoSendVisible(true);
 
-      const timer = setTimeout(async () => {
+      let sendTimer: ReturnType<typeof setTimeout> | null = null;
+      let sendStarted = false;
+      const sendNow = async () => {
+        if (sendStarted) return;
+        sendStarted = true;
+        useComposerStore.getState().clearUndoSend();
         try {
           await sendEmail(accountId, raw, thread.id);
 
@@ -245,11 +250,24 @@ export function InlineReply({ thread, messages, accountId, noReply, onSent }: In
         } catch (err) {
           reportError("Reply not sent", err);
         } finally {
-          setUndoSendVisible(false);
+          useComposerStore.getState().clearUndoSend();
         }
-      }, delay);
+      };
+      const cancelSend = () => {
+        if (sendTimer) clearTimeout(sendTimer);
+        setSending(false);
+      };
+      const skipSend = () => {
+        if (sendTimer) clearTimeout(sendTimer);
+        void sendNow();
+      };
 
-      setUndoSendTimer(timer);
+      const composerState = useComposerStore.getState();
+      composerState.setUndoSendDeadline(Date.now() + delay, delay);
+      composerState.setUndoSendActions(cancelSend, skipSend);
+      sendTimer = setTimeout(() => void sendNow(), delay);
+
+      setUndoSendTimer(sendTimer);
 
       // Reset state
       editor.commands.setContent("");
