@@ -30,7 +30,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Native SQLite powers the FTS regression tests (no mock SQL engine).
+          node-version: 22
           cache: npm
 
       - run: npm ci
@@ -230,4 +231,3 @@ jobs:
       - name: Clean up keychain
         if: always() && steps.signing-check.outputs.has_signing == 'true'
         run: security delete-keychain $RUNNER_TEMP/app-signing.keychain-db
-

@@ -85,6 +85,8 @@ export function ThreadView({ thread }: ThreadViewProps) {
   const updateThread = useThreadStore((s) => s.updateThread);
   const [messages, setMessages] = useState<DbMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const markedReadRef = useRef<string | null>(null);
   // null = not yet loaded; defer iframe rendering until setting is known
   const [blockImages, setBlockImages] = useState<boolean | null>(null);
@@ -92,7 +94,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
 
   // Preload settings eagerly on mount (parallel with message loading)
   useEffect(() => {
-    getSetting("block_remote_images").then((val) => setBlockImages(val !== "false"));
+    getSetting("block_remote_images").then((val) => setBlockImages(val !== "false")).catch(() => setBlockImages(true));
   }, []);
 
   // Threads the user folded into this one — shown here, not as rows of their own
@@ -109,11 +111,26 @@ export function ThreadView({ thread }: ThreadViewProps) {
 
   useEffect(() => {
     if (!threadAccountId) return;
+    let cancelled = false;
     setLoading(true);
-    reloadMessages()
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [threadAccountId, thread.id, reloadMessages]);
+    setLoadError(null);
+    const timeout = setTimeout(() => {
+      if (!cancelled) { cancelled = true; setLoadError("Loading this email took too long. Please retry."); setLoading(false); }
+    }, 15000);
+    (async () => {
+      try {
+        const merged = await getMergedThreadIds(threadAccountId, thread.id);
+        const all = await getMessagesForThreads(threadAccountId, [thread.id, ...merged]);
+        if (!cancelled) { setMergedIds(merged); setMessages(all); }
+      } catch (err) {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
+      } finally {
+        clearTimeout(timeout);
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, [threadAccountId, thread.id, loadAttempt]);
 
   // Check per-sender allowlist (single batch query instead of N queries)
   useEffect(() => {
@@ -408,6 +425,9 @@ export function ThreadView({ thread }: ThreadViewProps) {
   // Must sit above the early return below — hooks cannot be conditional.
   const pinnedContact = useUIStore((s) => s.pinnedContact);
 
+  if (loadError) {
+    return <div className="p-6" role="alert"><p>Could not open this email</p><p className="text-sm text-text-secondary">{loadError}</p><button className="mt-3 text-accent underline" onClick={() => setLoadAttempt((n) => n + 1)}>Retry</button></div>;
+  }
   if (loading) {
     return (
       <div className="flex flex-col h-full">

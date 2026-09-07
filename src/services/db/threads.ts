@@ -310,6 +310,24 @@ export async function setThreadLabels(
   }
 }
 
+/** Load labels for a page in one IPC query rather than one per row. */
+export async function getLabelsForThreadPage(threads: { id: string; account_id: string }[]): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (!threads.length) return result;
+  const db = await getDb();
+  const accounts = [...new Set(threads.map((t) => t.account_id))];
+  const ids = [...new Set(threads.map((t) => t.id))];
+  const a = inClause(accounts.length);
+  const t = inClause(ids.length, a.nextIndex);
+  const rows = await db.select<{ account_id: string; thread_id: string; label_id: string }[]>(
+    `SELECT account_id, thread_id, label_id FROM thread_labels WHERE account_id IN (${a.placeholders}) AND thread_id IN (${t.placeholders})`, [...accounts, ...ids]);
+  for (const row of rows) {
+    const key = JSON.stringify([row.account_id, row.thread_id]);
+    result.set(key, [...(result.get(key) ?? []), row.label_id]);
+  }
+  return result;
+}
+
 export async function getThreadLabelIds(
   accountId: string,
   threadId: string,

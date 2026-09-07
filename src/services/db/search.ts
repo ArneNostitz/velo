@@ -1,6 +1,6 @@
 import { getDb } from "./connection";
-import { parseSearchQuery, hasSearchOperators } from "../search/searchParser";
-import { buildSearchQuery } from "../search/searchQueryBuilder";
+import { parseSearchQuery } from "../search/searchParser";
+import { buildSearchQuery, type SearchScope } from "../search/searchQueryBuilder";
 
 export interface SearchResult {
   message_id: string;
@@ -22,63 +22,13 @@ export async function searchMessages(
   query: string,
   accountId?: string,
   limit = 50,
+  scope: SearchScope = {},
 ): Promise<SearchResult[]> {
   const db = await getDb();
 
   const ftsQuery = query.trim();
   if (!ftsQuery) return [];
 
-  // Check if query contains search operators
-  if (hasSearchOperators(ftsQuery)) {
-    const parsed = parseSearchQuery(ftsQuery);
-    // If we have no free text and no operators matched usefully, fall through
-    if (parsed.freeText || parsed.from || parsed.to || parsed.subject ||
-        parsed.hasAttachment || parsed.isUnread || parsed.isRead ||
-        parsed.isStarred || parsed.before !== undefined || parsed.after !== undefined ||
-        parsed.label) {
-      const { sql, params } = buildSearchQuery(parsed, accountId, limit);
-      return db.select<SearchResult[]>(sql, params);
-    }
-  }
-
-  // Fall through to standard FTS5 search
-  if (accountId) {
-    return db.select<SearchResult[]>(
-      `SELECT
-        m.id as message_id,
-        m.account_id,
-        m.thread_id,
-        m.subject,
-        m.from_name,
-        m.from_address,
-        m.snippet,
-        m.date,
-        rank
-      FROM messages_fts
-      JOIN messages m ON m.rowid = messages_fts.rowid
-      WHERE messages_fts MATCH $1 AND m.account_id = $2
-      ORDER BY rank
-      LIMIT $3`,
-      [ftsQuery, accountId, limit],
-    );
-  }
-
-  return db.select<SearchResult[]>(
-    `SELECT
-      m.id as message_id,
-      m.account_id,
-      m.thread_id,
-      m.subject,
-      m.from_name,
-      m.from_address,
-      m.snippet,
-      m.date,
-      rank
-    FROM messages_fts
-    JOIN messages m ON m.rowid = messages_fts.rowid
-    WHERE messages_fts MATCH $1
-    ORDER BY rank
-    LIMIT $2`,
-    [ftsQuery, limit],
-  );
+  const { sql, params } = buildSearchQuery(parseSearchQuery(ftsQuery), accountId, limit, scope);
+  return db.select<SearchResult[]>(sql, params);
 }
