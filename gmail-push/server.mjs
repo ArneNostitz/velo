@@ -13,6 +13,8 @@ const googleKeys = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2
 const renewMs = Number(process.env.WATCH_RENEW_MS || 3_600_000);
 const clients = new Set();
 let registrations = new Map();
+let lastRegistrationAt = null;
+let lastPubSubAt = null;
 
 if (!secret) throw new Error("PUSH_SHARED_SECRET is required");
 
@@ -92,7 +94,16 @@ async function renew() {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, version });
+    if (req.method === "GET" && url.pathname === "/health") {
+      return json(res, 200, {
+        ok: true,
+        version,
+        registrationCount: registrations.size,
+        connectedClients: clients.size,
+        lastRegistrationAt,
+        lastPubSubAt,
+      });
+    }
     if (url.pathname === "/pubsub") {
       if (!(await authorizedPubSub(req))) return json(res, 401, { error: "unauthorized" });
     } else if (!authorized(req)) {
@@ -106,6 +117,8 @@ const server = http.createServer(async (req, res) => {
       const registration = { email: input.email, topicName: input.topicName, historyId: result.historyId, expiresAt: Number(result.expiration) || Date.now() + 7 * 24 * 3600_000 };
       registrations.set(input.email, registration);
       await save();
+      lastRegistrationAt = new Date().toISOString();
+      console.log("gmail-push watch registered", { registrationCount: registrations.size });
       return json(res, 200, registration);
     }
 
@@ -121,6 +134,8 @@ const server = http.createServer(async (req, res) => {
       const input = await body(req);
       const message = input.message || {};
       const decoded = message.data ? JSON.parse(Buffer.from(message.data, "base64url").toString("utf8")) : {};
+      lastPubSubAt = new Date().toISOString();
+      console.log("gmail-push Pub/Sub message received");
       broadcast({ type: "gmail-history", email: decoded.emailAddress, historyId: decoded.historyId, messageId: message.messageId });
       return json(res, 200, { ok: true });
     }
