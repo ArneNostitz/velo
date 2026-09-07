@@ -55,7 +55,13 @@ async function authorizedPubSub(req) {
 }
 
 function json(res, status, body) {
-  res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+  res.writeHead(status, {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "access-control-allow-origin": "*",
+    "access-control-allow-headers": "authorization, content-type, accept, x-push-secret",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -96,6 +102,15 @@ async function renew() {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-origin": "*",
+        "access-control-allow-headers": "authorization, content-type, accept, x-push-secret",
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-max-age": "600",
+      });
+      return res.end();
+    }
     if (req.method === "GET" && url.pathname === "/health") {
       return json(res, 200, {
         ok: true,
@@ -152,7 +167,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/events") {
-      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+        "access-control-allow-origin": "*",
+        "access-control-allow-headers": "authorization, content-type, accept, x-push-secret",
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+      });
       res.write(": connected\n\n");
       clients.add(res);
       req.on("close", () => clients.delete(res));
