@@ -15,6 +15,8 @@ const clients = new Set();
 let registrations = new Map();
 let lastRegistrationAt = null;
 let lastPubSubAt = null;
+let lastUnauthorizedAt = null;
+let lastUnauthorizedPath = null;
 
 if (!secret) throw new Error("PUSH_SHARED_SECRET is required");
 
@@ -102,11 +104,21 @@ const server = http.createServer(async (req, res) => {
         connectedClients: clients.size,
         lastRegistrationAt,
         lastPubSubAt,
+        lastUnauthorizedAt,
+        lastUnauthorizedPath,
       });
     }
     if (url.pathname === "/pubsub") {
-      if (!(await authorizedPubSub(req))) return json(res, 401, { error: "unauthorized" });
+      if (!(await authorizedPubSub(req))) {
+        lastUnauthorizedAt = new Date().toISOString();
+        lastUnauthorizedPath = url.pathname;
+        console.warn("gmail-push unauthorized request", { path: url.pathname });
+        return json(res, 401, { error: "unauthorized" });
+      }
     } else if (!authorized(req)) {
+      lastUnauthorizedAt = new Date().toISOString();
+      lastUnauthorizedPath = url.pathname;
+      console.warn("gmail-push unauthorized request", { path: url.pathname });
       return json(res, 401, { error: "unauthorized" });
     }
 
