@@ -18,6 +18,8 @@ interface ChatThreadProps {
    * is to scan a long history rather than read it end to end.
    */
   defaultCollapsed?: boolean;
+  searchMessageIds?: Set<string>;
+  highlightTerms?: readonly string[];
 }
 
 export function isOwnMessage(message: DbMessage, ownAddresses: Set<string>): boolean {
@@ -41,6 +43,8 @@ export function ChatThread({
   onMessageContextMenu,
   hideToolbar,
   defaultCollapsed = false,
+  searchMessageIds,
+  highlightTerms,
 }: ChatThreadProps) {
   // Only the exceptions to the default are tracked, so a newly synced message
   // inherits the default instead of appearing in whatever state a stale map
@@ -89,23 +93,28 @@ export function ChatThread({
         </div>
       )}
 
-      {rendered.map(({ msg, mine }) => (
-        <ChatMessage
-          key={msg.id}
-          message={msg}
-          isMine={mine}
-          collapsed={isCollapsed(msg.id)}
-          onToggleCollapse={() => toggleOne(msg.id)}
-          blockImages={blockImages}
-          senderAllowlisted={
-            msg.from_address ? allowlistedSenders?.has(msg.from_address) ?? false : false
-          }
-          isSpam={isSpam}
-          onContextMenu={
-            onMessageContextMenu ? (e) => onMessageContextMenu(e, msg) : undefined
-          }
-        />
-      ))}
+      {rendered.map(({ msg, mine }) => {
+        const isSearchMatch = searchMessageIds?.has(msg.id) ?? false;
+        return (
+          <ChatMessage
+            key={msg.id}
+            message={msg}
+            isMine={mine}
+            collapsed={isSearchMatch ? false : isCollapsed(msg.id)}
+            onToggleCollapse={() => toggleOne(msg.id)}
+            blockImages={blockImages}
+            senderAllowlisted={
+              msg.from_address ? allowlistedSenders?.has(msg.from_address) ?? false : false
+            }
+            isSpam={isSpam}
+            isSearchMatch={isSearchMatch}
+            highlightTerms={highlightTerms}
+            onContextMenu={
+              onMessageContextMenu ? (e) => onMessageContextMenu(e, msg) : undefined
+            }
+          />
+        );
+      })}
     </div>
   );
 }

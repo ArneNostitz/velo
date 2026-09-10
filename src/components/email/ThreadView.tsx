@@ -29,6 +29,7 @@ import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { MessageSkeleton } from "@/components/ui/Skeleton";
 import { RawMessageModal } from "./RawMessageModal";
 import { formatDateTime } from "@/utils/date";
+import { getBodySearchTerms } from "@/utils/searchHighlight";
 
 interface ThreadViewProps {
   thread: Thread;
@@ -83,6 +84,12 @@ export function ThreadView({ thread }: ThreadViewProps) {
   const ownAddresses = useOwnAddresses(ownAddressScope);
   const [showTaskExtract, setShowTaskExtract] = useState(false);
   const updateThread = useThreadStore((s) => s.updateThread);
+  const searchQuery = useThreadStore((s) => s.searchQuery);
+  const searchMatch = useThreadStore((s) => s.searchMatches.get(thread.id));
+  const bodySearchTerms = useMemo(
+    () => getBodySearchTerms(searchQuery),
+    [searchQuery],
+  );
   const [messages, setMessages] = useState<DbMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -541,6 +548,8 @@ export function ThreadView({ thread }: ThreadViewProps) {
                 allowlistedSenders={allowlistedSenders}
                 isSpam={thread.labelIds.includes("SPAM")}
                 onMessageContextMenu={handleMessageContextMenu}
+                searchMessageIds={searchMatch?.messageIds}
+                highlightTerms={bodySearchTerms}
               />
             ) : (
               messages.map((msg, i) => (
@@ -554,6 +563,8 @@ export function ThreadView({ thread }: ThreadViewProps) {
                   senderAllowlisted={msg.from_address ? allowlistedSenders.has(msg.from_address) : false}
                   isSpam={thread.labelIds.includes("SPAM")}
                   ownAddresses={ownAddresses}
+                  isSearchMatch={searchMatch?.messageIds.has(msg.id)}
+                  highlightTerms={bodySearchTerms}
                   onContextMenu={(e) => handleMessageContextMenu(e, msg)}
                 />
               ))

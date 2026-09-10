@@ -116,6 +116,21 @@ describe("EmailRenderer", () => {
     expect(container.querySelector("iframe")).toBeTruthy();
   });
 
+  it("highlights search matches inside sanitized email content", () => {
+    const { container } = render(
+      <EmailRenderer
+        html="<p>The Festival details are here</p>"
+        text={null}
+        highlightTerms={["festival"]}
+      />,
+    );
+    const iframe = container.querySelector("iframe")!;
+    const match = iframe.contentDocument!.querySelector(
+      'mark[data-velo-search-match="true"]',
+    );
+    expect(match?.textContent).toBe("Festival");
+  });
+
   it("renders html content in iframe", () => {
     const { container } = render(
       <EmailRenderer html="<p>Hello</p>" text={null} />,

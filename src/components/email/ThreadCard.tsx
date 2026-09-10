@@ -13,6 +13,7 @@ import { SenderAvatar } from "./SenderAvatar";
 import type { DragData } from "@/components/dnd/DndProvider";
 import { useLabelStore } from "@/stores/labelStore";
 import { threadFolder, type ThreadFolderId } from "@/utils/threadFolder";
+import { HighlightedText } from "@/components/search/HighlightedText";
 
 // A search result names where it lives. Trash and Spam shout: acting on a
 // hit there is not the same as acting on one in the inbox.
@@ -40,9 +41,12 @@ interface ThreadCardProps {
   hasTask?: boolean;
   /** Tag the row with the folder it is in — for search hits, which can come from anywhere */
   showFolder?: boolean;
+  /** Excerpt centered on the message-body match, instead of the thread's latest snippet. */
+  searchExcerpt?: string | null;
+  highlightTerms?: readonly string[];
 }
 
-export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick, onContextMenu, category, showCategoryBadge, hasFollowUp, hasTask, showFolder }: ThreadCardProps) {
+export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick, onContextMenu, category, showCategoryBadge, hasFollowUp, hasTask, showFolder, searchExcerpt, highlightTerms }: ThreadCardProps) {
   const isMultiSelected = useThreadStore((s) => s.selectedThreadIds.has(thread.id));
   const isRemoving = useThreadStore((s) => s.removingThreadIds.has(thread.id));
   const hasMultiSelect = useThreadStore((s) => s.selectedThreadIds.size > 0);
@@ -181,7 +185,10 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
                   : "font-semibold text-text-primary"
               }`}
             >
-              {thread.fromName ?? thread.fromAddress ?? "Unknown"}
+              <HighlightedText
+                text={thread.fromName ?? thread.fromAddress ?? "Unknown"}
+                terms={highlightTerms}
+              />
             </span>
             <span className="flex items-center gap-1.5 shrink-0">
               {folder && (
@@ -207,7 +214,10 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
               thread.isRead ? "text-text-secondary" : "text-text-primary"
             }`}
           >
-            {thread.subject ?? "(No subject)"}
+            <HighlightedText
+              text={thread.subject ?? "(No subject)"}
+              terms={highlightTerms}
+            />
           </div>
 
           {/* Snippet + indicators */}
@@ -215,7 +225,7 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
             <span className="text-xs text-text-tertiary truncate flex-1">
               {/* Who spoke last — a thread waiting on them reads differently
                   from one waiting on you */}
-              {thread.lastFromMe && (
+              {searchExcerpt == null && thread.lastFromMe && (
                 <span
                   className="mr-1 px-1 py-px bg-blue-500/15 text-blue-600 dark:text-blue-300 font-medium align-baseline"
                   style={{ borderRadius: "5px" }}
@@ -224,7 +234,10 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
                   me:
                 </span>
               )}
-              {thread.snippet}
+              <HighlightedText
+                text={searchExcerpt ?? thread.snippet}
+                terms={highlightTerms}
+              />
             </span>
             {showCategoryBadge && category && category !== "Primary" && CATEGORY_COLORS[category] && (
               <span className={`shrink-0 text-[0.625rem] px-1.5 rounded-full leading-normal ${CATEGORY_COLORS[category]}`}>

@@ -31,6 +31,7 @@ import {
   CONFIRM_THRESHOLD,
   registerEmailNavigationHandler,
 } from "@/services/links/emailNavigation";
+import { highlightSearchTerms } from "@/utils/searchHighlight";
 
 /**
  * Match a clicked anchor against the pre-computed scan results.
@@ -73,6 +74,8 @@ interface EmailRendererProps {
   inlineAttachments?: DbAttachment[];
   /** Result of the phishing link scan for this message, if scanning is enabled. */
   scanResult?: MessageScanResult | null;
+  /** Free-text terms from the active search, only for a message that matched. */
+  highlightTerms?: readonly string[];
 }
 
 export function EmailRenderer({
@@ -85,6 +88,7 @@ export function EmailRenderer({
   messageId,
   inlineAttachments,
   scanResult,
+  highlightTerms,
 }: EmailRendererProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -115,6 +119,7 @@ export function EmailRenderer({
   const selectedCalendarAccountId = useAccountStore((s) => s.calendarAccountId);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const accounts = useAccountStore((s) => s.accounts);
+  const highlightKey = highlightTerms?.join("\u0000") ?? "";
   const isDark = theme === "dark"
     || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
@@ -270,6 +275,7 @@ export function EmailRenderer({
     const bindDocument = () => {
       const activeDocument = iframe.contentDocument;
       if (!activeDocument?.body) return;
+      highlightSearchTerms(activeDocument.body, highlightTerms ?? []);
       decorateEmailData(activeDocument);
       const actions = instrumentEmailActions(activeDocument, rendererId);
       if (actions.size > 0) {
@@ -327,6 +333,12 @@ export function EmailRenderer({
       text-decoration-style: dotted;
       text-underline-offset: 2px;
     }
+    mark[data-velo-search-match="true"] {
+      background: #fde68a;
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
   </style>
 </head>
 <body>${bodyHtml}</body>
@@ -341,7 +353,7 @@ export function EmailRenderer({
       cancelAnimationFrame(rafRef.current);
       cancelAnimationFrame(bindRaf);
     };
-  }, [bodyHtml, isDark, isPlainText, rendererId]);
+  }, [bodyHtml, isDark, isPlainText, rendererId, highlightKey]);
 
   const handleLoadImages = useCallback(() => {
     setOverrideShow(true);

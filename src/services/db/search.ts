@@ -10,6 +10,7 @@ export interface SearchResult {
   from_name: string | null;
   from_address: string | null;
   snippet: string | null;
+  match_excerpt: string | null;
   date: number;
   rank: number;
 }

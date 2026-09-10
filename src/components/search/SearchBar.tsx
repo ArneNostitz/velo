@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { searchMessages } from "@/services/db/search";
 import { useAccountStore, listedAccountIds } from "@/stores/accountStore";
-import { useThreadStore } from "@/stores/threadStore";
+import { useThreadStore, type SearchMatch } from "@/stores/threadStore";
 import { useSmartFolderStore } from "@/stores/smartFolderStore";
 import { InputDialog } from "@/components/ui/InputDialog";
 import { Search, X, FolderPlus } from "lucide-react";
@@ -23,6 +23,25 @@ const folderIds: Record<string, string[]> = {
   all: [],
   everywhere: [],
 };
+
+const searchPresets = [
+  { label: "From", token: "from:", needsValue: true },
+  { label: "To", token: "to:", needsValue: true },
+  { label: "Subject", token: "subject:", needsValue: true },
+  { label: "Has attachments", token: "has:attachment", needsValue: false },
+  { label: "Unread", token: "is:unread", needsValue: false },
+] as const;
+
+function hasIncompleteOperator(query: string): boolean {
+  return /(?:^|\s)(?:from|to|subject|before|after|label):\s*$/i.test(query);
+}
+
+function presetIsActive(query: string, token: string): boolean {
+  const operator = token.slice(0, token.indexOf(":"));
+  return token.endsWith(":")
+    ? new RegExp(`(?:^|\\s)${operator}:`, "i").test(query)
+    : new RegExp(`(?:^|\\s)${token.replace(":", "\\:")}(?=\\s|$)`, "i").test(query);
+}
 
 export function SearchBar() {
   const searchQuery = useThreadStore((s) => s.searchQuery);
@@ -60,6 +79,10 @@ export function SearchBar() {
       setSearching(false);
       return;
     }
+    if (hasIncompleteOperator(searchQuery)) {
+      setSearching(false);
+      return;
+    }
     setSearching(true);
     const timer = setTimeout(async () => {
       try {
@@ -87,10 +110,26 @@ export function SearchBar() {
               : {}),
           },
         );
-        if (!cancelled)
+        if (!cancelled) {
+          const matches = new Map<string, SearchMatch>();
+          for (const hit of hits) {
+            const existing = matches.get(hit.thread_id);
+            if (existing) {
+              existing.messageIds.add(hit.message_id);
+              if (!existing.excerpt && hit.match_excerpt) {
+                existing.excerpt = hit.match_excerpt.replace(/\s+/g, " ").trim();
+              }
+            } else {
+              matches.set(hit.thread_id, {
+                messageIds: new Set([hit.message_id]),
+                excerpt: hit.match_excerpt?.replace(/\s+/g, " ").trim() || null,
+              });
+            }
+          }
           useThreadStore
             .getState()
-            .setSearch(searchQuery, new Set(hits.map((hit) => hit.thread_id)));
+            .setSearch(searchQuery, new Set(matches.keys()), matches);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
@@ -129,6 +168,25 @@ export function SearchBar() {
   const handleClear = useCallback(() => {
     useThreadStore.getState().clearSearch();
     inputRef.current?.focus();
+  }, []);
+
+  const handlePreset = useCallback((token: string, needsValue: boolean) => {
+    const current = useThreadStore.getState().searchQuery.trim();
+    let next = current;
+    if (needsValue) {
+      if (!presetIsActive(current, token)) next = `${current} ${token}`.trim();
+    } else {
+      const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const tokenPattern = new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`, "i");
+      next = tokenPattern.test(current)
+        ? current.replace(tokenPattern, " ").replace(/\s+/g, " ").trim()
+        : `${current} ${token}`.trim();
+    }
+    useThreadStore.getState().setSearch(next, next ? new Set() : null);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.length, next.length);
+    });
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -176,34 +234,56 @@ export function SearchBar() {
           </div>
         )}
       </div>
-      <div
-        className="flex flex-wrap gap-1 mt-1.5"
-        role="group"
-        aria-label="Search folders"
-      >
-        {[
-          ["current", currentName],
-          ["all", "All mail"],
-          ["spam", "Spam"],
-          ["trash", "Trash"],
-          ["everywhere", "All folders"],
-        ]
-          .filter(([id]) => id !== "all" || activeLabel !== "all")
-          .map(([id, name]) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={scope === id}
-              onClick={() => setScope(id!)}
-              className={`rounded-full px-2 py-0.5 text-xs ${scope === id ? "bg-accent text-white" : "bg-bg-tertiary text-text-secondary hover:bg-bg-hover"}`}
-            >
-              {name}
-            </button>
-          ))}
-      </div>
+      {searchQuery.trim() && (
+        <div className="mt-1.5 space-y-1.5">
+          <div
+            className="flex flex-wrap gap-1"
+            role="group"
+            aria-label="Search folders"
+          >
+            {[
+              ["current", currentName],
+              ["all", "All mail"],
+              ["spam", "Spam"],
+              ["trash", "Trash"],
+              ["everywhere", "All folders"],
+            ]
+              .filter(([id]) => id !== "all" || activeLabel !== "all")
+              .map(([id, name]) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={scope === id}
+                  onClick={() => setScope(id!)}
+                  className={`rounded-full px-2 py-0.5 text-xs ${scope === id ? "bg-accent text-white" : "bg-bg-tertiary text-text-secondary hover:bg-bg-hover"}`}
+                >
+                  {name}
+                </button>
+              ))}
+          </div>
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Search filters">
+            {searchPresets.map(({ label, token, needsValue }) => {
+              const active = presetIsActive(searchQuery, token);
+              return (
+                <button
+                  key={token}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => handlePreset(token, needsValue)}
+                  className={`rounded-full border px-2 py-0.5 text-xs transition-colors ${active ? "border-accent/40 bg-accent-light text-accent" : "border-border-primary text-text-secondary hover:bg-bg-hover"}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {searchQuery && (
         <p role="status" className="text-xs text-text-tertiary mt-1">
-          {searching
+          {hasIncompleteOperator(searchQuery)
+            ? "Type a value to finish this filter"
+            : searching
             ? "Searching…"
             : "Searching downloaded mail • up to 500 message matches"}
         </p>

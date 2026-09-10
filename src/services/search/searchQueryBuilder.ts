@@ -175,6 +175,22 @@ export function buildSearchQuery(
     whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
   const orderBy = needsFts ? "ORDER BY rank" : "ORDER BY m.date DESC";
 
+  // Return a small body-centered excerpt for the result row. Keeping this in
+  // SQL avoids loading as many as 500 complete message bodies into React.
+  const excerptTerm = (parsed.freeText.match(/"[^"]+"|\S+/g) ?? [])[0]?.replace(/^"|"$/g, "");
+  let matchExcerptSelect = "NULL as match_excerpt";
+  if (excerptTerm) {
+    params.push(excerptTerm);
+    const placeholder = `$${paramIdx++}`;
+    const bodyPosition = `instr(lower(COALESCE(m.body_text,'')), lower(${placeholder}))`;
+    const snippetPosition = `instr(lower(COALESCE(m.snippet,'')), lower(${placeholder}))`;
+    matchExcerptSelect = `CASE
+      WHEN ${bodyPosition} > 0 THEN trim(substr(COALESCE(m.body_text,''), max(1, ${bodyPosition} - 90), 240))
+      WHEN ${snippetPosition} > 0 THEN m.snippet
+      ELSE NULL
+    END as match_excerpt`;
+  }
+
   params.push(limit);
 
   const sql = `SELECT DISTINCT
@@ -185,6 +201,7 @@ export function buildSearchQuery(
     m.from_name,
     m.from_address,
     m.snippet,
+    ${matchExcerptSelect},
     m.date,
     ${needsFts ? "rank" : "0 as rank"}
   ${fromClause}

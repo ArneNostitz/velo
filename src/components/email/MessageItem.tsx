@@ -26,6 +26,8 @@ interface MessageItemProps {
   threadId?: string;
   isSpam?: boolean;
   focused?: boolean;
+  isSearchMatch?: boolean;
+  highlightTerms?: readonly string[];
   /**
    * Lowercased addresses the user sends from, aliases included. Without it
    * this falls back to the account's own address, which misses a message sent
@@ -35,8 +37,8 @@ interface MessageItemProps {
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(function MessageItem({ message, isLast, blockImages, senderAllowlisted, accountId, threadId, isSpam, focused, ownAddresses, onContextMenu }, ref) {
-  const [expanded, setExpanded] = useState(isLast);
+export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(function MessageItem({ message, isLast, blockImages, senderAllowlisted, accountId, threadId, isSpam, focused, isSearchMatch, highlightTerms, ownAddresses, onContextMenu }, ref) {
+  const [expanded, setExpanded] = useState(isLast || !!isSearchMatch);
   // Repaint when the 12/24-hour preference changes
   useTimeFormat();
   const [attachments, setAttachments] = useState<DbAttachment[]>([]);
@@ -70,6 +72,15 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
       loadAttachments();
     }
   }, [focused]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A body hit must be visible when its thread opens, even when it is not the
+  // newest message in the conversation.
+  useEffect(() => {
+    if (isSearchMatch && !expanded) {
+      setExpanded(true);
+      loadAttachments();
+    }
+  }, [isSearchMatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggle = () => {
     const willExpand = !expanded;
@@ -244,6 +255,7 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
               messageId={message.id}
               inlineAttachments={attachments.filter((a) => a.content_id)}
               scanResult={scanResult}
+              highlightTerms={isSearchMatch ? highlightTerms : undefined}
             />
           ) : (
             <div className="py-8 text-center text-text-tertiary text-sm">Loading...</div>
@@ -340,4 +352,3 @@ function UnsubscribeLink({
     </button>
   );
 }
-
