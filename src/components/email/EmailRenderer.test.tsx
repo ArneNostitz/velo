@@ -3,6 +3,8 @@ import { act } from "react";
 import { EmailRenderer } from "./EmailRenderer";
 import type { DbAttachment } from "@/services/db/attachments";
 import type { MessageScanResult } from "@/utils/phishingDetector";
+import { useComposerStore } from "@/stores/composerStore";
+import { dispatchEmailNavigation } from "@/services/links/emailNavigation";
 
 // Mock dependencies
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -88,13 +90,23 @@ function clickIframeLink(container: HTMLElement): void {
   const doc = iframe.contentDocument!;
   const anchor = doc.querySelector("a")!;
   act(() => {
-    anchor.dispatchEvent(new doc.defaultView!.MouseEvent("click", { bubbles: true }));
+    dispatchEmailNavigation(anchor.href);
+  });
+}
+
+function clickIframeAction(container: HTMLElement, kind: string): void {
+  const iframe = container.querySelector("iframe") as HTMLIFrameElement;
+  const doc = iframe.contentDocument!;
+  const anchor = doc.querySelector(`a[data-velo-kind="${kind}"]`)!;
+  act(() => {
+    dispatchEmailNavigation(anchor.href);
   });
 }
 
 describe("EmailRenderer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useComposerStore.setState({ isOpen: false, to: [], cc: [], bcc: [], subject: "", bodyHtml: "" });
   });
 
   it("renders plain text when no html provided", () => {
@@ -109,6 +121,25 @@ describe("EmailRenderer", () => {
       <EmailRenderer html="<p>Hello</p>" text={null} />,
     );
     expect(container.querySelector("iframe")).toBeTruthy();
+  });
+
+  it("keeps scripts disabled and leaves ordinary link destinations intact", () => {
+    const { container } = render(<EmailRenderer html='<a target="_blank" href="https://example.com/path">Open</a>' text={null} />);
+    const iframe = container.querySelector("iframe")!;
+    expect(iframe.getAttribute("sandbox")).toBe("allow-same-origin allow-top-navigation-by-user-activation");
+    expect(iframe.contentDocument!.querySelector("script")).toBeNull();
+    expect(iframe.contentDocument!.querySelector("a")!.getAttribute("href")).toBe("https://example.com/path");
+  });
+
+  it("positions the menu beside the full address inside the iframe", () => {
+    const { container } = render(<EmailRenderer html="1455 3rd Street<br>San Francisco, CA 94158" text={null} />);
+    const iframe = container.querySelector("iframe")!;
+    const anchor = iframe.contentDocument!.querySelector("a")!;
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue({ left: 400, top: 100 } as DOMRect);
+    vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue({ left: 20, bottom: 80 } as DOMRect);
+    clickIframeAction(container, "address");
+    const menu = screen.getByRole("menu", { name: "Actions for 1455 3rd Street, San Francisco, CA 94158" });
+    expect(menu).toHaveStyle({ left: "420px", top: "188px" });
   });
 
   it("resolves cid: references by fetching inline attachment data", async () => {
@@ -182,6 +213,60 @@ describe("EmailRenderer", () => {
     });
 
     expect(container.querySelector("iframe")).toBeTruthy();
+  });
+
+  it("offers compose, copy, and contact actions for an email address", () => {
+    const { container } = render(
+      <EmailRenderer html={null} text="Write to jane@example.com" />,
+    );
+
+    clickIframeLink(container);
+
+    expect(screen.getByRole("menu", { name: "Actions for jane@example.com" })).toBeTruthy();
+    expect(screen.getByText("Write email")).toBeTruthy();
+    expect(screen.getByText("Copy email address")).toBeTruthy();
+    expect(screen.getByText("Add to contacts")).toBeTruthy();
+
+    act(() => {
+      screen.getByText("Write email").click();
+    });
+    expect(useComposerStore.getState()).toMatchObject({ isOpen: true, to: ["jane@example.com"] });
+  });
+
+  it("offers call and copy actions for a detected phone number", () => {
+    const { container } = render(
+      <EmailRenderer html={null} text="Call +43 660 123 4567" />,
+    );
+
+    clickIframeAction(container, "phone");
+
+    expect(screen.getByText("Call")).toBeTruthy();
+    expect(screen.getByText("Copy phone number")).toBeTruthy();
+  });
+
+  it("opens a detected phone number in the calling app", async () => {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    const { container } = render(
+      <EmailRenderer html={null} text="Call +43 660 123 4567" />,
+    );
+    clickIframeAction(container, "phone");
+
+    act(() => {
+      screen.getByText("Call").click();
+    });
+
+    expect(openUrl).toHaveBeenCalledWith("tel:+436601234567");
+  });
+
+  it("offers calendar creation for a detected date", () => {
+    const { container } = render(
+      <EmailRenderer html="<p>Meet on 12.09.2026 at 14:30</p>" text={null} />,
+    );
+
+    clickIframeAction(container, "date");
+
+    expect(screen.getByText("Create calendar event")).toBeTruthy();
+    expect(screen.getByText("Copy date")).toBeTruthy();
   });
 
   it("resolves multiple cid references", async () => {

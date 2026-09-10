@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccountStore } from "@/stores/accountStore";
-import { getCalendarEventsInRangeMulti, upsertCalendarEvent, type DbCalendarEvent } from "@/services/db/calendarEvents";
+import { getCalendarEventsInRangeMulti, type DbCalendarEvent } from "@/services/db/calendarEvents";
 import { getVisibleCalendars, getCalendarsForAccount, upsertCalendar, type DbCalendar } from "@/services/db/calendars";
 import { getCalendarProvider, hasCalendarSupport } from "@/services/calendar/providerFactory";
-import type { CalendarEventData, CreateEventInput } from "@/services/calendar/types";
+import { createCalendarEvent, saveProviderCalendarEvent } from "@/services/calendar/createEvent";
 import { CalendarToolbar, type CalendarView } from "./CalendarToolbar";
 import { MonthView } from "./MonthView";
 import { WeekView } from "./WeekView";
@@ -158,7 +158,7 @@ export function CalendarPage() {
         );
 
         for (const event of apiEvents) {
-          await upsertCalendarEventFromProvider(activeAccountId, cal.id, event);
+          await saveProviderCalendarEvent(activeAccountId, cal.id, event);
         }
       }
 
@@ -229,45 +229,7 @@ export function CalendarPage() {
   }) => {
     if (!activeAccountId) return;
     try {
-      const provider = await getCalendarProvider(activeAccountId);
-
-      // Find the target calendar
-      let calendarRemoteId: string | undefined;
-      let calendarDbId: string | undefined;
-      if (eventData.calendarId) {
-        const cal = calendars.find((c) => c.id === eventData.calendarId);
-        if (cal) {
-          calendarRemoteId = cal.remote_id;
-          calendarDbId = cal.id;
-        }
-      }
-
-      // Fallback to primary calendar
-      if (!calendarRemoteId) {
-        const primary = calendars.find((c) => c.is_primary) ?? calendars[0];
-        if (primary) {
-          calendarRemoteId = primary.remote_id;
-          calendarDbId = primary.id;
-        }
-      }
-
-      if (!calendarRemoteId) {
-        // For Google, use "primary" as fallback
-        calendarRemoteId = "primary";
-      }
-
-      const input: CreateEventInput = {
-        summary: eventData.summary,
-        description: eventData.description || undefined,
-        location: eventData.location || undefined,
-        startTime: eventData.startTime,
-        endTime: eventData.endTime,
-      };
-
-      const created = await provider.createEvent(calendarRemoteId, input);
-
-      // Save to local DB
-      await upsertCalendarEventFromProvider(activeAccountId, calendarDbId ?? null, created);
+      await createCalendarEvent(activeAccountId, calendars, eventData);
 
       setShowCreate(false);
       loadEvents();
@@ -423,30 +385,4 @@ export function CalendarPage() {
       )}
     </div>
   );
-}
-
-async function upsertCalendarEventFromProvider(
-  accountId: string,
-  calendarId: string | null,
-  event: CalendarEventData,
-): Promise<void> {
-  await upsertCalendarEvent({
-    accountId,
-    googleEventId: event.remoteEventId,
-    summary: event.summary,
-    description: event.description,
-    location: event.location,
-    startTime: event.startTime,
-    endTime: event.endTime,
-    isAllDay: event.isAllDay,
-    status: event.status,
-    organizerEmail: event.organizerEmail,
-    attendeesJson: event.attendeesJson,
-    htmlLink: event.htmlLink,
-    calendarId,
-    remoteEventId: event.remoteEventId,
-    etag: event.etag,
-    icalData: event.icalData,
-    uid: event.uid,
-  });
 }

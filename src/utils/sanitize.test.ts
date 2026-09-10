@@ -102,6 +102,18 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('<a href="https://example.com">Link</a>');
   });
 
+  it("preserves supported app links but strips executable protocols", () => {
+    const html = '<a href="zoommtg://zoom.us/join">Zoom</a><a href="sms:+43123">Text</a><a href="javascript:alert(1)">Bad</a>';
+    const result = sanitizeHtml(html);
+    expect(result).toContain('href="zoommtg://zoom.us/join"');
+    expect(result).toContain('href="sms:+43123"');
+    expect(result).not.toContain("javascript:");
+  });
+
+  it("keeps cid references for inline mail attachments", () => {
+    expect(sanitizeHtml('<img src="cid:logo@example.com">')).toContain('src="cid:logo@example.com"');
+  });
+
   it("handles empty string", () => {
     expect(sanitizeHtml("")).toBe("");
   });

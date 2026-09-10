@@ -10,6 +10,7 @@ mod commands;
 mod files;
 mod imap;
 mod keychain;
+mod links;
 mod net;
 mod notifications;
 mod oauth;
@@ -129,6 +130,9 @@ pub fn run() {
         // Writing a one-time code to the clipboard has to work while the app is
         // in the background, which the webview's own clipboard API cannot do
         .plugin(tauri_plugin_clipboard_manager::init())
+        // Sandboxed message frames cannot execute click listeners in WebKit.
+        // Own their navigations natively and return them to the trusted UI.
+        .plugin(links::init())
         // One IDLE watcher per account, held so a restart can replace rather
         // than duplicate them
         .manage(std::sync::Arc::new(crate::imap::idle::IdleRegistry::new()))

@@ -14,31 +14,44 @@ interface EventCreateModalProps {
     startTime: string;
     endTime: string;
     calendarId?: string;
-  }) => void;
+  }) => void | Promise<void>;
+  initialValues?: Partial<{
+    summary: string;
+    description: string;
+    location: string;
+    startTime: string;
+    endTime: string;
+  }>;
 }
 
-export function EventCreateModal({ calendars, onClose, onCreate }: EventCreateModalProps) {
-  const [summary, setSummary] = useState("");
-  const [description, setDescription] = useState("");
-  const [location, setLocation] = useState("");
-  const [startTime, setStartTime] = useState(getDefaultStart());
-  const [endTime, setEndTime] = useState(getDefaultEnd());
+export function EventCreateModal({ calendars, onClose, onCreate, initialValues }: EventCreateModalProps) {
+  const [summary, setSummary] = useState(initialValues?.summary ?? "");
+  const [description, setDescription] = useState(initialValues?.description ?? "");
+  const [location, setLocation] = useState(initialValues?.location ?? "");
+  const [startTime, setStartTime] = useState(initialValues?.startTime ?? getDefaultStart());
+  const [endTime, setEndTime] = useState(initialValues?.endTime ?? getDefaultEnd());
+  const [creating, setCreating] = useState(false);
   const [calendarId, setCalendarId] = useState<string>(
     calendars?.find((c) => c.is_primary)?.id ?? calendars?.[0]?.id ?? "",
   );
 
-  const handleSubmit = useCallback((e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!summary.trim()) return;
-    onCreate({
-      summary: summary.trim(),
-      description,
-      location,
-      startTime,
-      endTime,
-      calendarId: calendarId || undefined,
-    });
-  }, [summary, description, location, startTime, endTime, calendarId, onCreate]);
+    if (!summary.trim() || creating) return;
+    setCreating(true);
+    try {
+      await onCreate({
+        summary: summary.trim(),
+        description,
+        location,
+        startTime,
+        endTime,
+        calendarId: calendarId || undefined,
+      });
+    } finally {
+      setCreating(false);
+    }
+  }, [summary, description, location, startTime, endTime, calendarId, creating, onCreate]);
 
   return (
     <Modal isOpen={true} onClose={onClose} title="Create Event" width="w-full max-w-md">
@@ -117,9 +130,9 @@ export function EventCreateModal({ calendars, onClose, onCreate }: EventCreateMo
             type="submit"
             variant="primary"
             size="md"
-            disabled={!summary.trim()}
+            disabled={!summary.trim() || creating}
           >
-            Create
+            {creating ? "Creating…" : "Create"}
           </Button>
         </div>
       </form>

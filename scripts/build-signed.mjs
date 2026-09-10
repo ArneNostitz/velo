@@ -10,8 +10,10 @@
  *                               that opens on someone else's Mac without them
  *                               being told the app is damaged.
  *   Apple Development         — a real signature with a stable identity, good
- *                               on this machine. Gatekeeper still stops it
- *                               elsewhere, and notarisation refuses it.
+ *                               on this machine. It also gives Little Snitch
+ *                               and Keychain a durable app identity across
+ *                               rebuilds. Gatekeeper still stops it elsewhere,
+ *                               and notarisation refuses it.
  *   ad-hoc ("-")              — what `tauri.conf.json` falls back to. Enough
  *                               for the notification centre to register the
  *                               app, which an unsigned bundle is not.
