@@ -41,6 +41,27 @@
         },
         {
           "url": "tel:*"
+        },
+        {
+          "url": "sms:*"
+        },
+        {
+          "url": "facetime:*"
+        },
+        {
+          "url": "facetime-audio:*"
+        },
+        {
+          "url": "maps:*"
+        },
+        {
+          "url": "zoommtg:*"
+        },
+        {
+          "url": "msteams:*"
+        },
+        {
+          "url": "slack:*"
         }
       ]
     },
