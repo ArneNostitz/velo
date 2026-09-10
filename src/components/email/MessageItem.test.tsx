@@ -6,7 +6,9 @@ import type { DbMessage } from "@/services/db/messages";
 import { useAccountStore } from "@/stores/accountStore";
 
 vi.mock("./EmailRenderer", () => ({
-  EmailRenderer: () => <div data-testid="email-renderer" />,
+  EmailRenderer: ({ highlightTerms }: { highlightTerms?: readonly string[] }) => (
+    <div data-testid="email-renderer" data-highlight-terms={highlightTerms?.join(",") ?? ""} />
+  ),
 }));
 
 vi.mock("./InlineAttachmentPreview", () => ({
@@ -122,6 +124,22 @@ describe("MessageItem", () => {
     );
     // Should now be expanded — email renderer visible
     expect(container.querySelector("[data-testid='email-renderer']")).toBeInTheDocument();
+  });
+
+  it("opens a matching older message and forwards its highlight terms", () => {
+    render(
+      <MessageItem
+        message={makeMessage()}
+        isLast={false}
+        blockImages={false}
+        isSearchMatch
+        highlightTerms={["festival"]}
+      />,
+    );
+    expect(screen.getByTestId("email-renderer")).toHaveAttribute(
+      "data-highlight-terms",
+      "festival",
+    );
   });
 
   it("forwards ref to outer div", () => {

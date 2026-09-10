@@ -287,6 +287,20 @@ describe("threadStore - animated removal", () => {
   });
 });
 
+describe("threadStore - search matches", () => {
+  it("keeps backend-neutral match metadata and clears it with the query", () => {
+    const matches = new Map([
+      ["thread-1", { messageIds: new Set(["message-1"]), excerpt: "Matched line" }],
+    ]);
+    useThreadStore.getState().setSearch("matched", new Set(["thread-1"]), matches);
+    expect(useThreadStore.getState().searchMatches).toBe(matches);
+
+    useThreadStore.getState().clearSearch();
+    expect(useThreadStore.getState().searchMatches.size).toBe(0);
+    expect(useThreadStore.getState().searchThreadIds).toBeNull();
+  });
+});
+
 
 describe("threadStore - detached thread cache", () => {
   beforeEach(() => {

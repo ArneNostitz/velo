@@ -21,6 +21,60 @@ describe("SearchBar", () => {
     useThreadStore.getState().clearSearch();
   });
   afterEach(() => vi.useRealTimers());
+  it("only reveals search scopes and presets after text is entered", () => {
+    render(<SearchBar />);
+    expect(screen.queryByRole("group", { name: "Search folders" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Search filters" })).toBeNull();
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "invoice" },
+    });
+    expect(screen.getByRole("group", { name: "Search folders" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Has attachments" })).toBeInTheDocument();
+  });
+
+  it("adds and removes preset operators without discarding the typed search", () => {
+    render(<SearchBar />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "invoice" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Has attachments" }));
+    expect(useThreadStore.getState().searchQuery).toBe("invoice has:attachment");
+    fireEvent.click(screen.getByRole("button", { name: "Has attachments" }));
+    expect(useThreadStore.getState().searchQuery).toBe("invoice");
+    fireEvent.click(screen.getByRole("button", { name: "From" }));
+    expect(useThreadStore.getState().searchQuery).toBe("invoice from:");
+    expect(screen.getByRole("status")).toHaveTextContent("Type a value");
+  });
+
+  it("retains matching message ids and the body excerpt for display", async () => {
+    vi.mocked(searchMessages).mockResolvedValue([
+      {
+        message_id: "m1",
+        account_id: "a",
+        thread_id: "t1",
+        subject: "A subject",
+        from_name: "Mara",
+        from_address: "mara@example.com",
+        snippet: "Old provider snippet",
+        match_excerpt: "The exact invoice line is here",
+        date: 1,
+        rank: 0,
+      },
+    ]);
+    render(<SearchBar />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "invoice" },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(useThreadStore.getState().searchMatches.get("t1")).toEqual({
+      messageIds: new Set(["m1"]),
+      excerpt: "The exact invoice line is here",
+    });
+  });
+
   it("scopes to Inbox and expands to all folders without changing the query", async () => {
     vi.mocked(searchMessages).mockResolvedValue([]);
     render(<SearchBar />);

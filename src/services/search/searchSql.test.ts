@@ -10,7 +10,7 @@ describe("search against SQLite FTS5", () => {
     CREATE VIRTUAL TABLE messages_fts USING fts5(subject, from_name, from_address, body_text, snippet, content='messages', content_rowid='rowid', tokenize='trigram');
     CREATE TABLE thread_labels(account_id TEXT, thread_id TEXT, label_id TEXT);
     CREATE TABLE labels(account_id TEXT, id TEXT, name TEXT);
-    INSERT INTO messages VALUES ('1','a','t1','invoice ACME-2026','Arne','a@example.com','invoice','',1), ('2','a','t2','invoice ACME-2026','Arne','a@example.com','invoice','',2), ('3','b','t3','invoice ACME-2026','Arne','a@example.com','invoice','',3);
+    INSERT INTO messages VALUES ('1','a','t1','invoice ACME-2026','Arne','a@example.com','invoice','Your payment invoice is ready to review',1), ('2','a','t2','invoice ACME-2026','Arne','a@example.com','invoice','',2), ('3','b','t3','invoice ACME-2026','Arne','a@example.com','invoice','',3);
     INSERT INTO thread_labels VALUES ('a','t1','INBOX'), ('a','t2','SPAM'), ('b','t3','TRASH');
     INSERT INTO messages_fts(messages_fts) VALUES('rebuild');
   `);
@@ -42,6 +42,11 @@ describe("search against SQLite FTS5", () => {
   it("finds short search terms which trigram MATCH cannot match", () => {
     expect(search("AC")).toHaveLength(3);
     expect(search("invoice AC")).toHaveLength(3);
+  });
+  it("returns a compact excerpt centered on a body match", () => {
+    const [result] = search("payment") as { match_excerpt: string }[];
+    expect(result!.match_excerpt).toContain("payment invoice");
+    expect(result!.match_excerpt.length).toBeLessThanOrEqual(240);
   });
   it("intersects saved-folder criteria with the typed search", () => {
     expect(

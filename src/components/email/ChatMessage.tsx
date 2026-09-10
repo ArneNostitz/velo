@@ -22,6 +22,8 @@ interface ChatMessageProps {
   blockImages?: boolean | null;
   senderAllowlisted?: boolean;
   isSpam?: boolean;
+  isSearchMatch?: boolean;
+  highlightTerms?: readonly string[];
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
@@ -43,12 +45,18 @@ export const ChatMessage = memo(function ChatMessage({
   blockImages,
   senderAllowlisted,
   isSpam,
+  isSearchMatch,
+  highlightTerms,
   onContextMenu,
 }: ChatMessageProps) {
   useTimeFormat();
-  const [showFull, setShowFull] = useState(false);
+  const [showFull, setShowFull] = useState(!!isSearchMatch);
   const [attachments, setAttachments] = useState<DbAttachment[]>([]);
   const attachmentsLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (isSearchMatch) setShowFull(true);
+  }, [isSearchMatch]);
 
   useEffect(() => {
     if (collapsed || attachmentsLoadedRef.current) return;
@@ -153,6 +161,7 @@ export const ChatMessage = memo(function ChatMessage({
               senderAllowlisted={senderAllowlisted}
               messageId={message.id}
               inlineAttachments={attachments.filter((a) => a.content_id)}
+              highlightTerms={isSearchMatch ? highlightTerms : undefined}
             />
           ) : (
             <div className="py-4 text-center text-text-tertiary text-xs">Loading...</div>

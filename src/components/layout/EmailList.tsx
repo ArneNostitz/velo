@@ -33,6 +33,7 @@ import {
   NoAccountIllustration,
   GenericEmptyIllustration,
 } from "../ui/illustrations";
+import { getListSearchTerms } from "@/utils/searchHighlight";
 
 const PAGE_SIZE = 50;
 
@@ -348,6 +349,11 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
 
   const searchThreadIds = useThreadStore((s) => s.searchThreadIds);
   const searchQuery = useThreadStore((s) => s.searchQuery);
+  const searchMatches = useThreadStore((s) => s.searchMatches);
+  const searchHighlightTerms = useMemo(
+    () => getListSearchTerms(searchQuery),
+    [searchQuery],
+  );
 
   const ownAddressSet = useMemo(
     () => new Set(ownAddresses.map((a) => a.toLowerCase())),
@@ -994,6 +1000,8 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
                     category={categoryMap.get(thread.id)}
                     showCategoryBadge={activeLabel === "inbox" && activeCategory === "All"}
                     showFolder={searchThreadIds !== null || activeLabel === "all"}
+                    searchExcerpt={searchMatches.get(thread.id)?.excerpt}
+                    highlightTerms={searchHighlightTerms}
                     hasFollowUp={followUpThreadIds.has(thread.id)}
                     hasTask={taskThreadIds.has(thread.id)}
                   />

@@ -72,6 +72,24 @@ describe("ThreadCard", () => {
     expect(screen.getByText("Test subject")).toBeInTheDocument();
   });
 
+  it("replaces the latest snippet with the matching line and highlights it", () => {
+    render(
+      <ThreadCard
+        thread={makeThread({ snippet: "Unrelated latest text" })}
+        isSelected={false}
+        onClick={onClick}
+        searchExcerpt="The Festival details are inside this message"
+        highlightTerms={["festival"]}
+      />,
+    );
+    expect(screen.queryByText("Unrelated latest text")).toBeNull();
+    const match = screen.getByText("Festival");
+    expect(match.tagName).toBe("MARK");
+    expect(match.parentElement).toHaveTextContent(
+      "The Festival details are inside this message",
+    );
+  });
+
   it("applies red background for spam threads", () => {
     const { container } = render(
       <ThreadCard

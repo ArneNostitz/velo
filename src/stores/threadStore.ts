@@ -30,6 +30,11 @@ export interface Thread {
   lastFromMe?: boolean;
 }
 
+export interface SearchMatch {
+  messageIds: Set<string>;
+  excerpt: string | null;
+}
+
 interface ThreadState {
   threads: Thread[];
   threadMap: Map<string, Thread>;
@@ -38,6 +43,7 @@ interface ThreadState {
   isLoading: boolean;
   searchQuery: string;
   searchThreadIds: Set<string> | null; // null = no active search
+  searchMatches: Map<string, SearchMatch>;
   /**
    * Ids of the rows the list is actually showing, in display order.
    *
@@ -74,7 +80,11 @@ interface ThreadState {
    * than the list snapping shut.
    */
   beginThreadRemoval: (ids: string | string[]) => void;
-  setSearch: (query: string, threadIds: Set<string> | null) => void;
+  setSearch: (
+    query: string,
+    threadIds: Set<string> | null,
+    matches?: Map<string, SearchMatch>,
+  ) => void;
   clearSearch: () => void;
 }
 
@@ -86,6 +96,7 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
   isLoading: false,
   searchQuery: "",
   searchThreadIds: null,
+  searchMatches: new Map(),
   visibleThreadIds: [],
   removingThreadIds: new Set<string>(),
   cachedThreads: new Map<string, Thread>(),
@@ -219,6 +230,8 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         selectedThreadIds: next,
       };
     }),
-  setSearch: (query, threadIds) => set({ searchQuery: query, searchThreadIds: threadIds }),
-  clearSearch: () => set({ searchQuery: "", searchThreadIds: null }),
+  setSearch: (query, threadIds, searchMatches = new Map()) =>
+    set({ searchQuery: query, searchThreadIds: threadIds, searchMatches }),
+  clearSearch: () =>
+    set({ searchQuery: "", searchThreadIds: null, searchMatches: new Map() }),
 }));
