@@ -211,6 +211,15 @@ export const HELP_CATEGORIES: HelpCategory[] = [
     icon: Eye,
     cards: [
       {
+        id: "message-links",
+        icon: LinkIcon,
+        title: "Links to individual emails",
+        summary: "Open a specific message from Raycast or another app.",
+        description:
+          "Right-click a message and choose Copy Message Link to reference it from another app. Opening the link brings Velo forward, opens the correct mailbox and conversation, and expands the linked message. Copy Message IDs provides the account, thread, and message identifiers for integrations; links work only where that mail is available locally.",
+        tips: [{ text: "The receiving Mac needs a Velo version that supports velo:// links installed." }],
+      },
+      {
         id: "thread-view",
         icon: Mail,
         title: "Thread view",

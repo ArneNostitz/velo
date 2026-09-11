@@ -26,7 +26,7 @@ tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
-tauri-plugin-single-instance = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-deep-link = "2"
@@ -34,7 +34,7 @@ tauri-plugin-http = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-os = "2"
-tokio = { version = "1", features = ["net", "io-util", "sync", "macros", "rt", "time"] }
+tokio = { version = "1", features = ["net", "io-util", "sync", "macros", "rt", "time", "fs"] }
 futures = "0.3"
 async-imap = { version = "0.10", default-features = false, features = ["runtime-tokio"] }
 tokio-native-tls = "0.3"
@@ -48,6 +48,11 @@ reqwest = { version = "0.12", default-features = false, features = ["native-tls"
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 tauri-plugin-clipboard-manager = "2.3.3"
 tokio-util = { version = "0.7.19", features = ["rt"] }
+getrandom = "0.2"
+md5 = "0.7"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # Notifications with buttons: UNUserNotificationCenter, which the notification
 # plugin does not use (see src/notifications.rs). All four are already in the

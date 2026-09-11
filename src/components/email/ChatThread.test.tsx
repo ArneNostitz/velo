@@ -131,6 +131,15 @@ describe("ChatThread", () => {
     expect(screen.queryByText("Collapse all")).not.toBeInTheDocument();
   });
 
+  it("expands an externally focused message and exposes its scroll target", () => {
+    const messageRef = vi.fn();
+    const { rerender } = render(<ChatThread messages={messages} ownAddresses={own} blockImages={false} defaultCollapsed messageRef={messageRef} />);
+    expect(screen.queryAllByTestId("body")).toHaveLength(0);
+    rerender(<ChatThread messages={messages} ownAddresses={own} blockImages={false} defaultCollapsed messageRef={messageRef} focusedMessageId="m1" />);
+    expect(screen.getAllByTestId("body")).toHaveLength(1);
+    expect(messageRef).toHaveBeenCalledWith(0, expect.any(HTMLDivElement));
+  });
+
   it("trims a quoted reply and offers the original", () => {
     const quoted = [
       makeMessage({

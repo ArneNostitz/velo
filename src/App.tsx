@@ -60,6 +60,7 @@ import {
 } from "./services/updateManager";
 import { fetchSendAsAliases } from "./services/gmail/sendAs";
 import { refreshAfterAccountAdded } from "./services/accounts/accountLifecycle";
+import { startSemanticSearchStatusObserver } from "./services/search/semanticSearchRuntime";
 
 /** How often a long initial sync pushes what it has stored so far to the UI. */
 const INCREMENTAL_REFRESH_MS = 1_500;
@@ -167,6 +168,9 @@ export default function App() {
 
   // Scrollbars show while a pane is being scrolled, then fade out again
   useEffect(() => initScrollbarVisibility(), []);
+
+  // Observe native autoresume and background failures even with Settings closed.
+  useEffect(() => startSemanticSearchStatusObserver(), []);
 
   // Suppress default browser context menu globally (Tauri app should feel native)
   // Elements with data-native-context-menu opt out so the browser menu is available

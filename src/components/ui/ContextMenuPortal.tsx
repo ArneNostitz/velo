@@ -45,6 +45,8 @@ import { setThreadCategory, ALL_CATEGORIES } from "@/services/db/threadCategorie
 import { formatDateTime } from "@/utils/date";
 import { recipientHeadersFromMessages } from "@/utils/resolveFromAddress";
 import { confirmDelete } from "@/utils/confirmDelete";
+import { createMailLink } from "@/utils/mailLink";
+import { notify, reportError } from "@/stores/toastStore";
 
 function buildQuote(msg: { from_name: string | null; from_address: string | null; date: string | number; body_html: string | null; body_text: string | null }): string {
   const date = formatDateTime(msg.date);
@@ -778,6 +780,30 @@ function MessageMenu({
     },
     ...(accountId
       ? [
+          {
+            id: "copy-message-link",
+            label: "Copy Message Link",
+            icon: ExternalLink,
+            action: async () => {
+              try {
+                const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+                await writeText(createMailLink({ accountId, threadId, messageId }));
+                notify("success", "Message link copied");
+              } catch (error) { reportError("Could not copy message link", error); }
+            },
+          },
+          {
+            id: "copy-message-ids",
+            label: "Copy Message IDs",
+            icon: Copy,
+            action: async () => {
+              try {
+                const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+                await writeText(JSON.stringify({ accountId, threadId, messageId }, null, 2));
+                notify("success", "Message IDs copied");
+              } catch (error) { reportError("Could not copy message IDs", error); }
+            },
+          },
           { id: "sep-2", label: "", separator: true },
           {
             id: "view-source",

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSearchQuery } from "./searchQueryBuilder";
+import { buildSearchQuery, type SearchSort } from "./searchQueryBuilder";
 import type { ParsedSearchQuery } from "./searchParser";
 
 describe("buildSearchQuery", () => {
@@ -7,7 +7,7 @@ describe("buildSearchQuery", () => {
     const parsed: ParsedSearchQuery = { freeText: "hello world" };
     const { sql, params } = buildSearchQuery(parsed);
     expect(sql).toContain("messages_fts MATCH");
-    expect(sql).toContain("ORDER BY rank");
+    expect(sql).toContain("ORDER BY COALESCE(search_thread.last_message_at, m.date) DESC");
     expect(params[0]).toBe('"hello" AND "world"');
   });
 
@@ -108,17 +108,35 @@ describe("buildSearchQuery", () => {
     expect(params).toContain("john");
   });
 
-  it("uses date DESC ordering when no free text", () => {
+  it("defaults to newest thread activity when no free text", () => {
     const parsed: ParsedSearchQuery = { freeText: "", isUnread: true };
     const { sql } = buildSearchQuery(parsed);
-    expect(sql).toContain("ORDER BY m.date DESC");
+    expect(sql).toContain("ORDER BY COALESCE(search_thread.last_message_at, m.date) DESC");
     expect(sql).not.toContain("ORDER BY rank");
   });
 
-  it("uses rank ordering when free text present", () => {
+  it("uses rank ordering when relevance is explicitly requested with free text", () => {
     const parsed: ParsedSearchQuery = { freeText: "test", isUnread: true };
-    const { sql } = buildSearchQuery(parsed);
-    expect(sql).toContain("ORDER BY rank");
+    const { sql } = buildSearchQuery(parsed, undefined, 50, { sort: "relevance" });
+    expect(sql).toContain("ORDER BY rank ASC, COALESCE(search_thread.last_message_at, m.date) DESC");
+  });
+
+  describe.each(["test", "te", ""])("sorting with free text %j", (freeText) => {
+    it.each<{ sort: SearchSort; direction: string }>([
+      { sort: "newest", direction: "DESC" },
+      { sort: "oldest", direction: "ASC" },
+      { sort: "relevance", direction: "DESC" },
+    ])("applies $sort with stable ties before the limit", ({ sort, direction }) => {
+      const { sql, params } = buildSearchQuery({ freeText }, undefined, 2, { sort });
+      const rankOrder = sort === "relevance" && freeText === "test" ? "rank ASC, " : "";
+      expect(sql).toContain(
+        "LEFT JOIN threads search_thread ON search_thread.account_id = m.account_id AND search_thread.id = m.thread_id",
+      );
+      expect(sql.replace(/\s+/g, " ").trim()).toContain(
+        `ORDER BY ${rankOrder}COALESCE(search_thread.last_message_at, m.date) ${direction}, m.account_id ASC, m.thread_id ASC, m.date DESC, m.id ASC LIMIT $${params.length}`,
+      );
+      expect(params[params.length - 1]).toBe(2);
+    });
   });
 
   it("uses parameterized queries (no SQL injection)", () => {

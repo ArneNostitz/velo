@@ -14,6 +14,7 @@ mod links;
 mod net;
 mod notifications;
 mod oauth;
+mod semantic_search;
 mod smtp;
 
 #[tauri::command]
@@ -157,6 +158,10 @@ pub fn run() {
             set_tray_tooltip,
             close_splashscreen,
             open_devtools,
+            semantic_search::semantic_search_status,
+            semantic_search::semantic_search_set_enabled,
+            semantic_search::semantic_search_download_model,
+            semantic_search::semantic_search_reindex,
             notifications::notification_native_available,
             notifications::notification_native_request_permission,
             notifications::notification_native_register_categories,
@@ -203,6 +208,7 @@ pub fn run() {
             // Before the app finishes launching: a notification click that
             // starts Velo is delivered to whatever delegate exists by then
             notifications::install(app.handle().clone());
+            semantic_search::install(app.handle());
 
             #[cfg(not(target_os = "linux"))]
             {
@@ -331,8 +337,15 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                if let Some(manager) = app.try_state::<std::sync::Arc<semantic_search::SemanticSearchManager>>() {
+                    manager.shutdown();
+                }
+            }
+        });
 
     log::info!("Tauri application exited normally");
 }

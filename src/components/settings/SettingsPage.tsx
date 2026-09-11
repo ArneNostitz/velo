@@ -64,6 +64,7 @@ import { FilterEditor } from "./FilterEditor";
 import { LabelEditor } from "./LabelEditor";
 import { ContactEditor } from "./ContactEditor";
 import { SubscriptionManager } from "./SubscriptionManager";
+import { SemanticSearchSettings } from "./SemanticSearchSettings";
 import { SmartFolderEditor } from "./SmartFolderEditor";
 import { QuickStepEditor } from "./QuickStepEditor";
 import { SmartLabelEditor } from "./SmartLabelEditor";
@@ -544,7 +545,8 @@ export function SettingsPage() {
             )}
 
             <div className="space-y-8">
-              {activeTab === "general" && (
+        {activeTab === "general" && <SemanticSearchSettings />}
+        {activeTab === "general" && (
                 <>
                   <Section title="Appearance">
                     <SettingRow label="Theme">
