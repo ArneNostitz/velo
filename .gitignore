@@ -14,6 +14,7 @@ src-tauri/semantic-runtime/node
 src-tauri/semantic-runtime/typesense-server
 src-tauri/semantic-runtime/indexer.cjs
 src-tauri/semantic-runtime/*.license.txt
+src-tauri/semantic-runtime/typesense-server.source.txt
 src-tauri/semantic-runtime/runtime-manifest.json
 
 # Environment variables & secrets
