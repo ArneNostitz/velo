@@ -2,6 +2,13 @@
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
+## Delivery workflow
+
+- Commit task-specific work and push it to `origin` regularly so completed work does not remain only in a checkout or worktree.
+- Once implementation is complete and the relevant tests pass, create a pull request and merge it into `main`, then update the main checkout.
+- Keep unrelated or incomplete changes out of commits and pull requests. Never push to `upstream`.
+- An explicit user boundary such as “plan only,” “PR only,” “do not merge,” or “do not push” overrides this default delivery workflow.
+
 ## Commands
 
 ```bash
