@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useUIStore, type SettingsTab } from "@/stores/uiStore";
 import { useIdleStatusStore, describeIdleState, explainIdleFailure } from "@/stores/idleStatusStore";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -69,6 +69,7 @@ import { QuickStepEditor } from "./QuickStepEditor";
 import { SmartLabelEditor } from "./SmartLabelEditor";
 import { SHORTCUTS, getDefaultKeyMap } from "@/constants/shortcuts";
 import { useShortcutStore } from "@/stores/shortcutStore";
+import { useShortcutRecorder } from "@/hooks/useShortcutRecorder";
 import { COLOR_THEMES } from "@/constants/themes";
 import {
   getAliasesForAccount,
@@ -2394,56 +2395,28 @@ function ShortcutsTab() {
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [composeShortcut, setComposeShortcut] = useState(DEFAULT_SHORTCUT);
   const [recordingGlobal, setRecordingGlobal] = useState(false);
-  const globalRecorderRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const current = getCurrentShortcut();
     if (current) setComposeShortcut(current);
   }, []);
 
-  const handleGlobalRecord = useCallback((e: React.KeyboardEvent) => {
-    if (!recordingGlobal) return;
-    e.preventDefault();
-    e.stopPropagation();
+  const handleGlobalRecord = useCallback((shortcut: string) => {
+    setComposeShortcut(shortcut);
+    setRecordingGlobal(false);
+    registerComposeShortcut(shortcut).catch((err) => {
+      console.error("Failed to register shortcut:", err);
+    });
+  }, []);
 
-    const parts: string[] = [];
-    if (e.ctrlKey || e.metaKey) parts.push("CmdOrCtrl");
-    if (e.altKey) parts.push("Alt");
-    if (e.shiftKey) parts.push("Shift");
-
-    const key = e.key;
-    if (key !== "Control" && key !== "Meta" && key !== "Shift" && key !== "Alt") {
-      parts.push(key.length === 1 ? key.toUpperCase() : key);
-      const shortcut = parts.join("+");
-      setComposeShortcut(shortcut);
-      setRecordingGlobal(false);
-      registerComposeShortcut(shortcut).catch((err) => {
-        console.error("Failed to register shortcut:", err);
-      });
-    }
-  }, [recordingGlobal]);
-
-  const handleKeyRecord = useCallback((e: React.KeyboardEvent, id: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const parts: string[] = [];
-    if (e.ctrlKey || e.metaKey) parts.push("Ctrl");
-    if (e.altKey) parts.push("Alt");
-    if (e.shiftKey) parts.push("Shift");
-
-    const key = e.key;
-    if (key === "Control" || key === "Meta" || key === "Shift" || key === "Alt") return;
-
-    if (parts.length > 0) {
-      parts.push(key.length === 1 ? key.toUpperCase() : key);
-    } else {
-      parts.push(key);
-    }
-
-    setKey(id, parts.join("+"));
+  const handleKeyRecord = useCallback((shortcut: string) => {
+    if (!recordingId) return;
+    setKey(recordingId, shortcut);
     setRecordingId(null);
-  }, [setKey]);
+  }, [recordingId, setKey]);
+
+  useShortcutRecorder(recordingGlobal, handleGlobalRecord, "CmdOrCtrl");
+  useShortcutRecorder(recordingId !== null, handleKeyRecord);
 
   const hasCustom = Object.entries(keyMap).some(([id, keys]) => defaults[id] !== keys);
 
@@ -2462,9 +2435,10 @@ function ShortcutsTab() {
               {composeShortcut}
             </kbd>
             <button
-              ref={globalRecorderRef}
-              onClick={() => setRecordingGlobal(true)}
-              onKeyDown={handleGlobalRecord}
+              onClick={() => {
+                setRecordingId(null);
+                setRecordingGlobal(true);
+              }}
               onBlur={() => setRecordingGlobal(false)}
               className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
                 recordingGlobal
@@ -2509,9 +2483,9 @@ function ShortcutsTab() {
                   </span>
                   <div className="flex items-center gap-2 ml-4 shrink-0">
                     <button
-                      onClick={() => setRecordingId(isRecording ? null : item.id)}
-                      onKeyDown={(e) => {
-                        if (isRecording) handleKeyRecord(e, item.id);
+                      onClick={() => {
+                        setRecordingGlobal(false);
+                        setRecordingId(isRecording ? null : item.id);
                       }}
                       onBlur={() => { if (isRecording) setRecordingId(null); }}
                       className={`text-xs px-2.5 py-1 rounded-md font-mono transition-colors ${

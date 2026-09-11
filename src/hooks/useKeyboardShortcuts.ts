@@ -46,25 +46,25 @@ function matchesKey(binding: string, e: KeyboardEvent): boolean {
 function buildReverseMap(keyMap: Record<string, string>): {
   singleKey: Map<string, string>;
   twoKeySequences: Map<string, string>; // second key -> action ID (first key is always "g")
-  ctrlCombos: Map<string, string>;
+  modifiedCombos: Map<string, string>;
 } {
   const singleKey = new Map<string, string>();
   const twoKeySequences = new Map<string, string>();
-  const ctrlCombos = new Map<string, string>();
+  const modifiedCombos = new Map<string, string>();
 
   for (const [id, keys] of Object.entries(keyMap)) {
     if (keys.includes(" then ")) {
       // Two-key sequence like "g then i"
       const secondKey = keys.split(" then ")[1]!.trim();
       twoKeySequences.set(secondKey, id);
-    } else if (keys.includes("+") && (keys.includes("Ctrl") || keys.includes("Cmd"))) {
-      ctrlCombos.set(id, keys);
+    } else if (/^(?:(?:Ctrl|Cmd|Alt|Shift)\+)+/.test(keys)) {
+      modifiedCombos.set(id, keys);
     } else {
       singleKey.set(keys, id);
     }
   }
 
-  return { singleKey, twoKeySequences, ctrlCombos };
+  return { singleKey, twoKeySequences, modifiedCombos };
 }
 
 // Cached reverse map to avoid rebuilding on every keypress
@@ -111,7 +111,7 @@ export function useKeyboardShortcuts() {
         target.isContentEditable;
 
       const keyMap = useShortcutStore.getState().keyMap;
-      const { singleKey, twoKeySequences, ctrlCombos } = getCachedReverseMap(keyMap);
+      const { singleKey, twoKeySequences, modifiedCombos } = getCachedReverseMap(keyMap);
 
       // While the settings dialog is open, only its own toggle binding runs —
       // mail shortcuts (j/k/e/#/...) must not fire behind the overlay.
@@ -126,13 +126,13 @@ export function useKeyboardShortcuts() {
 
       const composerOpen = useComposerStore.getState().isOpen;
 
-      // Ctrl/Cmd shortcuts reach further than the rest, but not past what has
+      // Modified shortcuts reach further than the rest, but not past what has
       // the keyboard: `Ctrl+A` in the composer means "select this message",
       // and it used to select — and a following Delete then trashed — every
       // thread in the list behind it. Only the app-level combos (palette,
       // settings, sidebar, send) run while something is being typed into.
-      if (e.ctrlKey || e.metaKey) {
-        for (const [actionId, binding] of ctrlCombos) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
+        for (const [actionId, binding] of modifiedCombos) {
           if (matchesKey(binding, e)) {
             if (!isAppLevelAction(actionId) && (isInputFocused || composerOpen)) return;
             e.preventDefault();
@@ -140,6 +140,9 @@ export function useKeyboardShortcuts() {
             return;
           }
         }
+      }
+
+      if (e.ctrlKey || e.metaKey) {
         // Ctrl+K for command palette (also check binding)
         if (e.key === "k" && !e.shiftKey) {
           const paletteBinding = keyMap["app.commandPalette"];
