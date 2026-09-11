@@ -75,33 +75,42 @@ describe("needsReadReceipt", () => {
   };
 
   it("wants a receipt for an unanswered request", () => {
-    expect(needsReadReceipt(base, "me@mymail.com")).toBe(true);
+    expect(needsReadReceipt(base, new Set(["me@mymail.com"]))).toBe(true);
   });
 
   it("skips messages without a request header", () => {
     expect(
       needsReadReceipt(
         { ...base, disposition_notification_to: null },
-        "me@mymail.com",
+        new Set(["me@mymail.com"]),
       ),
     ).toBe(false);
   });
 
   it("skips already-answered requests", () => {
     expect(
-      needsReadReceipt({ ...base, read_receipt_status: "sent" }, "me@mymail.com"),
+      needsReadReceipt({ ...base, read_receipt_status: "sent" }, new Set(["me@mymail.com"])),
     ).toBe(false);
     expect(
       needsReadReceipt(
         { ...base, read_receipt_status: "dismissed" },
-        "me@mymail.com",
+        new Set(["me@mymail.com"]),
       ),
     ).toBe(false);
   });
 
   it("skips messages sent by the account itself", () => {
     expect(
-      needsReadReceipt({ ...base, from_address: "Me@MyMail.com" }, "me@mymail.com"),
+      needsReadReceipt({ ...base, from_address: "Me@MyMail.com" }, new Set(["me@mymail.com"])),
+    ).toBe(false);
+  });
+
+  it("skips messages sent from one of the account's aliases", () => {
+    expect(
+      needsReadReceipt(
+        { ...base, from_address: "Alias@MyMail.com" },
+        new Set(["me@mymail.com", "alias@mymail.com"]),
+      ),
     ).toBe(false);
   });
 
@@ -109,7 +118,7 @@ describe("needsReadReceipt", () => {
     expect(
       needsReadReceipt(
         { ...base, disposition_notification_to: "not an address" },
-        "me@mymail.com",
+        new Set(["me@mymail.com"]),
       ),
     ).toBe(false);
   });

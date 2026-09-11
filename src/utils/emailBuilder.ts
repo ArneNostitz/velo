@@ -34,6 +34,42 @@ export function base64UrlEncode(str: string): string {
     .replace(/=+$/, "");
 }
 
+/**
+ * Encode non-ASCII unstructured header text as RFC 2047 UTF-8 encoded words.
+ * Raw UTF-8 in Subject headers is interpreted as Latin-1 by some mail relays,
+ * turning text such as "Grüße" into mojibake when it is forwarded.
+ */
+export function encodeMimeHeader(value: string): string {
+  const clean = value.replace(/[\r\n]+/g, " ");
+  if (/^[\x20-\x7e]*$/.test(clean)) return clean;
+
+  // An encoded word may be at most 75 characters. With the RFC 2047 wrapper,
+  // 45 UTF-8 bytes produce at most 60 base64 characters and stay below it.
+  const chunks: string[] = [];
+  let chunk = "";
+  let chunkBytes = 0;
+  for (const character of clean) {
+    const bytes = new TextEncoder().encode(character).length;
+    if (chunk && chunkBytes + bytes > 45) {
+      chunks.push(chunk);
+      chunk = "";
+      chunkBytes = 0;
+    }
+    chunk += character;
+    chunkBytes += bytes;
+  }
+  if (chunk) chunks.push(chunk);
+
+  return chunks
+    .map((part) => {
+      const bytes = new TextEncoder().encode(part);
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return `=?UTF-8?B?${btoa(binary)}?=`;
+    })
+    .join("\r\n ");
+}
+
 function htmlToPlainText(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, "\n")
@@ -52,12 +88,14 @@ function buildAlternativePart(boundary: string, htmlBody: string): string[] {
 
   lines.push(`--${boundary}`);
   lines.push("Content-Type: text/plain; charset=UTF-8");
+  lines.push("Content-Transfer-Encoding: 8bit");
   lines.push("");
   lines.push(textContent);
   lines.push("");
 
   lines.push(`--${boundary}`);
   lines.push("Content-Type: text/html; charset=UTF-8");
+  lines.push("Content-Transfer-Encoding: 8bit");
   lines.push("");
   lines.push(htmlBody);
   lines.push("");
@@ -115,7 +153,7 @@ export function buildRawEmail(draft: EmailDraft): string {
 
   lines.push(`Date: ${new Date().toUTCString()}`);
   lines.push(`Message-ID: ${messageId}`);
-  lines.push(`Subject: ${draft.subject}`);
+  lines.push(`Subject: ${encodeMimeHeader(draft.subject)}`);
   lines.push(`MIME-Version: 1.0`);
 
   if (draft.inReplyTo) {

@@ -3,6 +3,7 @@ import { reportError } from "@/stores/toastStore";
 import { CheckCheck, X } from "lucide-react";
 import type { DbMessage } from "@/services/db/messages";
 import { useAccountStore } from "@/stores/accountStore";
+import { collectOwnAddresses } from "@/services/accounts/ownAddresses";
 import {
   dismissReadReceipt,
   getReadReceiptResponseMode,
@@ -32,19 +33,34 @@ type BannerState =
 export function ReadReceiptBanner({ message }: ReadReceiptBannerProps) {
   const accounts = useAccountStore((s) => s.accounts);
   const [state, setState] = useState<BannerState>("hidden");
-  const startedRef = useRef(false);
-
-  const accountEmail =
-    accounts.find((a) => a.id === message.account_id)?.email ?? null;
+  const evaluatedMessageRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-
-    if (!needsReadReceipt(message, accountEmail)) return;
-
     let cancelled = false;
+    if (
+      !message.disposition_notification_to ||
+      message.read_receipt_status ||
+      !parseReceiptAddress(message.disposition_notification_to)
+    ) {
+      return;
+    }
+    // Account setup finishes before mail normally renders, but waiting here
+    // avoids treating a message as foreign during a transient empty store.
+    if (!accounts.some((account) => account.id === message.account_id)) return;
+    if (evaluatedMessageRef.current === message.id) return;
+    evaluatedMessageRef.current = message.id;
+
     (async () => {
+      // Resolve the account address and every send-as alias before deciding.
+      // Otherwise an outgoing alias message can briefly look incoming and an
+      // automatic receipt may even be sent back to the user themselves.
+      const addresses = await collectOwnAddresses(accounts, [message.account_id]);
+      const ownAddresses = new Set(addresses.map((address) => address.toLowerCase()));
+      if (cancelled || !needsReadReceipt(message, ownAddresses)) {
+        if (!cancelled) setState("hidden");
+        return;
+      }
+
       const mode = await getReadReceiptResponseMode();
       if (cancelled || mode === "never") return;
 
@@ -75,8 +91,7 @@ export function ReadReceiptBanner({ message }: ReadReceiptBannerProps) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [accounts, message]);
 
   if (state === "hidden" || state === "sending") return null;
 

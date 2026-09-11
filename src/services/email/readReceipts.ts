@@ -7,7 +7,7 @@
  * governed by the `read_receipt_response` setting: "ask" (default) shows a
  * banner, "always" answers automatically, "never" suppresses the prompt.
  */
-import { base64UrlEncode } from "@/utils/emailBuilder";
+import { base64UrlEncode, encodeMimeHeader } from "@/utils/emailBuilder";
 import type { ParsedMessage } from "@/services/gmail/messageParser";
 import type { DbMessage } from "@/services/db/messages";
 import { setReadReceiptStatus } from "@/services/db/messages";
@@ -59,16 +59,12 @@ export function needsReadReceipt(
     DbMessage,
     "disposition_notification_to" | "read_receipt_status" | "from_address"
   >,
-  accountEmail: string | null,
+  ownAddresses: ReadonlySet<string>,
 ): boolean {
   if (!message.disposition_notification_to) return false;
   if (message.read_receipt_status) return false;
   if (!parseReceiptAddress(message.disposition_notification_to)) return false;
-  if (
-    accountEmail &&
-    message.from_address &&
-    message.from_address.toLowerCase() === accountEmail.toLowerCase()
-  ) {
+  if (message.from_address && ownAddresses.has(message.from_address.toLowerCase())) {
     return false;
   }
   return true;
@@ -107,7 +103,7 @@ export function buildMdnRaw(opts: MdnOptions): string {
     `To: ${opts.toAddress}`,
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: ${messageId}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeMimeHeader(subject)}`,
     `MIME-Version: 1.0`,
   ];
   if (opts.originalMessageId) {
@@ -119,6 +115,7 @@ export function buildMdnRaw(opts: MdnOptions): string {
     "",
     `--${boundary}`,
     "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
     "",
     `The message sent to ${opts.fromEmail}`,
     `with subject "${opts.originalSubject ?? "(no subject)"}"`,
@@ -249,9 +246,14 @@ export function looksLikeReadReceipt(message: {
  */
 export async function processReadReceiptReports(
   accountId: string,
-  messages: Pick<ParsedMessage, "id" | "mdnReport" | "date">[],
+  messages: Pick<
+    ParsedMessage,
+    "id" | "mdnReport" | "date" | "fromAddress" | "inReplyToHeader" | "referencesHeader"
+  >[],
 ): Promise<void> {
-  const receipts = messages.filter((m) => m.mdnReport);
+  const receipts = messages.filter(
+    (m) => m.mdnReport !== null && m.mdnReport !== undefined,
+  );
   if (receipts.length === 0) return;
 
   const { getDb } = await import("@/services/db/connection");
@@ -270,7 +272,11 @@ export async function processReadReceiptReports(
       );
       if (rows[0]?.read_receipt_status === "processed") continue;
 
-      const originalMessageId = parseMdnOriginalMessageId(receipt.mdnReport!);
+      const referenceHeader = receipt.inReplyToHeader ?? receipt.referencesHeader;
+      const originalMessageId =
+        parseMdnOriginalMessageId(receipt.mdnReport ?? "") ??
+        referenceHeader?.match(/<[^>\r\n]+>/)?.[0] ??
+        null;
       if (originalMessageId) {
         await db.execute(
           `UPDATE messages
@@ -279,6 +285,30 @@ export async function processReadReceiptReports(
            WHERE account_id = $2 AND message_id_header = $3`,
           [receipt.date, accountId, originalMessageId],
         );
+      } else if (receipt.fromAddress) {
+        // Some providers keep the MDN content type but expose no report body.
+        // Attribute it to the latest receipt-requesting mail sent to the
+        // responder; this is the same conservative fallback as old-message
+        // backfill and is independent of the receipt's display language.
+        const originals = await db.select<{ id: string }[]>(
+          `SELECT id FROM messages
+           WHERE account_id = $1
+             AND disposition_notification_to IS NOT NULL
+             AND disposition_notification_to <> ''
+             AND LOWER(COALESCE(to_addresses, '')) LIKE $2
+             AND date <= $3
+           ORDER BY date DESC LIMIT 1`,
+          [accountId, `%${receipt.fromAddress.toLowerCase()}%`, receipt.date],
+        );
+        if (originals[0]?.id) {
+          await db.execute(
+            `UPDATE messages
+             SET read_receipt_count = read_receipt_count + 1,
+                 read_receipt_last_at = MAX(COALESCE(read_receipt_last_at, 0), $1)
+             WHERE account_id = $2 AND id = $3`,
+            [receipt.date, accountId, originals[0].id],
+          );
+        }
       }
 
       // Mark counted even without a match, so we never re-parse this receipt

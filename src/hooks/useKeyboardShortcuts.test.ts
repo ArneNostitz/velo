@@ -32,6 +32,17 @@ const composerState = {
   openComposer: vi.fn(),
   closeComposer: vi.fn(),
 };
+const defaultKeyMap = {
+  "app.askInbox": "i",
+  "app.commandPalette": "/",
+  "app.toggleSidebar": "Ctrl+Shift+E",
+  "app.settings": "Ctrl+,",
+  "app.help": "?",
+  "action.selectAll": "Ctrl+A",
+  "action.archive": "e",
+  "nav.escape": "Escape",
+};
+let shortcutKeyMap = { ...defaultKeyMap };
 vi.mock("@/stores/composerStore", () => ({
   useComposerStore: { getState: () => composerState },
 }));
@@ -41,16 +52,7 @@ vi.mock("@/stores/accountStore", () => ({
 vi.mock("@/stores/shortcutStore", () => ({
   useShortcutStore: {
     getState: () => ({
-      keyMap: {
-        "app.askInbox": "i",
-        "app.commandPalette": "/",
-        "app.toggleSidebar": "Ctrl+Shift+E",
-        "app.settings": "Ctrl+,",
-        "app.help": "?",
-        "action.selectAll": "Ctrl+A",
-        "action.archive": "e",
-        "nav.escape": "Escape",
-      },
+      keyMap: shortcutKeyMap,
     }),
   },
 }));
@@ -93,6 +95,7 @@ describe("useKeyboardShortcuts", () => {
     vi.clearAllMocks();
     uiState.settingsOpen = false;
     composerState.isOpen = false;
+    shortcutKeyMap = { ...defaultKeyMap };
   });
 
   it("dispatches velo-toggle-ask-inbox when 'i' is pressed", () => {
@@ -107,6 +110,41 @@ describe("useKeyboardShortcuts", () => {
 
     expect(listener).toHaveBeenCalledTimes(1);
 
+    window.removeEventListener("velo-toggle-ask-inbox", listener);
+  });
+
+  it("dispatches an action rebound to Cmd+Shift+letter", () => {
+    shortcutKeyMap = { ...defaultKeyMap, "app.askInbox": "Cmd+Shift+I" };
+    renderHook(() => useKeyboardShortcuts());
+
+    const listener = vi.fn();
+    window.addEventListener("velo-toggle-ask-inbox", listener);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "i",
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+    }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    window.removeEventListener("velo-toggle-ask-inbox", listener);
+  });
+
+  it("dispatches an action rebound to an Alt combination", () => {
+    shortcutKeyMap = { ...defaultKeyMap, "app.askInbox": "Alt+I" };
+    renderHook(() => useKeyboardShortcuts());
+
+    const listener = vi.fn();
+    window.addEventListener("velo-toggle-ask-inbox", listener);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "i",
+      altKey: true,
+      bubbles: true,
+    }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
     window.removeEventListener("velo-toggle-ask-inbox", listener);
   });
 

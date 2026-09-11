@@ -4,7 +4,7 @@ import { getEmailProvider } from "@/services/email/providerFactory";
 import { enqueuePendingOperation } from "@/services/db/pendingOperations";
 import { classifyError } from "@/utils/networkErrors";
 import { getDb } from "@/services/db/connection";
-import { navigateToThread, getSelectedThreadId } from "@/router/navigate";
+import { navigateToThread, getActiveLabel, getSelectedThreadId } from "@/router/navigate";
 
 // ---------------------------------------------------------------------------
 // Action types
@@ -94,13 +94,35 @@ function applyOptimisticUpdate(action: EmailAction): void {
     case "archive":
     case "trash":
     case "permanentDelete":
-    case "spam":
     case "moveToFolder": {
       const nextId = getNextThreadId(action.threadId);
       // Fades the row out, then drops it — the list still updates immediately
       store.beginThreadRemoval(action.threadId);
       if (nextId) {
         navigateToThread(nextId);
+      }
+      break;
+    }
+    case "spam": {
+      // Reporting spam always leaves the current list. Restoring it only
+      // leaves the Spam folder; from search or an already-stale Inbox view it
+      // should remain visible and simply lose its spam state.
+      if (action.isSpam || getActiveLabel() === "spam") {
+        const nextId = getNextThreadId(action.threadId);
+        store.beginThreadRemoval(action.threadId);
+        if (nextId) navigateToThread(nextId);
+      } else {
+        const current = store.threadMap.get(action.threadId);
+        if (current) {
+          store.updateThread(action.threadId, {
+            labelIds: [
+              ...new Set([
+                ...current.labelIds.filter((labelId) => labelId !== "SPAM"),
+                "INBOX",
+              ]),
+            ],
+          });
+        }
       }
       break;
     }

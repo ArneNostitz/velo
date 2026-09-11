@@ -51,7 +51,7 @@ export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply
   const [showSnooze, setShowSnooze] = useState(false);
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [hasFollowUp, setHasFollowUp] = useState(false);
-  const isSpamView = activeLabel === "spam";
+  const isSpam = thread.labelIds.includes("SPAM");
   const hasLastMessage = !!messages?.length;
 
   // Check if thread has an active follow-up reminder
@@ -111,7 +111,7 @@ export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply
 
   const handleSpam = async () => {
     if (!threadAccountId) return;
-    await spamThread(threadAccountId, thread.id, [], !isSpamView);
+    await spamThread(threadAccountId, thread.id, [], !isSpam);
   };
 
   // Find the first message with an unsubscribe header
@@ -286,7 +286,7 @@ export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply
           iconOnly
           icon={<Ban size={15} />}
           onClick={handleSpam}
-          title={isSpamView ? "Not Spam (!)" : "Report Spam (!)"}
+          title={isSpam ? "Not Spam (!)" : "Report Spam (!)"}
         />
         <Button
           variant="secondary"

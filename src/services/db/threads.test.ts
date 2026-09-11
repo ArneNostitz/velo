@@ -17,6 +17,7 @@ import {
   getThreadsForAccounts,
   getThreadsForCategoryAcrossAccounts,
   getThreadsWithContact,
+  setThreadLabels,
   mergeThreads,
   unmergeThread,
   getMergedThreadIds,
@@ -134,6 +135,19 @@ describe("threads service - unified inbox queries", () => {
     expect(params).toEqual(["a", "b", "INBOX", 10, 0]);
   });
 
+  it("keeps mixed INBOX and SPAM threads out of the inbox", async () => {
+    await getThreadsForAccounts(["a"], "INBOX", 50, 0);
+    const { sql } = lastSelect();
+    expect(sql).toContain("NOT EXISTS");
+    expect(sql).toContain("spam.label_id = 'SPAM'");
+  });
+
+  it("does not exclude spam threads from the spam folder", async () => {
+    await getThreadsForAccounts(["a"], "SPAM", 50, 0);
+    const { sql } = lastSelect();
+    expect(sql).not.toContain("spam.label_id = 'SPAM'");
+  });
+
   it("still works for a single account", async () => {
     await getThreadsForAccounts(["only"], "SENT", 50, 0);
     const { sql, params } = lastSelect();
@@ -148,6 +162,7 @@ describe("threads service - unified inbox queries", () => {
     expect(sql).toContain("tc.category IS NULL OR tc.category = 'Primary'");
     expect(sql).toContain("LIMIT $3 OFFSET $4");
     expect(params).toEqual(["a", "b", 50, 0]);
+    expect(sql).toContain("spam.label_id = 'SPAM'");
   });
 
   it("binds the category after the accounts for other categories", async () => {
@@ -168,6 +183,22 @@ describe("threads service - unified inbox queries", () => {
   it("skips the category query for an empty account list", async () => {
     await expect(getThreadsForCategoryAcrossAccounts([], "Primary")).resolves.toEqual([]);
     expect(mockDb.select).not.toHaveBeenCalled();
+  });
+});
+
+describe("threads service - spam label invariant", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getDb).mockResolvedValue(mockDb as unknown as Awaited<ReturnType<typeof getDb>>);
+  });
+
+  it("does not persist INBOX beside SPAM", async () => {
+    await setThreadLabels("acc-1", "thread-1", ["INBOX", "SPAM", "UNREAD"]);
+
+    const insertedLabels = mockDb.execute.mock.calls
+      .filter(([sql]) => String(sql).startsWith("INSERT"))
+      .map(([, params]) => (params as unknown[])[2]);
+    expect(insertedLabels).toEqual(["SPAM", "UNREAD"]);
   });
 });
 

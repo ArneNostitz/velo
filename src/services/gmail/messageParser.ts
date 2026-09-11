@@ -71,8 +71,8 @@ export function parseGmailMessage(msg: GmailMessage): ParsedMessage {
     date: parseInt(msg.internalDate, 10),
     isRead: !msg.labelIds.includes("UNREAD"),
     isStarred: msg.labelIds.includes("STARRED"),
-    bodyHtml: bodyHtml ? decodeBase64Url(bodyHtml) : null,
-    bodyText: bodyText ? decodeBase64Url(bodyText) : null,
+    bodyHtml,
+    bodyText,
     rawSize: msg.sizeEstimate,
     internalDate: parseInt(msg.internalDate, 10),
     labelIds: msg.labelIds,
@@ -119,16 +119,16 @@ function parseEmailAddress(raw: string | null): {
  * (message/disposition-notification inside a multipart/report).
  */
 function extractMdnReport(part: GmailMessagePart): string | null {
-  if (
-    part.mimeType.toLowerCase() === "message/disposition-notification" &&
-    part.body.data
-  ) {
-    return decodeBase64Url(part.body.data);
+  if (part.mimeType.toLowerCase() === "message/disposition-notification") {
+    // Gmail may expose this small machine-readable part through attachmentId
+    // instead of inline data. An empty string still records that this is an
+    // MDN, allowing sync to hide it and correlate via In-Reply-To/fallback.
+    return part.body.data ? decodeBase64Url(part.body.data) : "";
   }
   if (part.parts) {
     for (const child of part.parts) {
       const result = extractMdnReport(child);
-      if (result) return result;
+      if (result !== null) return result;
     }
   }
   return null;
@@ -139,7 +139,11 @@ function extractBody(
   mimeType: string,
 ): string | null {
   if (part.mimeType === mimeType && part.body.data) {
-    return part.body.data;
+    const contentType = part.headers?.find(
+      (header) => header.name.toLowerCase() === "content-type",
+    )?.value;
+    const charset = contentType?.match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1];
+    return decodeBase64Url(part.body.data, charset);
   }
 
   if (part.parts) {
@@ -190,18 +194,24 @@ function collectAttachments(part: GmailMessagePart, results: ParsedAttachment[])
   }
 }
 
-function decodeBase64Url(data: string): string {
+function decodeBase64Url(data: string, declaredCharset?: string): string {
   // Gmail uses URL-safe base64
   const base64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(base64);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+
+  if (declaredCharset) {
+    try {
+      return new TextDecoder(declaredCharset).decode(bytes);
+    } catch {
+      // Unknown/misspelled charset: continue with safe fallbacks below.
+    }
+  }
+
   try {
-    return decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-        .join(""),
-    );
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    // Fallback for binary data
-    return atob(base64);
+    // A missing charset on older European mail commonly means Windows-1252.
+    return new TextDecoder("windows-1252").decode(bytes);
   }
 }
