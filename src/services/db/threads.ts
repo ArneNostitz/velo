@@ -153,6 +153,17 @@ export async function getThreadsForAccounts(
   if (labelIds.length > 0) {
     const labels = inClause(labelIds.length, nextIndex);
     const peer = peerJoin(ownAddresses, labels.nextIndex);
+    // A Gmail thread can contain messages with different system labels. Our
+    // thread-level union may therefore contain both INBOX and SPAM; Spam wins
+    // so a dangerous-looking red thread is never served in the Inbox.
+    const excludeSpam = labelIds.includes("INBOX")
+      ? `AND NOT EXISTS (
+           SELECT 1 FROM thread_labels spam
+           WHERE spam.account_id = t.account_id
+             AND spam.thread_id = t.id
+             AND spam.label_id = 'SPAM'
+         )`
+      : "";
     return db.select<DbThread[]>(
       `SELECT t.*, m.from_name, m.from_address${peer.select} FROM threads t
        INNER JOIN thread_labels tl ON tl.account_id = t.account_id AND tl.thread_id = t.id
@@ -160,6 +171,7 @@ export async function getThreadsForAccounts(
          AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
        ${peer.join}
        WHERE t.account_id IN (${placeholders}) AND tl.label_id IN (${labels.placeholders})
+         ${excludeSpam}
          AND ${HAS_REAL_MESSAGE} AND ${NOT_MERGED_AWAY}
        GROUP BY t.account_id, t.id
        ORDER BY t.is_pinned DESC, t.last_message_at DESC
@@ -230,6 +242,12 @@ export async function getThreadsForCategoryAcrossAccounts(
          AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
        ${peerPrimary.join}
        WHERE t.account_id IN (${placeholders}) AND tl.label_id = 'INBOX'
+         AND NOT EXISTS (
+           SELECT 1 FROM thread_labels spam
+           WHERE spam.account_id = t.account_id
+             AND spam.thread_id = t.id
+             AND spam.label_id = 'SPAM'
+         )
          AND (tc.category IS NULL OR tc.category = 'Primary')
          AND ${HAS_REAL_MESSAGE} AND ${NOT_MERGED_AWAY}
        GROUP BY t.account_id, t.id
@@ -248,6 +266,12 @@ export async function getThreadsForCategoryAcrossAccounts(
        AND m.date = (SELECT MAX(m2.date) FROM messages m2 WHERE m2.account_id = t.account_id AND m2.thread_id = t.id)
      ${peer.join}
      WHERE t.account_id IN (${placeholders}) AND tl.label_id = 'INBOX' AND tc.category = $${nextIndex}
+       AND NOT EXISTS (
+         SELECT 1 FROM thread_labels spam
+         WHERE spam.account_id = t.account_id
+           AND spam.thread_id = t.id
+           AND spam.label_id = 'SPAM'
+       )
        AND ${HAS_REAL_MESSAGE} AND ${NOT_MERGED_AWAY}
      GROUP BY t.account_id, t.id
      ORDER BY t.is_pinned DESC, t.last_message_at DESC
@@ -296,13 +320,18 @@ export async function setThreadLabels(
   labelIds: string[],
 ): Promise<void> {
   const db = await getDb();
+  // Velo renders spam at thread level. If any synced message makes the thread
+  // spam, do not persist a contradictory Inbox label alongside it.
+  const normalizedLabelIds = labelIds.includes("SPAM")
+    ? labelIds.filter((labelId) => labelId !== "INBOX")
+    : labelIds;
   // Remove existing labels
   await db.execute(
     "DELETE FROM thread_labels WHERE account_id = $1 AND thread_id = $2",
     [accountId, threadId],
   );
   // Insert new labels
-  for (const labelId of labelIds) {
+  for (const labelId of normalizedLabelIds) {
     await db.execute(
       "INSERT OR IGNORE INTO thread_labels (account_id, thread_id, label_id) VALUES ($1, $2, $3)",
       [accountId, threadId, labelId],

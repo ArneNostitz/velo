@@ -36,6 +36,7 @@ vi.mock("@/services/db/connection", () => ({
 
 vi.mock("@/router/navigate", () => ({
   navigateToThread: vi.fn(),
+  getActiveLabel: vi.fn(() => "inbox"),
   getSelectedThreadId: vi.fn(() => null),
 }));
 
@@ -55,7 +56,7 @@ import {
   runBulkAction,
 } from "./emailActions";
 import { getDb } from "@/services/db/connection";
-import { navigateToThread, getSelectedThreadId } from "@/router/navigate";
+import { navigateToThread, getActiveLabel, getSelectedThreadId } from "@/router/navigate";
 import { createMockEmailProvider, createMockUIStoreState, createMockThreadStoreState } from "@/test/mocks";
 
 const mockProvider = createMockEmailProvider();
@@ -109,6 +110,36 @@ describe("emailActions", () => {
       expect(result.success).toBe(true);
       expect(mockRemoveThread).toHaveBeenCalledWith("t1");
       expect(mockProvider.spam).toHaveBeenCalledWith("t1", ["m1"], true);
+    });
+
+    it("keeps a restored thread visible outside the Spam folder", async () => {
+      const spamThreadRecord = {
+        id: "t1",
+        labelIds: ["SPAM", "UNREAD"],
+      };
+      vi.mocked(useThreadStore.getState).mockReturnValue(createMockThreadStoreState({
+        threads: [spamThreadRecord],
+        threadMap: new Map([["t1", spamThreadRecord]]),
+        updateThread: mockUpdateThread,
+        removeThread: mockRemoveThread,
+        beginThreadRemoval: mockRemoveThread,
+      }) as never);
+      vi.mocked(getActiveLabel).mockReturnValue("inbox");
+
+      await spamThread("acct-1", "t1", ["m1"], false);
+
+      expect(mockRemoveThread).not.toHaveBeenCalled();
+      expect(mockUpdateThread).toHaveBeenCalledWith("t1", {
+        labelIds: ["UNREAD", "INBOX"],
+      });
+    });
+
+    it("removes a restored thread from the Spam folder", async () => {
+      vi.mocked(getActiveLabel).mockReturnValue("spam");
+
+      await spamThread("acct-1", "t1", ["m1"], false);
+
+      expect(mockRemoveThread).toHaveBeenCalledWith("t1");
     });
   });
 

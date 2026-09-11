@@ -8,7 +8,7 @@ import { useThreadStore, type Thread } from "@/stores/threadStore";
 import { getMergedThreadIds, unmergeThread } from "@/services/db/threads";
 import { useComposerStore } from "@/stores/composerStore";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
-import { markThreadRead } from "@/services/emailActions";
+import { markThreadRead, spamThread } from "@/services/emailActions";
 import { getSetting } from "@/services/db/settings";
 import { getAllowlistedSenders } from "@/services/db/imageAllowlist";
 import { VolumeX, Merge } from "lucide-react";
@@ -30,6 +30,8 @@ import { MessageSkeleton } from "@/components/ui/Skeleton";
 import { RawMessageModal } from "./RawMessageModal";
 import { formatDateTime } from "@/utils/date";
 import { getBodySearchTerms } from "@/utils/searchHighlight";
+import { SpamBanner } from "./SpamBanner";
+import { reportError, notify } from "@/stores/toastStore";
 
 interface ThreadViewProps {
   thread: Thread;
@@ -98,6 +100,37 @@ export function ThreadView({ thread }: ThreadViewProps) {
   // null = not yet loaded; defer iframe rendering until setting is known
   const [blockImages, setBlockImages] = useState<boolean | null>(null);
   const [allowlistedSenders, setAllowlistedSenders] = useState<Set<string>>(new Set());
+  const [restoringFromSpam, setRestoringFromSpam] = useState(false);
+  const isSpam = thread.labelIds.includes("SPAM");
+
+  const handleNotSpam = async () => {
+    if (!threadAccountId || restoringFromSpam) return;
+    setRestoringFromSpam(true);
+    try {
+      const result = await spamThread(threadAccountId, thread.id, [], false);
+      if (!result.success) {
+        reportError("Could not move conversation out of Spam", result.error);
+        return;
+      }
+      updateThread(thread.id, {
+        labelIds: [
+          ...new Set([
+            ...thread.labelIds.filter((labelId) => labelId !== "SPAM"),
+            "INBOX",
+          ]),
+        ],
+      });
+      notify(
+        "success",
+        "Moved to Inbox",
+        result.queued ? "The change will sync when you are back online." : undefined,
+      );
+    } catch (err) {
+      reportError("Could not move conversation out of Spam", err);
+    } finally {
+      setRestoringFromSpam(false);
+    }
+  };
 
   // Preload settings eagerly on mount (parallel with message loading)
   useEffect(() => {
@@ -491,6 +524,10 @@ export function ThreadView({ thread }: ThreadViewProps) {
           }
         />
 
+        {isSpam && (
+          <SpamBanner onNotSpam={handleNotSpam} restoring={restoringFromSpam} />
+        )}
+
         {/* Merged conversations — say so, and offer the way out */}
         {mergedIds.length > 0 && threadAccountId && (
           <div className="flex items-center gap-2 px-6 py-2 bg-accent/5 border-b border-border-secondary text-xs text-text-secondary">
@@ -546,7 +583,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
                 ownAddresses={ownAddresses}
                 blockImages={blockImages}
                 allowlistedSenders={allowlistedSenders}
-                isSpam={thread.labelIds.includes("SPAM")}
+                isSpam={isSpam}
                 onMessageContextMenu={handleMessageContextMenu}
                 searchMessageIds={searchMatch?.messageIds}
                 highlightTerms={bodySearchTerms}
@@ -561,7 +598,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
                   focused={i === focusedMsgIdx}
                   blockImages={blockImages}
                   senderAllowlisted={msg.from_address ? allowlistedSenders.has(msg.from_address) : false}
-                  isSpam={thread.labelIds.includes("SPAM")}
+                  isSpam={isSpam}
                   ownAddresses={ownAddresses}
                   isSearchMatch={searchMatch?.messageIds.has(msg.id)}
                   highlightTerms={bodySearchTerms}
