@@ -5,7 +5,10 @@ interface BuiltQuery {
   params: unknown[];
 }
 
+export type SearchSort = "newest" | "oldest" | "relevance";
+
 export interface SearchScope {
+  sort?: SearchSort;
   labelIds?: string[];
   excludeSpamTrash?: boolean;
   accountIds?: string[];
@@ -173,7 +176,10 @@ export function buildSearchQuery(
 
   const whereStr =
     whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
-  const orderBy = needsFts ? "ORDER BY rank" : "ORDER BY m.date DESC";
+  fromClause += " LEFT JOIN threads search_thread ON search_thread.account_id = m.account_id AND search_thread.id = m.thread_id";
+  const threadDate = "COALESCE(search_thread.last_message_at, m.date)";
+  const chronologicalOrder = `${threadDate} ${scope.sort === "oldest" ? "ASC" : "DESC"}`;
+  const orderBy = `ORDER BY ${scope.sort === "relevance" && needsFts ? "rank ASC, " : ""}${chronologicalOrder}, m.account_id ASC, m.thread_id ASC, m.date DESC, m.id ASC`;
 
   // Return a small body-centered excerpt for the result row. Keeping this in
   // SQL avoids loading as many as 500 complete message bodies into React.

@@ -55,6 +55,7 @@ export function SearchBar() {
   );
   const accountKey = useAccountStore((s) => listedAccountIds(s).join(","));
   const [scope, setScope] = useState("current");
+  const [sort, setSort] = useState<"newest" | "oldest" | "relevance">("newest");
   const [error, setError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -96,7 +97,8 @@ export function SearchBar() {
           500,
           {
             accountIds: accountKey ? accountKey.split(",") : [],
-            labelIds,
+          labelIds,
+          sort,
             excludeSpamTrash:
               folder !== "everywhere" &&
               folder !== "spam" &&
@@ -146,6 +148,7 @@ export function SearchBar() {
   }, [
     searchQuery,
     scope,
+    sort,
     activeLabel,
     activeAccountId,
     unifiedInbox,
@@ -236,6 +239,19 @@ export function SearchBar() {
       </div>
       {searchQuery.trim() && (
         <div className="mt-1.5 space-y-1.5">
+          <label className="flex items-center gap-2 text-xs text-text-secondary">
+            Sort
+            <select
+              aria-label="Sort search results"
+              value={sort}
+              onChange={(event) => setSort(event.target.value as typeof sort)}
+              className="rounded border border-border-primary bg-bg-primary px-2 py-1 text-text-primary"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="relevance">Relevance</option>
+            </select>
+          </label>
           <div
             className="flex flex-wrap gap-1"
             role="group"
