@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run semantic:prepare && npm run build"
   },
   "app": {
     "windows": [
@@ -61,7 +61,8 @@
     },
     "resources": {
       "../LICENSE": "LICENSE",
-      "../NOTICE": "NOTICE"
+      "../NOTICE": "NOTICE",
+      "semantic-runtime/": "semantic-runtime/"
     }
   },
   "plugins": {
@@ -80,7 +81,8 @@
       "mobile": [],
       "desktop": {
         "schemes": [
-          "mailto"
+          "mailto",
+          "velo"
         ]
       }
     }
