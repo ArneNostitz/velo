@@ -21,10 +21,17 @@ const VALID_CATEGORIES = ["Primary", "Updates", "Promotions", "Social", "Newslet
 type MailSearch = {
   q?: string;
   category?: (typeof VALID_CATEGORIES)[number];
+  account?: string;
+  linkedThread?: string;
 };
 
 function validateMailSearch(search: Record<string, unknown>): MailSearch {
   const result: MailSearch = {};
+  if (typeof search["account"] === "string" && search["account"] &&
+    typeof search["linkedThread"] === "string" && search["linkedThread"]) {
+    result.account = search["account"];
+    result.linkedThread = search["linkedThread"];
+  }
   if (typeof search["q"] === "string" && search["q"]) {
     result.q = search["q"];
   }

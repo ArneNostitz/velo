@@ -32,6 +32,7 @@ import { formatDateTime } from "@/utils/date";
 import { getBodySearchTerms } from "@/utils/searchHighlight";
 import { SpamBanner } from "./SpamBanner";
 import { reportError, notify } from "@/stores/toastStore";
+import { useMailLinkStore } from "@/stores/mailLinkStore";
 
 interface ThreadViewProps {
   thread: Thread;
@@ -318,11 +319,25 @@ export function ThreadView({ thread }: ThreadViewProps) {
   // Message-level keyboard navigation (ArrowUp / ArrowDown)
   const [focusedMsgIdx, setFocusedMsgIdx] = useState(-1);
   const messageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const mailLinkTarget = useMailLinkStore((state) => state.target);
 
-  // Reset focused index when thread changes
+  // Reset before applying a queued external message selection.
   useEffect(() => {
     setFocusedMsgIdx(-1);
   }, [thread.id]);
+
+  useEffect(() => {
+    if (loading || !mailLinkTarget || mailLinkTarget.accountId !== threadAccountId ||
+      mailLinkTarget.threadId !== thread.id) return;
+    const index = mailLinkTarget.messageId ? messages.findIndex((message) => message.id === mailLinkTarget.messageId) : messages.length - 1;
+    if (index < 0) return;
+    setFocusedMsgIdx(index);
+    const frame = requestAnimationFrame(() => {
+      messageRefs.current[index]?.scrollIntoView({ block: "center", behavior: "auto" });
+      useMailLinkStore.getState().consumed(mailLinkTarget);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [mailLinkTarget, loading, messages, thread.id, threadAccountId, threadViewMode]);
 
   // Scroll focused message into view
   useEffect(() => {
@@ -587,6 +602,8 @@ export function ThreadView({ thread }: ThreadViewProps) {
                 onMessageContextMenu={handleMessageContextMenu}
                 searchMessageIds={searchMatch?.messageIds}
                 highlightTerms={bodySearchTerms}
+                focusedMessageId={messages[focusedMsgIdx]?.id}
+                messageRef={(index, element) => { messageRefs.current[index] = element; }}
               />
             ) : (
               messages.map((msg, i) => (

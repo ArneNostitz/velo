@@ -12,7 +12,7 @@ const SYSTEM_LABELS = new Set([
  */
 export function navigateToLabel(
   label: string,
-  opts?: { category?: string; threadId?: string },
+  opts?: { category?: string; threadId?: string; accountId?: string },
 ): void {
   if (label === "settings") {
     // Settings is a dialog, not a route — open it over the current view.
@@ -59,6 +59,10 @@ export function navigateToLabel(
   if (SYSTEM_LABELS.has(label)) {
     const search: Record<string, string> = {};
     if (opts?.category) search["category"] = opts.category;
+    if (opts?.accountId && opts.threadId) {
+      search["account"] = opts.accountId;
+      search["linkedThread"] = opts.threadId;
+    }
     if (opts?.threadId) {
       router.navigate({
         to: "/mail/$label/thread/$threadId",
@@ -96,6 +100,11 @@ export function navigateToLabel(
 export function navigateToThread(threadId: string): void {
   const { location } = router.state;
   const pathname = location.pathname;
+  // A deliberate list/keyboard selection supersedes an external selection,
+  // including selecting the same provider thread ID in a different account.
+  const search = { ...location.search } as Record<string, string>;
+  delete search["account"];
+  delete search["linkedThread"];
 
   // Already on a mail/$label route
   const mailMatch = pathname.match(/^\/mail\/([^/]+)/);
@@ -103,7 +112,7 @@ export function navigateToThread(threadId: string): void {
     router.navigate({
       to: "/mail/$label/thread/$threadId",
       params: { label: mailMatch[1]!, threadId },
-      search: location.search as Record<string, string>,
+      search,
     });
     return;
   }
@@ -114,7 +123,7 @@ export function navigateToThread(threadId: string): void {
     router.navigate({
       to: "/label/$labelId/thread/$threadId",
       params: { labelId: labelMatch[1]!, threadId },
-      search: location.search as Record<string, string>,
+      search,
     });
     return;
   }
@@ -125,7 +134,7 @@ export function navigateToThread(threadId: string): void {
     router.navigate({
       to: "/smart-folder/$folderId/thread/$threadId",
       params: { folderId: sfMatch[1]!, threadId },
-      search: location.search as Record<string, string>,
+      search,
     });
     return;
   }

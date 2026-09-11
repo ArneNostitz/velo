@@ -2,9 +2,10 @@ import { act, render, screen } from "@testing-library/react";
 import { ReadingPane } from "./ReadingPane";
 import { useThreadStore, type Thread } from "@/stores/threadStore";
 
-const route = vi.hoisted(() => ({ id: "broken" }));
+const route = vi.hoisted(() => ({ id: "broken", accountId: null as string | null }));
 vi.mock("@/hooks/useRouteNavigation", () => ({
   useSelectedThreadId: () => route.id,
+  useLinkedAccountId: () => route.accountId,
 }));
 vi.mock("../email/ThreadView", () => ({
   ThreadView: ({ thread }: { thread: Thread }) => {
@@ -20,6 +21,7 @@ const good = {
 } as Thread;
 
 afterEach(() => vi.restoreAllMocks());
+beforeEach(() => { route.accountId = null; });
 
 it("recovers from a rendering error when another email is selected", () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -47,4 +49,14 @@ it("keeps the selected email open when the list reloads", () => {
   render(<ReadingPane />);
   act(() => useThreadStore.getState().setThreads([]));
   expect(screen.getByText("Readable email")).toBeInTheDocument();
+});
+
+it("keeps the linked account when an old list response contains the same thread ID in another account", () => {
+  route.id = "good";
+  route.accountId = "a";
+  useThreadStore.setState({ threadMap: new Map([["good", good]]), cachedThreads: new Map([["good", good]]) });
+  render(<ReadingPane />);
+  act(() => useThreadStore.getState().setThreads([{ ...good, accountId: "b", subject: "Wrong account" }]));
+  expect(screen.getByText("Readable email")).toBeInTheDocument();
+  expect(screen.queryByText("Wrong account")).not.toBeInTheDocument();
 });

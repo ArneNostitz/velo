@@ -17,7 +17,7 @@ export async function cacheThreadForOpening(
   threadId: string,
 ): Promise<boolean> {
   const { threadMap, cachedThreads } = useThreadStore.getState();
-  if (threadMap.has(threadId) || cachedThreads.has(threadId)) return true;
+  if (threadMap.get(threadId)?.accountId === accountId || cachedThreads.get(threadId)?.accountId === accountId) return true;
 
   const dbThread = await getThreadById(accountId, threadId);
   if (!dbThread) return false;

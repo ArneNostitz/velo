@@ -223,7 +223,7 @@ Key tables (35 total): `accounts` (with `provider` "gmail_api"|"imap", IMAP/SMTP
 - **Vite build**: Multi-page — `index.html` (main app) + `splashscreen.html`
 - **Filter engine**: AND logic for criteria, merges actions when multiple filters match same message
 - **AI providers**: API keys stored in SQLite settings table. Provider selected per-feature in settings. Results cached in `ai_cache` table
-- **Deep links**: `mailto:` scheme registered via tauri-plugin-deep-link. Opens compose window with pre-filled recipient
+- **Deep links**: `mailto:` composes mail; `velo://open?account=<accountId>&thread=<threadId>&message=<messageId>` opens a specific local message (`message` optional). `mailLink.ts` parses/creates identifiers-only links, `openMailLink.ts` checks account/thread/message ownership in SQLite before caching/navigation, and `mailLinkStore` retains exact-message focus until ThreadView is ready. Copy Message Link/IDs is in the message context menu. Native `getCurrent()` handles cold startup; single-instance enables the `deep-link` Cargo feature. macOS scheme changes require a rebuilt installed bundle.
 - **Autostart**: Uses `--hidden` flag to start minimized to tray
 - **Phishing detection**: 10 heuristic rules (IP URLs, homograph, suspicious TLDs, URL shorteners, display/href mismatch, suspicious paths, brand impersonation, dangerous protocols, free email impostor, subdomain spoofing). Sensitivity configurable (low/default/high). Results cached in `link_scan_results`
 - **Auth display**: SPF/DKIM/DMARC parsed from `Authentication-Results` header. Aggregate verdict: pass/fail/warning/unknown. Stored in `messages.auth_results` column

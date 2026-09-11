@@ -20,6 +20,8 @@ interface ChatThreadProps {
   defaultCollapsed?: boolean;
   searchMessageIds?: Set<string>;
   highlightTerms?: readonly string[];
+  focusedMessageId?: string;
+  messageRef?: (index: number, element: HTMLDivElement | null) => void;
 }
 
 export function isOwnMessage(message: DbMessage, ownAddresses: Set<string>): boolean {
@@ -45,6 +47,8 @@ export function ChatThread({
   defaultCollapsed = false,
   searchMessageIds,
   highlightTerms,
+  focusedMessageId,
+  messageRef,
 }: ChatThreadProps) {
   // Only the exceptions to the default are tracked, so a newly synced message
   // inherits the default instead of appearing in whatever state a stale map
@@ -93,14 +97,15 @@ export function ChatThread({
         </div>
       )}
 
-      {rendered.map(({ msg, mine }) => {
+      {rendered.map(({ msg, mine }, index) => {
         const isSearchMatch = searchMessageIds?.has(msg.id) ?? false;
         return (
+          <div key={msg.id} ref={(element) => messageRef?.(index, element)}
+            className={focusedMessageId === msg.id ? "ring-2 ring-inset ring-accent/50" : undefined}>
           <ChatMessage
-            key={msg.id}
             message={msg}
             isMine={mine}
-            collapsed={isSearchMatch ? false : isCollapsed(msg.id)}
+            collapsed={isSearchMatch || focusedMessageId === msg.id ? false : isCollapsed(msg.id)}
             onToggleCollapse={() => toggleOne(msg.id)}
             blockImages={blockImages}
             senderAllowlisted={
@@ -113,6 +118,7 @@ export function ChatThread({
               onMessageContextMenu ? (e) => onMessageContextMenu(e, msg) : undefined
             }
           />
+          </div>
         );
       })}
     </div>

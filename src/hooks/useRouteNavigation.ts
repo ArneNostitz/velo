@@ -63,6 +63,21 @@ export function useSelectedThreadId(): string | null {
   return null;
 }
 
+/** An external selection stays account-scoped through asynchronous list reloads.
+ * The scope belongs only to that thread, so navigating to another row releases it.
+ */
+export function useLinkedAccountId(): string | null {
+  const matches = useMatchesSafe();
+  for (const match of matches) {
+    const params = match.params as Record<string, string>;
+    const search = (match as { search?: Record<string, unknown> }).search;
+    if (params["threadId"] && search?.["linkedThread"] === params["threadId"] && typeof search["account"] === "string") {
+      return search["account"];
+    }
+  }
+  return null;
+}
+
 /**
  * Get the active category from search params (only relevant on inbox in split mode).
  */

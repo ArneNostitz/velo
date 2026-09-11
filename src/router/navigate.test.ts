@@ -117,6 +117,14 @@ describe("navigate", () => {
   });
 
   describe("navigateToThread", () => {
+    it("releases external account scope on a deliberate selection while preserving normal search", () => {
+      mockState.location = { pathname: "/mail/all/thread/t-1", search: { account: "a", linkedThread: "t-1", q: "invoice" } };
+      navigateToThread("t-1");
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/mail/$label/thread/$threadId", params: { label: "all", threadId: "t-1" }, search: { q: "invoice" },
+      });
+    });
+
     it("should append thread to /mail/$label route", () => {
       mockState.location.pathname = "/mail/inbox";
       navigateToThread("thread-abc");
