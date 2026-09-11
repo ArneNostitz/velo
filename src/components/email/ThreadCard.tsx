@@ -72,7 +72,10 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
   const folder = useMemo(() => {
     if (!showFolder) return null;
     const names = new Map(labels.map((l) => [l.id, l.name]));
-    return threadFolder(thread.labelIds, names);
+    const resolved = threadFolder(thread.labelIds, names);
+    // Inbox is the expected location. The pill exists to call out mail that
+    // lives somewhere else (Archive, Sent, a user label, etc.).
+    return resolved.id === "inbox" ? null : resolved;
   }, [showFolder, labels, thread.labelIds]);
 
   // Read selectedThreadIds lazily for drag — avoids subscribing all cards to the Set reference

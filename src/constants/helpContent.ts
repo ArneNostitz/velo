@@ -136,11 +136,11 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         title: "Initial sync",
         summary: "First sync downloads your email history.",
         description:
-          "When you add a new account, the app performs an initial sync that downloads your last year of email (configurable). This builds a local database for fast offline search and browsing. Depending on your inbox size, this can take a few minutes. You can use the app normally while the sync runs in the background — read, compose, and send without waiting. After the initial sync, the app switches to delta sync (every 60 seconds) to fetch only new changes. Gmail uses the History API for delta sync; IMAP uses UID-based tracking.",
+          "When you add a new account, the app performs an initial sync that downloads your last year of email (configurable). This builds a local database for fast offline search and browsing. Depending on your inbox size, this can take a few minutes. You can use the app normally while it runs. After that, Gmail push and IMAP IDLE notify Velo when something changes; Velo then fetches only the delta instead of polling every mailbox on a timer.",
         tips: [
           { text: "Change the sync period (30 days to 1 year) in Settings > Accounts." },
           { text: "The app is fully usable during the initial sync." },
-          { text: "Delta sync runs every 60 seconds after the first sync completes." },
+          { text: "New mail is delivered by Gmail push or IMAP IDLE, without a periodic mailbox refresh." },
           { text: "Gmail: if sync history expires (~30 days offline), the app auto-falls back to a full sync." },
           { text: "IMAP: if folder UIDVALIDITY changes, the app resyncs that folder automatically." },
         ],
@@ -616,12 +616,13 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         title: "Smart folders",
         summary: "Saved searches that act as dynamic folders.",
         description:
-          "Smart folders are saved search queries that appear in the sidebar like regular folders. They dynamically show threads matching the query — the results update automatically as new email arrives. Use any search operator in the query. Dynamic date tokens (like __LAST_7_DAYS__ or __TODAY__) keep the results relative to the current date. Smart folders show an unread count badge, just like regular folders.",
+          "Smart folders are saved search queries that appear in the sidebar like regular folders. They dynamically show matching threads as new email arrives, while always excluding Trash and Spam. Use any search operator in the query; dynamic date tokens like __LAST_7_DAYS__ or __TODAY__ stay relative to the current date. Results outside Inbox carry a folder pill so Archive, Sent, Drafts, and user labels are explicit.",
         tips: [
           { text: "Click the + button in the Smart Folders section of the sidebar." },
           { text: "Use search operators: is:unread from:boss" },
           { text: "Dynamic tokens: __LAST_7_DAYS__, __LAST_30_DAYS__, __TODAY__" },
           { text: "Each smart folder shows its unread count in the sidebar." },
+          { text: "Right-click a smart folder to see its saved search and open its setup." },
           { text: "Edit or delete smart folders in Settings > Mail Rules." },
         ],
         relatedSettingsTab: "mail-rules",
@@ -1122,14 +1123,14 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         title: "Google Calendar integration",
         summary: "View and manage your calendar alongside email.",
         description:
-          "Access your Google Calendar directly from the sidebar. Switch between day, week, and month views. See all your events with color-coded calendar support (if you have multiple Google calendars). Create new events directly from the app without switching to a browser. The calendar uses the same Google account as your email and refreshes automatically. Navigate between dates with the toolbar controls.",
+          "Access your Google Calendar directly from the sidebar. Opening the Calendar page synchronizes the selected account once, then day, week, and month navigation reads the local cache without making another network request. See color-coded events from multiple calendars and create new events without switching to a browser.",
         tips: [
           { text: "Open Calendar from the sidebar navigation." },
           { text: "Switch between Day, Week, and Month views from the toolbar." },
           { text: "Click on a time slot to create a new event." },
           { text: "Supports multiple Google calendars with color coding." },
           { text: "Calendar uses the same Google OAuth as your email." },
-          { text: "Events refresh automatically in the background." },
+          { text: "Remote events refresh once when you open Calendar or switch its account." },
         ],
       },
     ],
@@ -1297,7 +1298,7 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         title: "Refresh mail & account tooltip",
         summary: "Force a sync from the account avatar or with F5.",
         description:
-          "Hover the account avatar at the top of the sidebar and it turns into a refresh button — click it to check for new mail in every mailbox the current list shows, without waiting for the next background sync. Hovering the account switcher also pops an instant tooltip with the account name, address, and live sync status; a spinning ring around the avatar shows a sync in progress and turns red when a sync fails.",
+          "Hover the account avatar at the top of the sidebar and it turns into a refresh button — click it to manually check every mailbox the current list shows. Normal delivery is automatic through Gmail push or IMAP IDLE, so Velo does not periodically refresh every account. The account tooltip shows live sync status; a spinning ring means work is in progress and turns red when it fails.",
         tips: [
           { text: "Refresh mail", shortcut: "F5" },
           { text: "Hover the avatar, then click the refresh icon to sync now." },
@@ -1312,7 +1313,7 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         title: "Multiple accounts",
         summary: "Manage Gmail and IMAP accounts side by side.",
         description:
-          "Add and manage multiple email accounts — mix Gmail (OAuth) and IMAP/SMTP accounts freely. Each account has its own inbox, labels, filters, and sync state. Switch between accounts using the account switcher at the top of the sidebar. The active account's email is displayed in the main view. You can add, re-authorize, or remove accounts in Settings. Each account syncs independently on its own 60-second cycle.",
+          "Add and manage multiple email accounts — mix Gmail (OAuth) and IMAP/SMTP accounts freely. Each account has its own inbox, labels, filters, and sync state. Switch between accounts using the account switcher at the top of the sidebar. New changes arrive through Gmail push or IMAP IDLE; when several mailboxes are checked together, the list refreshes once after the complete batch.",
         tips: [
           { text: "Click the account switcher at the top of the sidebar to switch." },
           { text: "Mix Gmail and IMAP accounts — they work side by side." },
@@ -1373,11 +1374,11 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         title: "Manual sync",
         summary: "Trigger an immediate sync of the current folder.",
         description:
-          "Press F5 to immediately sync the current folder or label instead of waiting for the next 60-second background sync cycle. This is useful when you're expecting an email and don't want to wait, or after making changes in another client. For Gmail, this fetches new history changes; for IMAP, it checks for new UIDs in the current folder.",
+          "Press F5 to immediately check the current folder or label. Normal delivery is push-driven, but a manual check is useful after reconnecting or when a provider's push connection is unavailable. For Gmail, this fetches new History API changes; for IMAP, it checks for new UIDs.",
         tips: [
           { text: "Sync current folder", shortcut: "F5" },
-          { text: "Background sync runs every 60 seconds automatically." },
-          { text: "Manual sync is useful when you're expecting a new email." },
+          { text: "Normal delivery is automatic through Gmail push or IMAP IDLE." },
+          { text: "Manual sync is useful after reconnecting or as a fallback." },
         ],
       },
       {

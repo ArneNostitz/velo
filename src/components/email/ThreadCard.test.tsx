@@ -165,5 +165,12 @@ describe("ThreadCard - who spoke last", () => {
       );
       expect(screen.getByTestId("thread-folder")).toHaveTextContent("Receipts");
     });
+
+    it("does not add a redundant Inbox pill", () => {
+      render(
+        <ThreadCard thread={makeThread({ labelIds: ["INBOX"] })} isSelected={false} onClick={onClick} showFolder />,
+      );
+      expect(screen.queryByTestId("thread-folder")).not.toBeInTheDocument();
+    });
   });
 });

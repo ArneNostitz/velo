@@ -10,7 +10,7 @@ import { useLabelStore, type Label } from "@/stores/labelStore";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 import { useSmartFolderStore } from "@/stores/smartFolderStore";
 import { useActiveLabel, useActiveCategory } from "@/hooks/useRouteNavigation";
-import { navigateToLabel } from "@/router/navigate";
+import { navigateToLabel, navigateToSettings } from "@/router/navigate";
 import {
   Inbox,
   MessagesSquare,
@@ -355,6 +355,19 @@ export function Sidebar({ collapsed, onAddAccount }: SidebarProps) {
     setShowSmartFolderModal(true);
   }, []);
 
+  const handleSmartFolderContextMenu = useCallback((
+    e: React.MouseEvent,
+    folder: { id: string; name: string; query: string },
+  ) => {
+    e.preventDefault();
+    openMenu("sidebarSmartFolder", { x: e.clientX, y: e.clientY }, {
+      folderId: folder.id,
+      folderName: folder.name,
+      query: folder.query,
+      onEdit: () => navigateToSettings("mail-rules"),
+    });
+  }, [openMenu]);
+
   const editingLabel = editingLabelId ? labels.find((l) => l.id === editingLabelId) ?? null : null;
 
   return (
@@ -492,6 +505,7 @@ export function Sidebar({ collapsed, onAddAccount }: SidebarProps) {
                 <button
                   key={folder.id}
                   onClick={() => navigateToLabel(`smart-folder:${folder.id}`)}
+                  onContextMenu={(e) => handleSmartFolderContextMenu(e, folder)}
                   title={collapsed ? folder.name : undefined}
                   className={`flex items-center w-full py-2 text-sm transition-colors press-scale ${
                     collapsed ? "justify-center px-0" : "gap-3 px-3 text-left"

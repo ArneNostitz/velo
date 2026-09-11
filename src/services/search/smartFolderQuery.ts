@@ -51,7 +51,9 @@ export function getSmartFolderSearchQuery(
 ): { sql: string; params: unknown[] } {
   const resolved = resolveQueryTokens(rawQuery);
   const parsed = parseSearchQuery(resolved);
-  return buildSearchQuery(parsed, accountId, limit ?? 50);
+  return buildSearchQuery(parsed, accountId, limit ?? 50, {
+    excludeSpamTrash: true,
+  });
 }
 
 /**
@@ -67,7 +69,12 @@ export function getSmartFolderUnreadCount(
 
   // Force unread filter
   const withUnread = { ...parsed, isUnread: true };
-  const { sql: baseSql, params } = buildSearchQuery(withUnread, accountId, 999999);
+  const { sql: baseSql, params } = buildSearchQuery(
+    withUnread,
+    accountId,
+    999999,
+    { excludeSpamTrash: true },
+  );
 
   // Replace SELECT ... FROM with SELECT COUNT(DISTINCT ...) FROM and remove LIMIT
   const countSql = baseSql

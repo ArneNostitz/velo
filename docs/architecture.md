@@ -38,11 +38,11 @@ Velo follows a **three-layer architecture** with clear separation of concerns.
 
 ## Data Flow
 
-1. **Sync** -- Background sync every 60s. Gmail accounts use Gmail History API (delta sync, falls back to full sync if history expires ~30 days). IMAP accounts use UIDVALIDITY/last_uid tracking for efficient delta sync.
+1. **Sync** -- One startup catch-up, then Gmail push / IMAP IDLE / manual checks trigger delta sync. Gmail accounts use Gmail History API (falls back to full sync if history expires ~30 days). IMAP accounts use UIDVALIDITY/last_uid tracking.
 2. **Storage** -- All messages, threads, labels, contacts, calendar events, and AI results stored in local SQLite (34 tables) with FTS5 full-text indexing.
 3. **State** -- Eight Zustand stores manage UI state. No middleware, no persistence needed -- ephemeral state rebuilds from SQLite on startup.
 4. **Rendering** -- Email HTML is sanitized with DOMPurify and rendered in sandboxed iframes. Remote images blocked by default.
-5. **Background services** -- Seven interval checkers run continuously: sync (60s), snooze (60s), scheduled send (60s), follow-up reminders (60s), newsletter bundles (60s), offline queue processor (30s), and attachment pre-cache (15min).
+5. **Background services** -- Mail has no polling timer. Gmail push/IMAP IDLE are event-driven; snooze, scheduled send, follow-up reminders, newsletter bundles, offline queue processing, and attachment pre-cache keep their own due-work intervals.
 6. **Security** -- Phishing link detection scores message links with 10 heuristic rules. SPF/DKIM/DMARC authentication headers parsed and displayed as badges.
 
 ## Project Structure
@@ -203,7 +203,7 @@ Key tables: `accounts` (with `provider`, IMAP/SMTP fields), `messages` (with FTS
 2. Restore persisted settings (theme, sidebar, density, font scale, reading pane, etc.)
 3. Load custom keyboard shortcuts
 4. Initialize email providers for all accounts (Gmail API clients + IMAP providers), sync send-as aliases for Gmail accounts
-5. Start background sync (60s interval), backfill uncategorized threads
+5. Run one mail catch-up, start Gmail push and IMAP IDLE, backfill uncategorized threads
 6. Start background checkers (snooze, scheduled send, follow-up, bundles, queue processor, attachment pre-cache)
 7. Initialize network status detection (online/offline listeners)
 8. Initialize OS notifications

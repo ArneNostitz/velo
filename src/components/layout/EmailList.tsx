@@ -999,7 +999,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
                     onContextMenu={handleThreadContextMenu}
                     category={categoryMap.get(thread.id)}
                     showCategoryBadge={activeLabel === "inbox" && activeCategory === "All"}
-                    showFolder={searchThreadIds !== null || activeLabel === "all"}
+                    showFolder={searchThreadIds !== null || activeLabel === "all" || isSmartFolder}
                     searchExcerpt={searchMatches.get(thread.id)?.excerpt}
                     highlightTerms={searchHighlightTerms}
                     hasFollowUp={followUpThreadIds.has(thread.id)}
