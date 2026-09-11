@@ -11,9 +11,8 @@ import { reportError } from "@/stores/toastStore";
  *
  * The Rust side holds an IMAP IDLE connection per account and emits
  * `velo-idle-activity` when the server speaks. That event is only a doorbell:
- * the sync that answers it is the same one the timer would have run, so a
- * Gmail account keeps using the Gmail API for the actual data and only stops
- * waiting a minute to find out there is any.
+ * the sync that answers it is the normal delta path, so a Gmail account keeps
+ * using the Gmail API for the actual data without polling every mailbox.
  */
 
 /**
@@ -36,8 +35,8 @@ const DEBOUNCE_MS = 3000;
  * lives about an hour, the Rust watcher holds the config it was handed, and
  * the first reconnect after the token expires is refused with
  * `AUTHENTICATIONFAILED`. Rust reads that as permanent and ends the loop, so
- * the account silently drops back to the 60-second poll — which is exactly
- * "instant delivery stopped working overnight". Retrying goes back through
+ * the account would expose the failure and remain available for manual refresh.
+ * Retrying goes back through
  * `startIdleWatcher`, which mints a fresh token, so the first retry normally
  * succeeds. Only when all of these are used up is it worth telling the user.
  */
@@ -100,8 +99,7 @@ export function accountsWithoutIdle(): Set<string> {
  *
  * A Gmail account authorised before the full-mailbox scope was requested has
  * a token IMAP will refuse, and there is no way to tell from here — the
- * connection failing is what says so, and the watcher stops for that account
- * while polling carries on.
+ * connection failing is what says so, and the watcher stops for that account.
  */
 function idleConfigFor(account: DbAccount, accessToken?: string) {
   if (account.provider === "imap") {
@@ -165,7 +163,7 @@ async function startIdleWatcher(account: DbAccount): Promise<void> {
     await invoke("imap_start_idle", { accountId: account.id, config });
     failedAccounts.delete(account.id);
   } catch (err) {
-    // Not fatal: the account keeps syncing on the timer while this retries
+    // Not fatal: retries mint a fresh token; manual refresh remains available.
     failedAccounts.add(account.id);
     console.warn(`IDLE unavailable for ${account.email}:`, err);
     scheduleRetry(account, String(err));

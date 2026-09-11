@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type ContextMenuType = "sidebarLabel" | "sidebarNav" | "thread" | "message" | null;
+export type ContextMenuType = "sidebarLabel" | "sidebarNav" | "sidebarSmartFolder" | "thread" | "message" | null;
 
 interface ContextMenuState {
   menuType: ContextMenuType;

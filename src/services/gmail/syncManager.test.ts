@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock all dependencies before importing the module under test
 vi.mock("./tokenManager", () => ({
@@ -49,10 +49,10 @@ vi.mock("../db/calendarEvents", () => ({
 // Import after mocks
 import {
   syncAccount,
-  startBackgroundSync,
-  stopBackgroundSync,
+  startInitialSync,
   triggerSync,
   onSyncStatus,
+  onSyncBatchComplete,
 } from "./syncManager";
 import { getAccount } from "../db/accounts";
 import { getGmailClient } from "./tokenManager";
@@ -95,7 +95,6 @@ function makeGmailAccount(id: string, historyId: string | null = null) {
 describe("syncManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    stopBackgroundSync();
     mockGetGmailClient.mockResolvedValue(
       {} as ReturnType<typeof getGmailClient> extends Promise<infer T>
         ? T
@@ -103,10 +102,6 @@ describe("syncManager", () => {
     );
     mockInitialSync.mockResolvedValue();
     mockDeltaSync.mockResolvedValue();
-  });
-
-  afterEach(() => {
-    stopBackgroundSync();
   });
 
   describe("syncAccount", () => {
@@ -164,11 +159,11 @@ describe("syncManager", () => {
     });
   });
 
-  describe("startBackgroundSync", () => {
-    it("triggers an immediate sync by default", async () => {
+  describe("startInitialSync", () => {
+    it("triggers one immediate sync", async () => {
       mockGetAccount.mockResolvedValue(makeGmailAccount("a1", "100"));
 
-      startBackgroundSync(["a1"]);
+      startInitialSync(["a1"]);
 
       // Wait for async sync chain to complete
       await wait(50);
@@ -176,71 +171,15 @@ describe("syncManager", () => {
       expect(mockDeltaSync).toHaveBeenCalledTimes(1);
     });
 
-    it("skips immediate sync when skipImmediateSync is true", async () => {
+    it("does not install a periodic polling timer", async () => {
       mockGetAccount.mockResolvedValue(makeGmailAccount("a1", "100"));
+      const intervalSpy = vi.spyOn(globalThis, "setInterval");
 
-      startBackgroundSync(["a1"], true);
-
-      // Wait — no sync should have fired (next interval is 15s away)
+      startInitialSync(["a1"]);
       await wait(50);
 
-      expect(mockDeltaSync).not.toHaveBeenCalled();
-      expect(mockGetAccount).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("new account sync priority", () => {
-    it("new account syncs immediately when background sync skips immediate run", async () => {
-      const existingAccount = makeGmailAccount("existing", "100");
-      const newAccount = makeGmailAccount("new-acc");
-
-      mockGetAccount.mockImplementation(async (id: string) => {
-        if (id === "existing") return existingAccount;
-        if (id === "new-acc") return newAccount;
-        return null;
-      });
-
-      // Simulate the fix: sync new account first, then start background with skipImmediate
-      const syncPromise = syncAccount("new-acc");
-      startBackgroundSync(["existing", "new-acc"], true);
-
-      await syncPromise;
-
-      // The new account got an initial sync immediately
-      expect(mockInitialSync).toHaveBeenCalledTimes(1);
-      // No delta sync ran (background timer hasn't fired)
-      expect(mockDeltaSync).not.toHaveBeenCalled();
-    });
-
-    it("without the fix, new account sync would be blocked by existing account sync", async () => {
-      const existingAccount = makeGmailAccount("existing", "100");
-      const newAccount = makeGmailAccount("new-acc");
-
-      // Track the order of sync calls
-      const syncOrder: string[] = [];
-
-      mockGetAccount.mockImplementation(async (id: string) => {
-        if (id === "existing") return existingAccount;
-        if (id === "new-acc") return newAccount;
-        return null;
-      });
-
-      mockDeltaSync.mockImplementation(async () => {
-        syncOrder.push("delta-existing");
-      });
-      mockInitialSync.mockImplementation(async () => {
-        syncOrder.push("initial-new");
-      });
-
-      // Old behavior: startBackgroundSync first (with immediate sync), then syncAccount
-      // This would queue new-acc behind existing account's delta sync
-      startBackgroundSync(["existing", "new-acc"]);
-
-      // Wait for both to complete
-      await wait(50);
-
-      // existing account's delta sync ran BEFORE new account's initial sync
-      expect(syncOrder).toEqual(["delta-existing", "initial-new"]);
+      expect(intervalSpy).not.toHaveBeenCalled();
+      intervalSpy.mockRestore();
     });
   });
 
@@ -258,6 +197,21 @@ describe("syncManager", () => {
       await triggerSync(["a1", "a2"]);
 
       expect(mockDeltaSync).toHaveBeenCalledTimes(2);
+    });
+
+    it("publishes one completion for the whole account batch", async () => {
+      mockGetAccount.mockImplementation(async (id: string) =>
+        makeGmailAccount(id, "100"),
+      );
+      const completions: string[][] = [];
+      const unsub = onSyncBatchComplete(({ accountIds }) => {
+        completions.push(accountIds);
+      });
+
+      await triggerSync(["a1", "a2", "a3"]);
+      unsub();
+
+      expect(completions).toEqual([["a1", "a2", "a3"]]);
     });
   });
 

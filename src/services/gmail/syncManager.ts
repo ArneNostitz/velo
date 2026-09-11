@@ -7,11 +7,6 @@ import { deleteAllMessagesForAccount } from "../db/messages";
 import { imapInitialSync, imapDeltaSync } from "../imap/imapSync";
 import { clearAllFolderSyncStates } from "../db/folderSyncState";
 import { ensureFreshToken } from "../oauth/oauthTokenManager";
-import { hasCalendarSupport, getCalendarProvider } from "../calendar/providerFactory";
-import { getVisibleCalendars, upsertCalendar, updateCalendarSyncToken } from "../db/calendars";
-import { upsertCalendarEvent, deleteEventByRemoteId } from "../db/calendarEvents";
-
-const SYNC_INTERVAL_MS = 60_000; // 60 seconds — delta syncs are lightweight (single API call when idle)
 
 /** Map IMAP sync phases to the SyncProgress phases the UI understands. */
 function mapImapPhase(phase: string): "labels" | "threads" | "messages" | "done" {
@@ -22,7 +17,6 @@ function mapImapPhase(phase: string): "labels" | "threads" | "messages" | "done"
   return phase as "labels" | "threads" | "messages" | "done";
 }
 
-let syncTimer: ReturnType<typeof setInterval> | null = null;
 let syncPromise: Promise<void> | null = null;
 let pendingAccountIds: string[] | null = null;
 
@@ -34,11 +28,27 @@ export type SyncStatusCallback = (
 ) => void;
 
 let statusCallback: SyncStatusCallback | null = null;
+let batchCompleteCallback: SyncBatchCompleteCallback | null = null;
+
+export interface SyncBatchResult {
+  accountIds: string[];
+  failedAccountIds: string[];
+}
+
+export type SyncBatchCompleteCallback = (result: SyncBatchResult) => void;
 
 export function onSyncStatus(cb: SyncStatusCallback): () => void {
   statusCallback = cb;
   return () => {
     statusCallback = null;
+  };
+}
+
+/** Subscribe to the UI-visible boundary of a sync: once per account batch. */
+export function onSyncBatchComplete(cb: SyncBatchCompleteCallback): () => void {
+  batchCompleteCallback = cb;
+  return () => {
+    batchCompleteCallback = null;
   };
 }
 
@@ -132,87 +142,10 @@ async function syncImapAccount(accountId: string): Promise<void> {
 }
 
 /**
- * Sync calendars for a single account via the CalendarProvider abstraction.
- * Discovers calendars, syncs events for each visible calendar, stores results in DB.
- */
-async function syncCalendarForAccount(accountId: string): Promise<void> {
-  try {
-    const supported = await hasCalendarSupport(accountId);
-    if (!supported) return;
-
-    const provider = await getCalendarProvider(accountId);
-
-    // Discover/update calendars
-    const calendarInfos = await provider.listCalendars();
-    for (const cal of calendarInfos) {
-      await upsertCalendar({
-        accountId,
-        provider: provider.type,
-        remoteId: cal.remoteId,
-        displayName: cal.displayName,
-        color: cal.color,
-        isPrimary: cal.isPrimary,
-      });
-    }
-
-    // Sync events for each visible calendar
-    const visibleCals = await getVisibleCalendars(accountId);
-    for (const cal of visibleCals) {
-      try {
-        const syncResult = await provider.syncEvents(cal.remote_id, cal.sync_token ?? undefined);
-
-        // Upsert created/updated events
-        for (const event of [...syncResult.created, ...syncResult.updated]) {
-          await upsertCalendarEvent({
-            accountId,
-            googleEventId: event.remoteEventId,
-            summary: event.summary,
-            description: event.description,
-            location: event.location,
-            startTime: event.startTime,
-            endTime: event.endTime,
-            isAllDay: event.isAllDay,
-            status: event.status,
-            organizerEmail: event.organizerEmail,
-            attendeesJson: event.attendeesJson,
-            htmlLink: event.htmlLink,
-            calendarId: cal.id,
-            remoteEventId: event.remoteEventId,
-            etag: event.etag,
-            icalData: event.icalData,
-            uid: event.uid,
-          });
-        }
-
-        // Delete removed events
-        for (const remoteId of syncResult.deletedRemoteIds) {
-          await deleteEventByRemoteId(cal.id, remoteId);
-        }
-
-        // Update sync token. `resyncRequired` means the stored token was
-        // refused, so the new one has to be written even when it is null —
-        // leaving the dead token in place is what turned one expired token
-        // into a 410 on every sync, once a minute, for good.
-        if (syncResult.newSyncToken || syncResult.newCtag || syncResult.resyncRequired) {
-          await updateCalendarSyncToken(cal.id, syncResult.newSyncToken, syncResult.newCtag);
-        }
-      } catch (err) {
-        console.warn(`[syncManager] Calendar sync failed for ${cal.display_name ?? cal.remote_id}:`, err);
-      }
-    }
-
-    // Emit event for UI update
-    window.dispatchEvent(new CustomEvent("velo-calendar-sync-done"));
-  } catch (err) {
-    console.warn(`[syncManager] Calendar sync failed for account ${accountId}:`, err);
-  }
-}
-
-/**
  * Run a sync for a single account (initial or delta).
  * Routes to Gmail or IMAP sync based on account provider.
  */
-async function syncAccountInternal(accountId: string): Promise<void> {
+async function syncAccountInternal(accountId: string): Promise<boolean> {
   try {
     const account = await getAccount(accountId);
 
@@ -225,10 +158,8 @@ async function syncAccountInternal(accountId: string): Promise<void> {
     console.log(`[syncManager] Syncing account ${accountId} (provider=${account.provider}, history_id=${account.history_id ?? "null"})`);
 
     if (account.provider === "caldav") {
-      // CalDAV-only accounts — skip email sync, only sync calendar
-      await syncCalendarForAccount(accountId);
-      statusCallback?.(accountId, "done");
-      return;
+      // Calendar-only accounts are synchronized by the Calendar page.
+      return true;
     }
 
     if (account.provider === "imap") {
@@ -241,15 +172,12 @@ async function syncAccountInternal(accountId: string): Promise<void> {
     // Also emit for delta syncs that fell back to initial (recovery re-sync)
     // since those emit progress via statusCallback inside syncImapAccount.
     statusCallback?.(accountId, "done");
-
-    // Sync calendar alongside email (non-blocking — calendar errors don't affect email sync)
-    syncCalendarForAccount(accountId).catch((err) => {
-      console.warn(`[syncManager] Calendar sync error for ${accountId}:`, err);
-    });
+    return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err ?? "Unknown error");
     console.error(`[syncManager] Sync failed for account ${accountId}:`, message);
     statusCallback?.(accountId, "error", undefined, message);
+    return false;
   }
 }
 
@@ -263,13 +191,16 @@ async function runSync(accountIds: string[]): Promise<void> {
   }
 
   syncPromise = (async () => {
+    const failedAccountIds: string[] = [];
     try {
       for (const id of accountIds) {
-        await syncAccountInternal(id);
+        if (!(await syncAccountInternal(id))) failedAccountIds.push(id);
       }
     } finally {
       syncPromise = null;
     }
+
+    batchCompleteCallback?.({ accountIds, failedAccountIds });
 
     // Drain the queue — if something was queued while we were syncing, run it now
     if (pendingAccountIds) {
@@ -290,38 +221,16 @@ export async function syncAccount(accountId: string): Promise<void> {
 }
 
 /**
- * Start the background sync timer for all accounts.
- * When `skipImmediateSync` is true the first periodic sync is deferred to the
- * next interval tick — useful when the caller already triggered a sync for a
- * newly-added account and doesn't want existing accounts to block it.
+ * Catch up once when the app starts. Subsequent Gmail and IMAP work is driven
+ * by the push relay and IDLE notifications, with manual refresh as fallback.
  */
-export function startBackgroundSync(accountIds: string[], skipImmediateSync = false): void {
-  stopBackgroundSync();
-
-  if (!skipImmediateSync) {
-    // Immediate sync
-    runSync(accountIds);
-  }
-
-  // Periodic sync
-  syncTimer = setInterval(() => {
-    runSync(accountIds);
-  }, SYNC_INTERVAL_MS);
-}
-
-/**
- * Stop the background sync timer.
- */
-export function stopBackgroundSync(): void {
-  if (syncTimer) {
-    clearInterval(syncTimer);
-    syncTimer = null;
-  }
+export function startInitialSync(accountIds: string[]): void {
+  void runSync(accountIds);
 }
 
 /**
  * Trigger an immediate sync for all provided accounts.
- * Waits for completion even if a background sync is in progress.
+ * Waits for completion even if another push or manual sync is in progress.
  */
 export async function triggerSync(accountIds: string[]): Promise<void> {
   await runSync(accountIds);

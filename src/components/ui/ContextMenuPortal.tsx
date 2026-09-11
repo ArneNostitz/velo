@@ -94,6 +94,9 @@ export function ContextMenuPortal() {
       {menuType === "sidebarNav" && (
         <SidebarNavMenu position={position} data={data} onClose={closeMenu} />
       )}
+      {menuType === "sidebarSmartFolder" && (
+        <SidebarSmartFolderMenu position={position} data={data} onClose={closeMenu} />
+      )}
       {menuType === "thread" && (
         <ThreadMenu
           position={position}
@@ -119,6 +122,35 @@ export function ContextMenuPortal() {
       )}
     </>
   );
+}
+
+function SidebarSmartFolderMenu({
+  position,
+  data,
+  onClose,
+}: {
+  position: { x: number; y: number };
+  data: Record<string, unknown>;
+  onClose: () => void;
+}) {
+  const query = data["query"] as string | undefined;
+  const onEdit = data["onEdit"] as (() => void) | undefined;
+  const items: ContextMenuItem[] = [
+    {
+      id: "smart-folder-query",
+      label: query ? `Search: ${query}` : "No search query",
+      icon: Code,
+      disabled: true,
+    },
+    { id: "sep-smart-folder", label: "", separator: true },
+    {
+      id: "edit-smart-folder",
+      label: "Edit smart folder setup",
+      icon: Pencil,
+      action: () => onEdit?.(),
+    },
+  ];
+  return <ContextMenu items={items} position={position} onClose={onClose} />;
 }
 
 function SidebarLabelMenu({

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccountStore } from "@/stores/accountStore";
 import { getCalendarEventsInRangeMulti, type DbCalendarEvent } from "@/services/db/calendarEvents";
-import { getVisibleCalendars, getCalendarsForAccount, upsertCalendar, type DbCalendar } from "@/services/db/calendars";
-import { getCalendarProvider, hasCalendarSupport } from "@/services/calendar/providerFactory";
-import { createCalendarEvent, saveProviderCalendarEvent } from "@/services/calendar/createEvent";
+import { getVisibleCalendars, getCalendarsForAccount, type DbCalendar } from "@/services/db/calendars";
+import { hasCalendarSupport } from "@/services/calendar/providerFactory";
+import { createCalendarEvent } from "@/services/calendar/createEvent";
+import { syncCalendarAccount } from "@/services/calendar/syncCalendar";
 import { CalendarToolbar, type CalendarView } from "./CalendarToolbar";
 import { MonthView } from "./MonthView";
 import { WeekView } from "./WeekView";
@@ -61,6 +62,7 @@ export function CalendarPage() {
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const [showCalendarList, setShowCalendarList] = useState(false);
   const [hasCalendar, setHasCalendar] = useState(true);
+  const [syncRevision, setSyncRevision] = useState(0);
   const reauthDoneRef = useRef(false);
 
   const getRange = useCallback((): { start: Date; end: Date } => {
@@ -105,7 +107,6 @@ export function CalendarPage() {
 
   const loadEvents = useCallback(async () => {
     if (!activeAccountId) return;
-    setLoading(true);
 
     const { start, end } = getRange();
     const startTs = Math.floor(start.getTime() / 1000);
@@ -120,80 +121,56 @@ export function CalendarPage() {
     } catch {
       // ignore cache errors
     }
-
-    // Fetch from provider API
-    try {
-      const supported = await hasCalendarSupport(activeAccountId);
-      if (!supported) {
-        setLoading(false);
-        return;
-      }
-
-      const provider = await getCalendarProvider(activeAccountId);
-
-      // Discover/update calendars
-      const providerCalendars = await provider.listCalendars();
-      for (const cal of providerCalendars) {
-        await upsertCalendar({
-          accountId: activeAccountId,
-          provider: provider.type,
-          remoteId: cal.remoteId,
-          displayName: cal.displayName,
-          color: cal.color,
-          isPrimary: cal.isPrimary,
-        });
-      }
-
-      // Reload calendars from DB
-      const allCals = await getCalendarsForAccount(activeAccountId);
-      setCalendars(allCals);
-
-      // Fetch events for visible calendars
-      const visibleCals = await getVisibleCalendars(activeAccountId);
-      for (const cal of visibleCals) {
-        const apiEvents = await provider.fetchEvents(
-          cal.remote_id,
-          start.toISOString(),
-          end.toISOString(),
-        );
-
-        for (const event of apiEvents) {
-          await saveProviderCalendarEvent(activeAccountId, cal.id, event);
-        }
-      }
-
-      // Reload events from DB
-      const calendarIds = visibleCals.map((c) => c.id);
-      const fresh = await getCalendarEventsInRangeMulti(activeAccountId, calendarIds, startTs, endTs);
-      setEvents(fresh);
-      setNeedsReauth(false);
-      setCalendarError(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.includes("403") || message.includes("insufficient")) {
-        if (reauthDoneRef.current) {
-          reauthDoneRef.current = false;
-          setCalendarError(
-            "Calendar access is still denied after re-authorization. " +
-            "Make sure the Google Calendar API is enabled in your Google Cloud Console project. " +
-            "Visit console.cloud.google.com → APIs & Services → Enable the \"Google Calendar API\".",
-          );
-        } else {
-          setNeedsReauth(true);
-        }
-      } else {
-        console.error("Failed to load calendar events:", err);
-      }
-    } finally {
-      setLoading(false);
-    }
   }, [activeAccountId, getRange]);
 
   useEffect(() => {
-    loadCalendars();
-    loadEvents();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAccountId, currentDate, view]);
+    void loadCalendars();
+  }, [loadCalendars, syncRevision]);
+
+  // Date/view navigation is local-only. The remote calendar is synchronized
+  // exactly once when this page opens or the selected calendar account changes.
+  useEffect(() => {
+    void loadEvents();
+  }, [loadEvents, syncRevision]);
+
+  useEffect(() => {
+    if (!activeAccountId) return;
+    let cancelled = false;
+    setLoading(true);
+    void syncCalendarAccount(activeAccountId)
+      .then(() => {
+        if (cancelled) return;
+        setNeedsReauth(false);
+        setCalendarError(null);
+        setSyncRevision((revision) => revision + 1);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // Other calendars may have completed before one failed.
+        setSyncRevision((revision) => revision + 1);
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes("403") || message.includes("insufficient")) {
+          if (reauthDoneRef.current) {
+            reauthDoneRef.current = false;
+            setCalendarError(
+              "Calendar access is still denied after re-authorization. " +
+              "Make sure the Google Calendar API is enabled in your Google Cloud Console project. " +
+              "Visit console.cloud.google.com → APIs & Services → Enable the \"Google Calendar API\".",
+            );
+          } else {
+            setNeedsReauth(true);
+          }
+        } else {
+          setCalendarError(`Calendar sync failed: ${message}`);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAccountId]);
 
   const handlePrev = useCallback(() => {
     setCurrentDate((d) => {
@@ -308,7 +285,14 @@ export function CalendarPage() {
             reauthDoneRef.current = true;
             setNeedsReauth(false);
             setCalendarError(null);
-            loadEvents();
+            if (activeAccountId) {
+              void syncCalendarAccount(activeAccountId)
+                .then(() => setSyncRevision((revision) => revision + 1))
+                .catch((err) => {
+                  const message = err instanceof Error ? err.message : String(err);
+                  setCalendarError(`Calendar sync failed: ${message}`);
+                });
+            }
           }}
         />
       )}

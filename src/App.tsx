@@ -14,10 +14,10 @@ import { runMigrations } from "./services/db/migrations";
 import { getAllAccounts } from "./services/db/accounts";
 import { getSetting } from "./services/db/settings";
 import {
-  startBackgroundSync,
-  stopBackgroundSync,
+  startInitialSync,
   triggerSync,
   onSyncStatus,
+  onSyncBatchComplete,
 } from "./services/gmail/syncManager";
 import { startGmailPushRelay, stopGmailPushRelay } from "./services/gmail/gmailPushRelay";
 import { initializeClients } from "./services/gmail/tokenManager";
@@ -152,7 +152,7 @@ export default function App() {
       setOnline(true);
       triggerQueueFlush();
       const accounts = useAccountStore.getState().accounts;
-      const activeIds = accounts.filter((a) => a.isActive).map((a) => a.id);
+      const activeIds = accounts.filter((a) => a.isActive && a.provider !== "caldav").map((a) => a.id);
       if (activeIds.length > 0) triggerSync(activeIds);
     };
     const handleOffline = () => setOnline(false);
@@ -246,7 +246,7 @@ export default function App() {
     import("@tauri-apps/api/event").then(({ listen }) => {
       listen("tray-check-mail", () => {
         const accounts = useAccountStore.getState().accounts;
-        const activeIds = accounts.filter((a) => a.isActive).map((a) => a.id);
+        const activeIds = accounts.filter((a) => a.isActive && a.provider !== "caldav").map((a) => a.id);
         if (activeIds.length > 0) {
           triggerSync(activeIds);
         }
@@ -420,7 +420,6 @@ export default function App() {
         await initializeClients();
 
         // Fetch send-as aliases for each active email account (skip CalDAV-only)
-        const activeIds = mapped.filter((a) => a.isActive).map((a) => a.id);
         const emailAccountIds = mapped.filter((a) => a.isActive && a.provider !== "caldav").map((a) => a.id);
         for (const accountId of emailAccountIds) {
           try {
@@ -431,14 +430,12 @@ export default function App() {
           }
         }
 
-        // Start background sync for active accounts
-        if (activeIds.length > 0) {
-          startBackgroundSync(activeIds);
+        // Catch up once, then let Gmail push / IMAP IDLE drive mail updates.
+        if (emailAccountIds.length > 0) {
+          startInitialSync(emailAccountIds);
           void startGmailPushRelay();
 
-          // Let the servers say when something changed. The timer stays as
-          // the safety net — IDLE is refused by some accounts and drops on
-          // every sleep, so it shortens the wait rather than replacing it.
+          // Let the servers say when something changed.
           const { startIdleWatchers } = await import("@/services/imap/idleManager");
           startIdleWatchers().catch((err) => {
             console.warn("Could not start IDLE watchers:", err);
@@ -486,7 +483,6 @@ export default function App() {
     init();
 
     return () => {
-      stopBackgroundSync();
       stopGmailPushRelay();
       import("@/services/imap/idleManager")
         .then(({ stopIdleWatchers }) => stopIdleWatchers())
@@ -507,7 +503,7 @@ export default function App() {
   // Listen for sync status updates
   const backfillDoneRef = useRef(false);
   useEffect(() => {
-    const unsub = onSyncStatus((accountId, status, progress, error) => {
+    const unsubStatus = onSyncStatus((_accountId, status, progress, error) => {
       if (status === "syncing") {
         if (progress) {
           if (progress.phase === "messages") {
@@ -531,30 +527,43 @@ export default function App() {
         } else {
           setSyncStatus("Syncing...");
         }
-      } else if (status === "done") {
-        lastIncrementalRefreshRef.current = 0;
-        setSyncStatus("Sync complete");
-        setTimeout(() => setSyncStatus(null), 2_000);
-        window.dispatchEvent(new Event("velo-sync-done"));
-        updateBadgeCount();
-
-        // Backfill uncategorized threads after first successful sync
-        if (!backfillDoneRef.current) {
-          backfillDoneRef.current = true;
-          import("./services/categorization/backfillService")
-            .then(({ backfillUncategorizedThreads }) => backfillUncategorizedThreads(accountId))
-            .catch((err) => console.error("Backfill error:", err));
-        }
       } else if (status === "error") {
         lastIncrementalRefreshRef.current = 0;
         setSyncStatus(error ? `Sync failed: ${formatSyncError(error)}` : "Sync failed");
-        // Still dispatch sync-done so the UI refreshes with any partially stored data
-        window.dispatchEvent(new Event("velo-sync-done"));
         // Auto-clear the error after 8 seconds
         setTimeout(() => setSyncStatus(null), 8_000);
       }
     });
-    return unsub;
+    const unsubBatch = onSyncBatchComplete(({ accountIds, failedAccountIds }) => {
+      lastIncrementalRefreshRef.current = 0;
+      if (failedAccountIds.length === 0) {
+        setSyncStatus("Sync complete");
+        setTimeout(() => setSyncStatus(null), 2_000);
+      }
+      // One store/list refresh for the whole mailbox batch, never one per account.
+      window.dispatchEvent(new Event("velo-sync-done"));
+      void updateBadgeCount();
+
+      // Keep post-sync categorization out of the per-mailbox loop and start it
+      // only after the complete batch has released the mail sync pipeline.
+      if (!backfillDoneRef.current) {
+        const successfulAccountId = accountIds.find(
+          (accountId) => !failedAccountIds.includes(accountId),
+        );
+        if (successfulAccountId) {
+          backfillDoneRef.current = true;
+          import("./services/categorization/backfillService")
+            .then(({ backfillUncategorizedThreads }) =>
+              backfillUncategorizedThreads(successfulAccountId),
+            )
+            .catch((err) => console.error("Backfill error:", err));
+        }
+      }
+    });
+    return () => {
+      unsubStatus();
+      unsubBatch();
+    };
   }, []);
 
   // Sync theme class to <html> element

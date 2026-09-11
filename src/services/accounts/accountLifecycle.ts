@@ -1,14 +1,14 @@
 import { getAllAccounts } from "@/services/db/accounts";
 import { useAccountStore } from "@/stores/accountStore";
 import { initializeClients, getGmailClient } from "@/services/gmail/tokenManager";
-import { startBackgroundSync, syncAccount } from "@/services/gmail/syncManager";
+import { syncAccount } from "@/services/gmail/syncManager";
 import { fetchSendAsAliases } from "@/services/gmail/sendAs";
 
 /**
  * Bring the app up to date after an account was added.
  *
  * Reloads accounts into the store, re-initializes provider clients, kicks off
- * an immediate sync for the new account, and restarts background sync. Shared
+ * an immediate sync for the new mail account. Shared
  * by every entry point that can add an account (sidebar switcher, settings).
  */
 export async function refreshAfterAccountAdded(): Promise<void> {
@@ -29,9 +29,10 @@ export async function refreshAfterAccountAdded(): Promise<void> {
 
   const newest = mapped[mapped.length - 1];
   if (newest) {
-    // Sync the new account immediately — before restarting the background
-    // timer so it doesn't queue behind delta syncs for existing accounts.
-    syncAccount(newest.id);
+    if (newest.provider !== "caldav") {
+      // Calendar-only accounts wait until the Calendar page is opened.
+      void syncAccount(newest.id);
+    }
 
     // Fetch send-as aliases in the background (non-blocking, skip CalDAV-only accounts)
     if (newest.provider !== "caldav") {
@@ -42,9 +43,4 @@ export async function refreshAfterAccountAdded(): Promise<void> {
         );
     }
   }
-
-  // Restart background sync for all accounts, but skip the immediate run
-  // since we already triggered the new account's sync above.
-  const activeIds = mapped.filter((a) => a.isActive).map((a) => a.id);
-  startBackgroundSync(activeIds, true);
 }

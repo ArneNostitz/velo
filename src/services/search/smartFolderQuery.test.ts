@@ -79,6 +79,11 @@ describe("getSmartFolderSearchQuery", () => {
     expect(sql).toContain("m.is_read = 0");
   });
 
+  it("excludes threads in trash or spam", () => {
+    const { sql } = getSmartFolderSearchQuery("is:unread", "acc-1");
+    expect(sql).toContain("excluded.label_id IN ('SPAM','TRASH')");
+  });
+
   it("includes has:attachment filter", () => {
     const { sql } = getSmartFolderSearchQuery("has:attachment", "acc-1");
     expect(sql).toContain("EXISTS (SELECT 1 FROM attachments");
@@ -110,6 +115,11 @@ describe("getSmartFolderUnreadCount", () => {
   it("includes unread filter", () => {
     const { sql } = getSmartFolderUnreadCount("has:attachment", "acc-1");
     expect(sql).toContain("m.is_read = 0");
+  });
+
+  it("excludes trashed and spammed threads from the unread count", () => {
+    const { sql } = getSmartFolderUnreadCount("is:unread", "acc-1");
+    expect(sql).toContain("excluded.label_id IN ('SPAM','TRASH')");
   });
 
   it("does not include LIMIT", () => {
