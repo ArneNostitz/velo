@@ -57,6 +57,35 @@ describe("parseGmailMessage", () => {
     expect(parseGmailMessage(createMockGmailMessage()).mdnReport).toBeNull();
   });
 
+  it("recognises an MDN even when Gmail exposes its report as an attachment", () => {
+    const msg = createMockGmailMessage();
+    msg.payload.parts!.push({
+      partId: "2",
+      mimeType: "message/disposition-notification",
+      filename: "",
+      headers: [],
+      body: { size: 120, attachmentId: "report-part" },
+    });
+
+    expect(parseGmailMessage(msg).mdnReport).toBe("");
+  });
+
+  it("decodes bodies using their declared charset", () => {
+    const msg = createMockGmailMessage();
+    const windows1252 = Uint8Array.from([0x47, 0x72, 0xfc, 0xdf, 0x65]);
+    let binary = "";
+    for (const byte of windows1252) binary += String.fromCharCode(byte);
+    msg.payload.parts![0] = {
+      partId: "0",
+      mimeType: "text/plain",
+      filename: "",
+      headers: [{ name: "Content-Type", value: "text/plain; charset=windows-1252" }],
+      body: { size: windows1252.length, data: btoa(binary) },
+    };
+
+    expect(parseGmailMessage(msg).bodyText).toBe("Grüße");
+  });
+
   it("should detect starred status from STARRED label", () => {
     const starred = parseGmailMessage(
       createMockGmailMessage({ labelIds: ["INBOX", "STARRED"] }),

@@ -23,6 +23,7 @@ describe("emailBuilder", () => {
     expect(decoded).toContain("Subject: Test Subject");
     expect(decoded).toContain("MIME-Version: 1.0");
     expect(decoded).toContain("multipart/alternative");
+    expect(decoded).toContain("Content-Transfer-Encoding: 8bit");
     expect(decoded).toContain("<p>Hello World</p>");
   });
 
@@ -37,6 +38,31 @@ describe("emailBuilder", () => {
     const decoded = decodeBase64Url(raw);
     expect(decoded).toMatch(/Date: .+/);
     expect(decoded).toMatch(/Message-ID: <.+@example\.com>/);
+  });
+
+  it("RFC-encodes non-ASCII subjects so forwarding preserves every language", () => {
+    const raw = buildRawEmail({
+      from: "sender@example.com",
+      to: ["to@example.com"],
+      subject: "Fwd: Konto und Grüße — Привет 你好",
+      htmlBody: "<p>Hallo</p>",
+    });
+
+    const decoded = decodeBase64Url(raw);
+    const header = decoded.match(/^Subject: ([^\r\n]*(?:\r\n [^\r\n]*)*)/m)?.[1] ?? "";
+    expect(header).toContain("=?UTF-8?B?");
+    expect(header).not.toContain("Grüße");
+    const restored = header
+      .replace(/\r\n /g, " ")
+      .split(" ")
+      .map((word) => {
+        const match = word.match(/^=\?UTF-8\?B\?(.+)\?=$/i);
+        if (!match?.[1]) return word;
+        const bytes = Uint8Array.from(atob(match[1]), (c) => c.charCodeAt(0));
+        return new TextDecoder().decode(bytes);
+      })
+      .join("");
+    expect(restored).toBe("Fwd: Konto und Grüße — Привет 你好");
   });
 
   it("includes CC and BCC headers", () => {
