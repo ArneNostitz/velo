@@ -135,11 +135,27 @@ async function dependencyLicenses(inputs) {
   const notices = ["Bundled indexer dependency licenses. Generated from the packages actually included by esbuild."];
   for (const directory of [...packages].sort()) {
     const manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8"));
-    const files = (await readdir(directory)).filter((file) => /^(LICENSE|COPYING|NOTICE)([.-].*)?$/i.test(file));
+    let licenseDirectory = directory;
+    let files = (await readdir(licenseDirectory)).filter((file) => /^(LICENSE|COPYING|NOTICE)([.-].*)?$/i.test(file));
+    if (!files.length && manifest.name === "@selderee/plugin-htmlparser2") {
+      // This package is published from the Selderee monorepo without its own
+      // LICENSE file. Only reuse the installed sibling's text when its pinned
+      // version, SPDX declaration, and source repository all match exactly.
+      const marker = directory.lastIndexOf("/node_modules/");
+      const sibling = join(directory.slice(0, marker + 14), "selderee");
+      const siblingManifest = JSON.parse(await readFile(join(sibling, "package.json"), "utf8"));
+      const repository = (value) => typeof value === "string" ? value : value?.url;
+      if (siblingManifest.version !== manifest.version || siblingManifest.license !== manifest.license ||
+          repository(siblingManifest.repository) !== repository(manifest.repository)) {
+        throw new Error("the Selderee license fallback does not match the bundled plugin");
+      }
+      licenseDirectory = sibling;
+      files = (await readdir(licenseDirectory)).filter((file) => /^(LICENSE|COPYING|NOTICE)([.-].*)?$/i.test(file));
+    }
     if (!files.length) throw new Error("a bundled dependency is missing its license text");
     notices.push(`\n===== ${manifest.name} ${manifest.version} (${manifest.license || "see license"}) =====\n`);
     for (const file of files) {
-      if ((await stat(join(directory, file))).isFile()) notices.push(await readFile(join(directory, file), "utf8"));
+      if ((await stat(join(licenseDirectory, file))).isFile()) notices.push(await readFile(join(licenseDirectory, file), "utf8"));
     }
   }
   return notices.join("\n");
