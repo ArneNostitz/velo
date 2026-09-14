@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Square, X, Copy, ArrowLeft, ArrowRight } from "lucide-react";
+import { Minus, Square, X, Copy } from "lucide-react";
 import { useHistoryNav } from "@/hooks/useHistoryNav";
 
 const isMac = navigator.userAgent.includes("Macintosh");
 
-export function TitleBar() {
+export function WindowControls() {
   const [maximized, setMaximized] = useState(false);
   const { back, forward, canGoBack } = useHistoryNav();
 
@@ -29,61 +29,28 @@ export function TitleBar() {
   return (
     <div
       data-tauri-drag-region
-      className="flex items-center justify-between h-9 bg-sidebar-bg border-b border-border-primary select-none shrink-0"
+      className="flex h-9 items-center justify-center gap-2 select-none"
+      aria-label="Window controls"
     >
-      {/* App title — left side (extra padding on macOS for traffic light buttons) */}
-      <div data-tauri-drag-region className={`flex items-center gap-2 ${isMac ? "pl-20" : "pl-4"}`}>
-        <span data-tauri-drag-region className="text-xs font-semibold text-sidebar-text tracking-wide">
-          Velo Pro
-        </span>
-
-        {/* Step back to the message you were reading before following a link
-            into a past conversation. Two-finger swipe does the same. */}
-        <div className="flex items-center gap-0.5 ml-2">
-          <button
-            onClick={back}
-            disabled={!canGoBack}
-            title="Back (swipe right with two fingers)"
-            className="p-1 rounded text-sidebar-text/70 hover:bg-sidebar-hover disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-          >
-            <ArrowLeft size={14} />
-          </button>
-          <button
-            onClick={forward}
-            title="Forward (swipe left with two fingers)"
-            className="p-1 rounded text-sidebar-text/70 hover:bg-sidebar-hover transition-colors"
-          >
-            <ArrowRight size={14} />
-          </button>
-        </div>
-      </div>
-
-      {/* Window controls — right side (hidden on macOS, uses native traffic lights) */}
+      <button onClick={handleClose} title="Close" className="window-light window-light-close" aria-label="Close window">
+        <X size={9} />
+      </button>
+      <button onClick={handleMinimize} title="Minimize" className="window-light window-light-minimize" aria-label="Minimize window">
+        <Minus size={9} />
+      </button>
+      <button onClick={handleMaximize} title={maximized ? "Restore" : "Maximize"} className="window-light window-light-maximize" aria-label={maximized ? "Restore window" : "Maximize window"}>
+        {maximized ? <Copy size={8} /> : <Square size={8} />}
+      </button>
       {!isMac && (
-        <div className="flex items-center h-full">
-          <button
-            onClick={handleMinimize}
-            className="h-full px-3.5 flex items-center justify-center text-sidebar-text/70 hover:bg-sidebar-hover transition-colors"
-            title="Minimize"
-          >
-            <Minus size={14} />
-          </button>
-          <button
-            onClick={handleMaximize}
-            className="h-full px-3.5 flex items-center justify-center text-sidebar-text/70 hover:bg-sidebar-hover transition-colors"
-            title={maximized ? "Restore" : "Maximize"}
-          >
-            {maximized ? <Copy size={12} /> : <Square size={12} />}
-          </button>
-          <button
-            onClick={handleClose}
-            className="h-full px-3.5 flex items-center justify-center text-sidebar-text/70 hover:bg-danger hover:text-white transition-colors"
-            title="Close"
-          >
-            <X size={14} />
-          </button>
-        </div>
+        <span className="ml-1 text-[0.625rem] font-medium text-text-tertiary">Velo</span>
       )}
+      <div className="sr-only">
+        <button onClick={back} disabled={!canGoBack}>Back</button>
+        <button onClick={forward}>Forward</button>
+      </div>
     </div>
   );
 }
+
+/** Backward-compatible export for pop-out surfaces that still import it. */
+export const TitleBar = WindowControls;

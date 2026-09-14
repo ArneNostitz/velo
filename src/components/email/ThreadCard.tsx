@@ -118,7 +118,7 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
       onContextMenu={handleContextMenu}
       aria-label={`${thread.isRead ? "" : "Unread "}email from ${thread.fromName ?? thread.fromAddress ?? "Unknown"}: ${thread.subject ?? "(No subject)"}`}
       aria-selected={isSelected}
-      className={`relative w-full text-left border-b border-border-secondary group hover-lift press-scale ${
+      className={`relative mx-2 mb-1.5 w-[calc(100%-1rem)] overflow-hidden rounded-xl border border-transparent text-left group hover-lift press-scale transition-[background-color,box-shadow,transform,border-color] duration-200 ${
         isRemoving ? "thread-exit " : ""
       }${
         emailDensity === "compact" ? "px-3 py-1.5" : emailDensity === "spacious" ? "px-4 py-4" : "px-4 py-3"
@@ -126,10 +126,10 @@ export const ThreadCard = memo(function ThreadCard({ thread, isSelected, onClick
         isDragging
           ? "opacity-50"
           : isMultiSelected
-            ? "bg-accent/10"
+            ? "bg-accent/10 border-accent/10"
             : isSelected
-              ? "bg-bg-selected"
-              : "hover:bg-bg-hover"
+              ? "bg-bg-selected border-accent/10 shadow-[0_8px_20px_rgba(79,70,229,0.08)]"
+              : "bg-white/30 hover:bg-white/75 hover:border-white/80 hover:shadow-[0_5px_16px_rgba(80,66,50,0.06)] dark:bg-white/[0.02] dark:hover:bg-white/[0.06]"
       } ${isSpam ? "bg-red-500/8 dark:bg-red-500/10" : ""}`}
     >
       {/* Which mailbox this belongs to — only ambiguous in the unified list */}

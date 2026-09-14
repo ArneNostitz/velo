@@ -214,7 +214,7 @@ export function SearchBar() {
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Search... (from: to: has:attachment)"
-          className="w-full bg-bg-tertiary text-text-primary text-sm pl-8 pr-14 py-1.5 rounded-md border border-border-primary focus:border-accent focus:outline-none placeholder:text-text-tertiary"
+          className="w-full bg-bg-secondary/80 text-text-primary text-sm pl-9 pr-14 py-2.5 rounded-full shadow-[inset_0_1px_1px_rgba(80,66,50,0.06)] focus:bg-white focus:ring-2 focus:ring-accent/15 focus:outline-none placeholder:text-text-tertiary"
         />
         {searchQuery && (
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">

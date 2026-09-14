@@ -68,7 +68,7 @@ import { SettingsDialog } from "./components/settings/SettingsDialog";
 import { getGmailClient } from "./services/gmail/tokenManager";
 import { invoke } from "@tauri-apps/api/core";
 import { DndProvider } from "./components/dnd/DndProvider";
-import { TitleBar } from "./components/layout/TitleBar";
+import { WorkspaceToolbar } from "./components/layout/WorkspaceToolbar";
 import { useShortcutStore } from "./stores/shortcutStore";
 import { getIncompleteTaskCount } from "./services/db/tasks";
 import { useTaskStore } from "./stores/taskStore";
@@ -282,8 +282,8 @@ export default function App() {
 
         // Restore persisted sidebar state
         const savedSidebar = await getSetting("sidebar_collapsed");
-        if (savedSidebar === "true") {
-          ui.setSidebarCollapsed(true);
+        if (savedSidebar === "true" || savedSidebar === "false") {
+          ui.setSidebarCollapsed(savedSidebar === "true");
         }
 
         // Restore contact sidebar visibility
@@ -657,21 +657,18 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden text-text-primary">
+    <div className="app-workspace relative m-3 flex h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[1.75rem] text-text-primary">
       <OfflineBanner />
       <ToastHost />
-      <TitleBar />
-      <div className="flex flex-1 min-w-0 overflow-hidden">
-        <DndProvider>
+      <DndProvider>
+        <WorkspaceToolbar onAddAccount={() => setShowAddAccount(true)} />
+        <div className="canvas-shell flex flex-1 min-w-0 overflow-hidden">
           <ErrorBoundary name="Sidebar">
-            <Sidebar
-              collapsed={sidebarCollapsed}
-              onAddAccount={() => setShowAddAccount(true)}
-            />
+            <Sidebar collapsed={sidebarCollapsed} />
           </ErrorBoundary>
           <Outlet />
-        </DndProvider>
-      </div>
+        </div>
+      </DndProvider>
 
       {showAddAccount && (
         <AddAccount

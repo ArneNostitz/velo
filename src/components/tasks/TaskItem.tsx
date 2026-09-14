@@ -101,12 +101,12 @@ export function TaskItem({
     <div>
       <div
         onClick={() => onSelect?.(task.id)}
-        className={`group flex items-start gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-          isSelected ? "bg-accent/10 border border-accent/20" : "hover:bg-bg-hover border border-transparent"
+        className={`task-row group flex items-start gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 ${
+          isSelected ? "bg-accent/10 border border-accent/20 shadow-[0_6px_18px_rgba(79,70,229,0.08)]" : "hover:bg-white/60 dark:hover:bg-white/5 border border-transparent"
         } ${task.is_completed ? "opacity-60" : ""}`}
       >
         {/* Checkbox */}
-        <button onClick={handleToggle} className="mt-0.5 shrink-0">
+        <button onClick={handleToggle} className="task-check mt-0.5 shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
           {task.is_completed ? (
             <CheckCircle2 size={16} className="text-success" />
           ) : (
@@ -141,7 +141,7 @@ export function TaskItem({
                   onClick={(e) => { e.stopPropagation(); if (onSetDueDate) setPickingDue(true); }}
                   disabled={!onSetDueDate}
                   title={onSetDueDate ? "Change when this is due" : undefined}
-                  className={`inline-flex items-center gap-1 text-[0.6875rem] px-1.5 py-0.5 rounded ${getDueDateColor(task.due_date)} ${onSetDueDate ? "hover:brightness-95" : "cursor-default"}`}
+                  className={`inline-flex items-center gap-1 text-[0.6875rem] px-1.5 py-0.5 rounded-full ${getDueDateColor(task.due_date)} ${onSetDueDate ? "hover:brightness-95" : "cursor-default"}`}
                 >
                   <Calendar size={10} />
                   {formatDueDate(task.due_date)}
@@ -150,7 +150,7 @@ export function TaskItem({
                 <button
                   onClick={(e) => { e.stopPropagation(); setPickingDue(true); }}
                   title="Set a due date"
-                  className="inline-flex items-center gap-1 text-[0.6875rem] px-1.5 py-0.5 rounded text-text-tertiary hover:text-accent hover:bg-bg-hover transition-colors opacity-0 group-hover:opacity-100"
+                  className="inline-flex items-center gap-1 text-[0.6875rem] px-1.5 py-0.5 rounded-full text-text-tertiary hover:text-accent hover:bg-bg-hover transition-colors opacity-0 group-hover:opacity-100"
                 >
                   <Calendar size={10} />
                   Due

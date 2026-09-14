@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg-primary: rgba(250, 250, 249, 0.92);
-  --color-bg-secondary: rgba(245, 245, 244, 0.88);
-  --color-bg-tertiary: rgba(231, 229, 228, 0.88);
-  --color-bg-hover: rgba(231, 229, 228, 0.65);
-  --color-bg-selected: rgba(224, 231, 255, 0.75);
+  --color-bg-primary: rgba(255, 253, 249, 0.94);
+  --color-bg-secondary: rgba(248, 244, 238, 0.9);
+  --color-bg-tertiary: rgba(238, 232, 223, 0.84);
+  --color-bg-hover: rgba(235, 226, 216, 0.7);
+  --color-bg-selected: rgba(231, 232, 255, 0.8);
 
-  --color-text-primary: #1c1917;
-  --color-text-secondary: #57534e;
-  --color-text-tertiary: #78716c;
+  --color-text-primary: #252029;
+  --color-text-secondary: #625b61;
+  --color-text-tertiary: #8a8080;
 
   --color-border-primary: rgba(0, 0, 0, 0.08);
   --color-border-secondary: rgba(0, 0, 0, 0.04);
@@ -22,21 +22,21 @@
   --color-warning: #d97706;
   --color-success: #059669;
 
-  --color-sidebar-bg: rgba(245, 245, 244, 0.95);
-  --color-sidebar-text: #1c1917;
-  --color-sidebar-hover: rgba(231, 229, 228, 0.8);
+  --color-sidebar-bg: rgba(249, 246, 241, 0.96);
+  --color-sidebar-text: #252029;
+  --color-sidebar-hover: rgba(235, 226, 216, 0.82);
   --color-sidebar-active: #4f46e5;
 
   --glass-blur: 20px;
   --glass-blur-heavy: 24px;
   --glass-border: rgba(255, 255, 255, 0.2);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  --glass-shadow-elevated: 0 16px 48px rgba(0, 0, 0, 0.14);
+  --glass-shadow: 0 10px 32px rgba(80, 66, 50, 0.08);
+  --glass-shadow-elevated: 0 18px 54px rgba(80, 66, 50, 0.15);
   --glass-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.4);
   --backdrop-blur-overlay: 16px;
 
   /* Flat window surface the translucent panel tokens sit on */
-  --color-app-bg: #f5f5f4;
+  --color-app-bg: #eee9e2;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -93,11 +93,214 @@ body {
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, sans-serif;
-  background: var(--color-app-bg);
+  background: transparent;
   color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
+}
+
+/* Workspace surfaces give the mail tri-pane layout a softer, deliberately
+   separated feel without changing its data or navigation model. */
+.workspace-canvas {
+  background: transparent;
+}
+
+.workspace-panel {
+  border: 0;
+  border-radius: 1.45rem;
+  box-shadow: 0 12px 34px rgba(19, 25, 33, 0.13), var(--glass-highlight);
+}
+
+.reference-sidebar {
+  position: relative;
+  z-index: 1;
+  --color-sidebar-text: #eef0f7;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.09);
+  --color-sidebar-active: #a5b4fc;
+  box-shadow: none;
+}
+
+.canvas-shell {
+  background: #343c47;
+  box-shadow: none;
+}
+
+.canvas-nav {
+  --color-sidebar-text: #eef0f7;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.09);
+  --color-sidebar-active: #a5b4fc;
+}
+
+.canvas-nav > div > div {
+  padding: 0;
+}
+
+.canvas-nav > div > div > button {
+  color: #eef0f7;
+}
+
+.app-workspace {
+  background: #343c47;
+  box-shadow: 0 20px 60px rgba(9, 13, 18, 0.28);
+}
+
+.workspace-toolbar {
+  --color-sidebar-text: #eef0f7;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.09);
+  background: #343c47;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+}
+
+.workspace-toolbar .window-light {
+  box-shadow: inset 0 0 0 1px rgba(18, 22, 30, 0.15), 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.toolbar-divider {
+  height: 1.5rem;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.toolbar-compose {
+  color: #fff;
+  background: var(--color-accent);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--color-accent) 28%, transparent);
+}
+
+.toolbar-compose:hover { background: var(--color-accent-hover); }
+
+.toolbar-icon-button {
+  display: inline-flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.7rem;
+  color: rgba(238, 240, 247, 0.72);
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.toolbar-icon-button:hover { background: rgba(255, 255, 255, 0.09); color: #fff; }
+.toolbar-icon-button:disabled { cursor: default; opacity: 0.32; }
+
+.workspace-toolbar .relative.p-2 { padding: 0; }
+.workspace-toolbar .relative.p-2 > button { padding: 0.35rem 0.45rem; }
+
+.window-light {
+  display: inline-flex;
+  height: 0.82rem;
+  width: 0.82rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: rgba(45, 36, 33, 0);
+  transition: transform 160ms ease, filter 160ms ease, color 160ms ease;
+}
+
+.window-light:hover {
+  color: rgba(45, 36, 33, 0.74);
+  filter: saturate(1.15) brightness(.96);
+  transform: scale(1.08);
+}
+
+.window-light-close { background: #ff5f57; }
+.window-light-minimize { background: #febc2e; }
+.window-light-maximize { background: #28c840; }
+
+/* The message controls belong to the message, not a separate app header.
+   They stay available as a slim utility rail beside the paper-like reading
+   surface and yield the upper area back to the content. */
+.action-rail {
+  position: absolute;
+  inset: 1.1rem 0.7rem 1.1rem auto;
+  z-index: 10;
+  width: 2.5rem;
+  flex-direction: column;
+  overflow-y: auto;
+  border-radius: 1.25rem;
+  padding: 0.45rem 0.25rem;
+  scrollbar-width: none;
+}
+
+.action-rail::-webkit-scrollbar { display: none; }
+
+.action-rail > div {
+  flex-direction: column;
+}
+
+.action-rail button {
+  border-radius: 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .action-rail {
+    position: static;
+    width: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .action-rail > div { flex-direction: row; }
+  .action-rail .mt-auto { margin-top: 0; margin-left: auto; }
+}
+
+.reference-sidebar button {
+  border-radius: 0.85rem;
+}
+
+.reference-sidebar nav {
+  padding-inline: 0.35rem;
+}
+
+.reference-sidebar nav > div > button,
+.reference-sidebar nav > button {
+  margin-bottom: 0.2rem;
+}
+
+.reference-sidebar nav > div > button:where(.bg-accent\/10),
+.reference-sidebar nav > button:where(.bg-accent\/10) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 9%, transparent);
+}
+
+.dark .workspace-panel {
+  border-color: var(--color-border-primary);
+}
+
+.task-row:hover {
+  transform: translateY(-1px);
+}
+
+.task-check svg {
+  transition: transform 180ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.task-check:hover svg {
+  transform: scale(1.12);
+}
+
+.task-quick-add:focus-within {
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.task-panel-enter {
+  animation: taskPanelEnter 260ms cubic-bezier(.16, 1, .3, 1) both;
+}
+
+@keyframes taskPanelEnter {
+  from { opacity: 0; transform: translateX(16px) scale(.985); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.reduce-motion .task-panel-enter,
+.reduce-motion .task-row,
+.reduce-motion .task-check svg {
+  animation: none;
+  transition: none;
+  transform: none;
 }
 
 /* A thread leaving the list — archive, trash, move. Kept short so the row is

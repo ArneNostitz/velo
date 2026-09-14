@@ -137,7 +137,8 @@ export const useUIStore = create<UIState>((set) => ({
   sendAndArchive: false,
   inboxViewMode: "unified",
   threadViewMode: "classic",
-  taskSidebarVisible: false,
+  // The task companion is part of the focused reading composition.
+  taskSidebarVisible: true,
   sidebarNavConfig: null,
   reduceMotion: false,
   timeFormat: "system",
