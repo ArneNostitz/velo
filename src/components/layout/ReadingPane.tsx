@@ -20,14 +20,14 @@ export function ReadingPane() {
 
   if (!selectedThread) {
     return (
-      <div className="flex-1 flex flex-col bg-bg-primary/50 glass-panel">
+      <div className="workspace-panel flex-1 flex flex-col bg-white glass-panel">
         <EmptyState illustration={ReadingPaneIllustration} title="Velo" subtitle="Select an email to read" />
       </div>
     );
   }
 
   return (
-    <div className="flex-1 bg-bg-primary/50 overflow-hidden glass-panel">
+    <div className="workspace-panel flex-1 bg-white overflow-hidden glass-panel">
       {/* Keyed so switching threads resets per-thread state — an open inline
           reply with text in it must not follow you to the next thread */}
       <ErrorBoundary key={`${selectedThread.accountId}:${selectedThread.id}`} name="Message">

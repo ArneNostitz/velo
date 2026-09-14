@@ -37,7 +37,7 @@ interface ActionBarProps {
 }
 
 function Separator() {
-  return <div className="w-px h-5 bg-border-secondary mx-1 shrink-0" />;
+  return <div className="h-px w-5 bg-border-secondary my-1 shrink-0" />;
 }
 
 export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply", contactSidebarVisible, taskSidebarVisible, onReply, onReplyAll, onForward, onPrint, onExport, onPopOut, onToggleContactSidebar, onToggleTaskSidebar, threadViewMode, onToggleThreadViewMode }: ActionBarProps) {
@@ -229,7 +229,7 @@ export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply
 
   return (
     <>
-      <div className="flex items-center gap-1 px-3 py-3 border-b border-border-secondary bg-bg-secondary">
+      <div className="action-rail flex items-center gap-1 bg-transparent">
         {/* Reply / Forward group */}
         {hasLastMessage && (
           <>
@@ -344,7 +344,7 @@ export function ActionBar({ thread, messages, noReply, defaultReplyMode = "reply
         )}
 
         {/* Spacer */}
-        <div className="ml-auto" />
+        <div className="mt-auto" />
 
         {/* Utility group */}
         {onToggleThreadViewMode && (

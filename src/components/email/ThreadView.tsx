@@ -516,7 +516,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
 
   return (
     <div className="flex h-full @container relative">
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 pr-16">
         {/* Unified action bar */}
         <ActionBar
           thread={thread}
@@ -566,8 +566,8 @@ export function ThreadView({ thread }: ThreadViewProps) {
         )}
 
         {/* Thread subject */}
-        <div className="px-6 py-3 border-b border-border-primary">
-          <h1 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+        <div className="px-10 py-8 bg-gradient-to-br from-white/55 to-transparent dark:from-white/[0.02]">
+          <h1 className="font-serif text-3xl font-semibold tracking-[-0.025em] text-text-primary flex items-center gap-2">
             {thread.subject ?? "(No subject)"}
             {thread.isMuted && (
               <span className="text-warning shrink-0" title="Muted">
@@ -575,7 +575,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
               </span>
             )}
           </h1>
-          <div className="text-xs text-text-tertiary mt-1">
+          <div className="text-xs text-text-tertiary mt-2">
             {messages.length} message{messages.length !== 1 ? "s" : ""} in this thread
           </div>
         </div>
@@ -686,9 +686,18 @@ export function ThreadView({ thread }: ThreadViewProps) {
         </>
       )}
 
-      {/* Task sidebar */}
+      {/* Task companion — a gentle overlay in compact spaces and part of the
+          workspace once there is enough room for the message and the task. */}
       {taskSidebarVisible && threadAccountId && (
-        <TaskSidebar accountId={threadAccountId} threadId={thread.id} />
+        <>
+          <div
+            className="absolute inset-0 z-20 bg-stone-950/15 backdrop-blur-[1px] @[1050px]:hidden"
+            onClick={() => useUIStore.getState().toggleTaskSidebar()}
+          />
+          <div className="task-panel-enter absolute inset-y-2 right-14 z-30 @[1050px]:relative @[1050px]:inset-auto @[1050px]:z-auto @[1050px]:my-2 @[1050px]:mr-2">
+            <TaskSidebar accountId={threadAccountId} threadId={thread.id} />
+          </div>
+        </>
       )}
 
       {/* Raw message source modal */}

@@ -1,10 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { AccountSwitcher } from "../accounts/AccountSwitcher";
 import { LabelForm } from "../labels/LabelForm";
 import { InputDialog } from "../ui/InputDialog";
 import { useUIStore } from "@/stores/uiStore";
-import { useComposerStore } from "@/stores/composerStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { useLabelStore, type Label } from "@/stores/labelStore";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
@@ -47,7 +45,6 @@ import { useTaskStore } from "@/stores/taskStore";
 
 interface SidebarProps {
   collapsed: boolean;
-  onAddAccount: () => void;
 }
 
 export const ALL_NAV_ITEMS: { id: string; label: string; icon: LucideIcon }[] = [
@@ -207,7 +204,7 @@ function getSmartFolderIcon(iconName: string): LucideIcon {
 
 const LABELS_COLLAPSED_COUNT = 3;
 
-export function Sidebar({ collapsed, onAddAccount }: SidebarProps) {
+export function Sidebar({ collapsed }: SidebarProps) {
   const activeLabel = useActiveLabel();
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const sidebarNavConfig = useUIStore((s) => s.sidebarNavConfig);
@@ -216,7 +213,6 @@ export function Sidebar({ collapsed, onAddAccount }: SidebarProps) {
   const inboxViewMode = useUIStore((s) => s.inboxViewMode);
   const setInboxViewMode = useUIStore((s) => s.setInboxViewMode);
   const activeCategory = useActiveCategory();
-  const openComposer = useComposerStore((s) => s.openComposer);
   const activeAccountId = useAccountStore((s) => s.activeAccountId);
   const labels = useLabelStore((s) => s.labels);
   const loadLabels = useLabelStore((s) => s.loadLabels);
@@ -372,20 +368,14 @@ export function Sidebar({ collapsed, onAddAccount }: SidebarProps) {
 
   return (
     <aside
-      className={`no-select flex flex-col bg-sidebar-bg text-sidebar-text border-r border-border-primary transition-all duration-200 glass-panel ${
-        collapsed ? "w-16" : "w-60"
+      className={`reference-sidebar no-select flex flex-col bg-transparent text-sidebar-text transition-all duration-300 ${
+        collapsed ? "w-[4.75rem]" : "w-60"
       }`}
     >
-      <AccountSwitcher collapsed={collapsed} onAddAccount={onAddAccount} />
-
-      {/* Compose button */}
-      <div className="px-3 py-2">
-        <button
-          onClick={() => openComposer()}
-          className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-white rounded-lg py-2 text-sm font-medium interactive-btn"
-        >
-          {collapsed ? <Plus size={16} /> : "Compose"}
-        </button>
+      <div className={`flex h-12 items-center ${collapsed ? "justify-center" : "px-4"}`}>
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-sm font-semibold text-white shadow-sm">
+          V
+        </span>
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2">
@@ -632,7 +622,7 @@ export function Sidebar({ collapsed, onAddAccount }: SidebarProps) {
       </nav>
 
       {/* Bottom bar: Settings + collapse toggle */}
-      <div className={`py-2 border-t border-border-primary flex ${collapsed ? "flex-col items-center gap-1 px-2" : "items-center gap-1 px-3"}`}>
+      <div className={`py-2 flex ${collapsed ? "flex-col items-center gap-1 px-2" : "items-center gap-1 px-3"}`}>
         <button
           onClick={() => navigateToLabel("settings")}
           className={`flex items-center text-sm rounded-md transition-colors ${

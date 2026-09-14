@@ -2,7 +2,6 @@ import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { CSSTransition } from "react-transition-group";
 import { ThreadCard } from "../email/ThreadCard";
 import { CategoryTabs } from "../email/CategoryTabs";
-import { SearchBar } from "../search/SearchBar";
 import { EmailListSkeleton } from "../ui/Skeleton";
 import { useThreadStore, type Thread } from "@/stores/threadStore";
 import { useAccountStore, listedAccountIds } from "@/stores/accountStore";
@@ -114,6 +113,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   const [heldThreadIds, setHeldThreadIds] = useState<Set<string>>(() => new Set());
   const [expandedBundles, setExpandedBundles] = useState<Set<string>>(() => new Set());
   const [bundleSummaries, setBundleSummaries] = useState<Map<string, { count: number; latestSubject: string | null; latestSender: string | null }>>(() => new Map());
+  const [inboxFocus, setInboxFocus] = useState<"all" | "important">("all");
 
   const openMenu = useContextMenuStore((s) => s.openMenu);
   const multiSelectCount = selectedThreadIds.size;
@@ -429,9 +429,14 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
     // Apply read filter
     if (searchThreadIds === null && readFilter === "unread") filtered = filtered.filter((t) => !t.isRead);
     else if (searchThreadIds === null && readFilter === "read") filtered = filtered.filter((t) => t.isRead);
+    // The top-level inbox choice is deliberately simple: everything, or the
+    // conversations the user marked as worth holding on to.
+    if (searchThreadIds === null && activeLabel === "inbox" && inboxFocus === "important") {
+      filtered = filtered.filter((t) => t.isPinned || t.isStarred);
+    }
     // Category filtering is now server-side (Phase 4) — no client-side filter needed
     return filtered;
-  }, [threads, readFilter, searchThreadIds, searchResults]);
+  }, [threads, readFilter, searchThreadIds, searchResults, activeLabel, inboxFocus]);
 
   // Pre-compute bundled category Set for O(1) lookups in filter
   const bundledCategorySet = useMemo(
@@ -744,7 +749,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
   return (
     <div
       ref={listRef}
-      className={`flex flex-col bg-bg-secondary/50 glass-panel ${
+      className={`workspace-panel flex flex-col bg-white glass-panel ${
         readingPanePosition === "right"
           ? "min-w-[240px] shrink-0"
           : readingPanePosition === "bottom"
@@ -753,63 +758,8 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       }`}
       style={readingPanePosition === "right" && width ? { width } : undefined}
     >
-      {/* Search + quick actions on the selected thread */}
-      <div className="px-3 py-2 border-b border-border-secondary flex items-center gap-1">
-        <div className="flex-1 min-w-0">
-          <SearchBar />
-        </div>
-        <button
-          onClick={handleShowAllFromSender}
-          disabled={!selectedThread?.fromAddress}
-          title={
-            selectedThread?.fromAddress && searchQuery === `from:${selectedThread.fromAddress}`
-              ? "Clear this search and go back to the mailbox"
-              : selectedThread?.fromAddress
-                ? `Show all messages from ${selectedThread.fromAddress}`
-                : "Select a thread to search by its sender"
-          }
-          className={`p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${
-            selectedThread?.fromAddress && searchQuery === `from:${selectedThread.fromAddress}`
-              ? "text-accent bg-accent/10 hover:bg-accent/20"
-              : "text-text-tertiary hover:text-text-primary hover:bg-bg-hover"
-          }`}
-        >
-          <UserSearch size={15} />
-        </button>
-        <button
-          onClick={handleQuickUnsubscribe}
-          disabled={!selectedThread}
-          title={
-            unsubStatus === "done"
-              ? "Unsubscribed"
-              : unsubStatus === "none"
-                ? "No unsubscribe link in this thread"
-                : unsubStatus === "failed"
-                  ? "Unsubscribe failed — click to retry"
-                  : selectedThread
-                    ? "Unsubscribe from this sender"
-                    : "Select a thread to unsubscribe"
-          }
-          className={`p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${
-            unsubStatus === "done"
-              ? "text-success"
-              : unsubStatus === "failed" || unsubStatus === "none"
-                ? "text-danger"
-                : "text-text-tertiary hover:text-text-primary hover:bg-bg-hover"
-          }`}
-        >
-          {unsubStatus === "done" ? (
-            <Check size={15} />
-          ) : unsubStatus === "none" ? (
-            <AlertCircle size={15} />
-          ) : (
-            <MailMinus size={15} className={unsubStatus === "loading" ? "animate-pulse" : ""} />
-          )}
-        </button>
-      </div>
-
       {/* Header */}
-      <div className="px-4 py-2 border-b border-border-primary flex items-center justify-between">
+      <div className="px-5 py-3 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-text-primary capitalize flex items-center gap-1.5">
             {isSmartFolder && <FolderSearch size={14} className="text-accent shrink-0" />}
@@ -827,15 +777,88 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
             {filteredThreads.length} conversation{filteredThreads.length !== 1 ? "s" : ""}
           </span>
         </div>
-        <select
-          value={readFilter}
-          onChange={(e) => setReadFilter(e.target.value as "all" | "read" | "unread")}
-          className="text-xs bg-bg-tertiary text-text-secondary px-2 py-1 rounded border border-border-primary"
-        >
-          <option value="all">All</option>
-          <option value="unread">Unread</option>
-          <option value="read">Read</option>
-        </select>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleShowAllFromSender}
+            disabled={!selectedThread?.fromAddress}
+            title={
+              selectedThread?.fromAddress && searchQuery === `from:${selectedThread.fromAddress}`
+                ? "Clear this search and go back to the mailbox"
+                : selectedThread?.fromAddress
+                  ? `Show all messages from ${selectedThread.fromAddress}`
+                  : "Select a thread to search by its sender"
+            }
+            className={`rounded-lg p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              selectedThread?.fromAddress && searchQuery === `from:${selectedThread.fromAddress}`
+                ? "bg-accent/10 text-accent hover:bg-accent/20"
+                : "text-text-tertiary hover:bg-bg-hover hover:text-text-primary"
+            }`}
+          >
+            <UserSearch size={15} />
+          </button>
+          <button
+            onClick={handleQuickUnsubscribe}
+            disabled={!selectedThread}
+            title={
+              unsubStatus === "done"
+                ? "Unsubscribed"
+                : unsubStatus === "none"
+                  ? "No unsubscribe link in this thread"
+                  : unsubStatus === "failed"
+                    ? "Unsubscribe failed — click to retry"
+                    : selectedThread
+                      ? "Unsubscribe from this sender"
+                      : "Select a thread to unsubscribe"
+            }
+            className={`rounded-lg p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              unsubStatus === "done"
+                ? "text-success"
+                : unsubStatus === "failed" || unsubStatus === "none"
+                  ? "text-danger"
+                  : "text-text-tertiary hover:bg-bg-hover hover:text-text-primary"
+            }`}
+          >
+            {unsubStatus === "done" ? (
+              <Check size={15} />
+            ) : unsubStatus === "none" ? (
+              <AlertCircle size={15} />
+            ) : (
+              <MailMinus size={15} className={unsubStatus === "loading" ? "animate-pulse" : ""} />
+            )}
+          </button>
+          {activeLabel === "inbox" && searchThreadIds === null ? (
+          <div className="flex items-center rounded-full bg-bg-tertiary/80 p-1 shadow-[inset_0_1px_1px_rgba(80,66,50,0.06)]">
+            <button
+              onClick={() => setInboxFocus("all")}
+              aria-pressed={inboxFocus === "all"}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                inboxFocus === "all" ? "bg-white text-text-primary shadow-sm" : "text-text-tertiary hover:text-text-secondary"
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setInboxFocus("important")}
+              aria-pressed={inboxFocus === "important"}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                inboxFocus === "important" ? "bg-white text-text-primary shadow-sm" : "text-text-tertiary hover:text-text-secondary"
+              }`}
+            >
+              Important
+            </button>
+          </div>
+          ) : (
+          <select
+            value={readFilter}
+            onChange={(e) => setReadFilter(e.target.value as "all" | "read" | "unread")}
+            className="text-xs bg-bg-tertiary text-text-secondary px-2 py-1 rounded-full border-0"
+          >
+            <option value="all">All</option>
+            <option value="unread">Unread</option>
+            <option value="read">Read</option>
+          </select>
+          )}
+        </div>
       </div>
 
       {/* Category tabs (inbox + split mode only) */}
@@ -906,7 +929,7 @@ export function EmailList({ width, listRef }: { width?: number; listRef?: React.
       </CSSTransition>
 
       {/* Thread list */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto py-2">
         {isLoading && threads.length === 0 ? (
           <EmailListSkeleton />
         ) : filteredThreads.length === 0 && bundleRules.length === 0 ? (
