@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 import { useThreadStore } from "@/stores/threadStore";
 import { useTaskStore } from "@/stores/taskStore";
 import { useAccountStore } from "@/stores/accountStore";
-import { getActiveLabel } from "@/router/navigate";
+import { getActiveLabel, navigateToLabel } from "@/router/navigate";
 import { useComposerStore } from "@/stores/composerStore";
 import { useLabelStore } from "@/stores/labelStore";
 import { archiveThread, trashThread, permanentDeleteThread, markThreadRead, starThread, spamThread, addThreadLabel, removeThreadLabel, runBulkAction, type BulkTarget } from "@/services/emailActions";
@@ -40,6 +40,7 @@ import {
   Code,
   RefreshCw,
   ListTodo,
+  Sparkles,
 } from "lucide-react";
 import { triggerSync } from "@/services/gmail/syncManager";
 import { useUIStore } from "@/stores/uiStore";
@@ -50,6 +51,7 @@ import { confirmDelete } from "@/utils/confirmDelete";
 import { createMailLink } from "@/utils/mailLink";
 import { notify, reportError } from "@/stores/toastStore";
 import { getIncompleteTaskCount, getTasksForThread, insertTask } from "@/services/db/tasks";
+import { extractTask } from "@/services/ai/taskExtraction";
 
 function buildQuote(msg: { from_name: string | null; from_address: string | null; date: string | number; body_html: string | null; body_text: string | null }): string {
   const date = formatDateTime(msg.date);
@@ -843,36 +845,122 @@ function TextSelectionMenu({
   const threadId = data["threadId"] as string | null;
   const text = (data["text"] as string | undefined)?.trim() ?? "";
   const canMakeTask = !!accountId && !!threadId && !!text;
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const [creating, setCreating] = useState<"task" | "ai" | null>(null);
 
-  const items: ContextMenuItem[] = [
-    {
-      id: "make-task",
-      label: "Make Task",
-      icon: ListTodo,
-      disabled: !canMakeTask,
-      action: async () => {
-        if (!accountId || !threadId || !text) return;
-        try {
-          await insertTask({
-            accountId,
-            title: text,
-            threadId,
-            threadAccountId: accountId,
-          });
-          const [count, threadTasks] = await Promise.all([
-            getIncompleteTaskCount(accountId),
-            getTasksForThread(accountId, threadId),
-          ]);
-          useTaskStore.getState().setIncompleteCount(count);
-          useTaskStore.getState().setThreadTasks(threadTasks);
-          window.dispatchEvent(new Event("snd-tasks-changed"));
-          notify("success", "Task created", text);
-        } catch (error) {
-          reportError("Could not create task", error);
-        }
-      },
-    },
-  ];
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!popoverRef.current?.contains(event.target as Node)) onClose();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape, true);
+    };
+  }, [onClose]);
 
-  return <ContextMenu items={items} position={position} onClose={onClose} />;
+  useEffect(() => {
+    const popover = popoverRef.current;
+    if (!popover) return;
+    const rect = popover.getBoundingClientRect();
+    const left = Math.min(Math.max(4, position.x), window.innerWidth - rect.width - 4);
+    const top = Math.min(Math.max(4, position.y + 8), window.innerHeight - rect.height - 4);
+    popover.style.left = `${left}px`;
+    popover.style.top = `${top}px`;
+  }, [position]);
+
+  const createLinkedTask = async (task: {
+    title: string;
+    description?: string | null;
+    priority?: import("@/services/db/tasks").TaskPriority;
+    dueDate?: number | null;
+  }) => {
+    if (!accountId || !threadId) return;
+    const taskId = await insertTask({
+      accountId,
+      threadId,
+      threadAccountId: accountId,
+      ...task,
+    });
+    const [count, threadTasks] = await Promise.all([
+      getIncompleteTaskCount(accountId),
+      getTasksForThread(accountId, threadId),
+    ]);
+    useTaskStore.getState().setIncompleteCount(count);
+    useTaskStore.getState().setThreadTasks(threadTasks);
+    useTaskStore.getState().setSelectedTaskId(taskId);
+    window.dispatchEvent(new Event("snd-tasks-changed"));
+    navigateToLabel("tasks");
+    return taskId;
+  };
+
+  const makeTask = async () => {
+    if (!canMakeTask || creating) return;
+    setCreating("task");
+    try {
+      await createLinkedTask({ title: text });
+      notify("success", "Task created", text);
+      onClose();
+    } catch (error) {
+      reportError("Could not create task", error);
+      setCreating(null);
+    }
+  };
+
+  const makeAiTask = async () => {
+    if (!canMakeTask || creating || !accountId || !threadId) return;
+    setCreating("ai");
+    try {
+      const messages = await getMessagesForThread(accountId, threadId);
+      const extracted = await extractTask(threadId, accountId, messages, text);
+      await createLinkedTask({
+        title: extracted.title,
+        // Preserve the exact selection alongside the AI's concise summary.
+        description: extracted.description
+          ? `${extracted.description}\n\nSelected text: ${text}`
+          : text,
+        priority: extracted.priority,
+        dueDate: extracted.dueDate,
+      });
+      notify("success", "AI task created", extracted.title);
+      onClose();
+    } catch (error) {
+      reportError("Could not create AI task", error);
+      setCreating(null);
+    }
+  };
+
+  return (
+    <div
+      ref={popoverRef}
+      role="group"
+      aria-label="Create task from selected text"
+      className="fixed z-[100] flex items-center overflow-hidden rounded-full border border-border-primary bg-bg-primary shadow-lg"
+      style={{ left: position.x, top: position.y + 8 }}
+    >
+      <button
+        type="button"
+        disabled={!canMakeTask || !!creating}
+        onClick={() => void makeTask()}
+        className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-default disabled:opacity-50"
+      >
+        <ListTodo size={13} />
+        {creating === "task" ? "Creating..." : "Make task"}
+      </button>
+      <span className="h-4 w-px bg-border-secondary" aria-hidden="true" />
+      <button
+        type="button"
+        disabled={!canMakeTask || !!creating}
+        onClick={() => void makeAiTask()}
+        className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-default disabled:opacity-50"
+      >
+        <Sparkles size={13} />
+        {creating === "ai" ? "Building..." : "Make AI task"}
+      </button>
+    </div>
+  );
 }

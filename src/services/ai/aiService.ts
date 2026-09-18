@@ -228,10 +228,16 @@ export async function extractTaskFromThread(
   _threadId: string,
   _accountId: string,
   messages: DbMessage[],
+  selectedText?: string,
 ): Promise<string> {
   const subject = messages[0]?.subject ?? "No subject";
   const formatted = messages.map(formatMessageForSummary).join("\n---\n");
-  const combined = `<email_content>Subject: ${subject}\n\n${formatted}</email_content>`.slice(0, 6000);
+  const selected = selectedText?.trim()
+    ? `\n\n<selected_text>${selectedText.trim()}</selected_text>\nUse the selected text as the task's primary instruction or evidence.`
+    : "";
+  const emailBudget = Math.max(0, 6000 - selected.length);
+  const combined = `<email_content>Subject: ${subject}\n\n${formatted}</email_content>`
+    .slice(0, emailBudget) + selected;
   return callAi(EXTRACT_TASK_PROMPT, combined);
 }
 
