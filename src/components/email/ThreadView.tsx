@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { MessageItem } from "./MessageItem";
+import type { EmailSelectionRequest } from "./EmailRenderer";
 import { ActionBar } from "./ActionBar";
 import { getMessagesForThreads, type DbMessage } from "@/services/db/messages";
 import { useAccountStore } from "@/stores/accountStore";
@@ -434,14 +435,12 @@ export function ThreadView({ thread }: ThreadViewProps) {
     });
   }, [openMenu]);
 
-  const handleSelectionContextMenu = useCallback((msg: DbMessage, request: {
-    position: { x: number; y: number };
-    text: string;
-  }) => {
+  const handleSelectionContextMenu = useCallback((msg: DbMessage, request: EmailSelectionRequest) => {
     openMenu("textSelection", request.position, {
       accountId: msg.account_id,
       threadId: msg.thread_id,
       text: request.text,
+      contextMenu: request.contextMenu,
     });
   }, [openMenu]);
 

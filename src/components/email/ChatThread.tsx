@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { ChatMessage } from "./ChatMessage";
+import type { EmailSelectionRequest } from "./EmailRenderer";
 import type { DbMessage } from "@/services/db/messages";
 
 interface ChatThreadProps {
@@ -11,7 +12,7 @@ interface ChatThreadProps {
   allowlistedSenders?: Set<string>;
   isSpam?: boolean;
   onMessageContextMenu?: (e: React.MouseEvent, message: DbMessage) => void;
-  onSelectionContextMenu?: (message: DbMessage, request: { position: { x: number; y: number }; text: string }) => void;
+  onSelectionContextMenu?: (message: DbMessage, request: EmailSelectionRequest) => void;
   /** Hides the collapse-all bar for nested lists that supply their own. */
   hideToolbar?: boolean;
   /**

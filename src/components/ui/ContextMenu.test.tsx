@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+import { useShortcutStore } from "@/stores/shortcutStore";
+import { getDefaultKeyMap } from "@/constants/shortcuts";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { Archive, Trash2, Star } from "lucide-react";
 
@@ -33,6 +35,7 @@ describe("ContextMenu", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useShortcutStore.setState({ keyMap: getDefaultKeyMap() });
   });
 
   it("should render menu items", () => {
@@ -73,6 +76,17 @@ describe("ContextMenu", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("updates shortcut hints from Settings, including an unassigned shortcut", () => {
+    render(<ContextMenu items={[{ id: "reply", label: "Reply", shortcutId: "action.reply" }]}
+      position={{ x: 20, y: 20 }} onClose={onClose} />);
+    expect(screen.getByText("r")).toBeInTheDocument();
+    act(() => useShortcutStore.setState({ keyMap: { "action.reply": "Ctrl+Shift+R" } }));
+    expect(screen.getByText("Ctrl+Shift+R")).toBeInTheDocument();
+    expect(screen.queryByText("r")).not.toBeInTheDocument();
+    act(() => useShortcutStore.setState({ keyMap: { "action.reply": "" } }));
+    expect(screen.queryByText("Ctrl+Shift+R")).not.toBeInTheDocument();
+  });
+
   it("should not call action on disabled item click", () => {
     render(
       <ContextMenu items={baseItems} position={{ x: 100, y: 100 }} onClose={onClose} />,
@@ -109,7 +123,7 @@ describe("ContextMenu", () => {
     // First ArrowDown should focus "Archive" (index 0)
     fireEvent.keyDown(window, { key: "ArrowDown" });
     const archiveBtn = screen.getByText("Archive").closest("button");
-    expect(archiveBtn?.className).toContain("bg-bg-hover");
+    expect(archiveBtn?.className).toContain("bg-slate-100");
   });
 
   it("should select focused item with Enter", () => {

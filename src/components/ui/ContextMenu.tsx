@@ -2,12 +2,15 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { ChevronRight, Check } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useShortcutStore } from "@/stores/shortcutStore";
+import { menuSurface, menuRow, menuHover, menuActive, menuFont } from "./menuStyles";
 
 export interface ContextMenuItem {
   id: string;
   label: string;
   icon?: LucideIcon;
   shortcut?: string;
+  shortcutId?: string;
   disabled?: boolean;
   danger?: boolean;
   checked?: boolean;
@@ -23,6 +26,7 @@ interface ContextMenuProps {
 }
 
 export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
+  const keyMap = useShortcutStore((state) => state.keyMap);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [submenuOpenId, setSubmenuOpenId] = useState<string | null>(null);
@@ -188,8 +192,8 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
       <div
         ref={menuRef}
         role="menu"
-        className="glass-panel fixed z-[100] min-w-[220px] overflow-hidden rounded-xl border border-white/70 bg-bg-primary/95 py-1.5 shadow-[0_20px_55px_rgba(30,41,59,0.18)] dark:border-white/10"
-        style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
+        className={`${menuSurface} min-w-[208px] max-h-[calc(100vh-16px)] overflow-y-auto`}
+        style={{ ...menuFont, left: adjustedPosition.x, top: adjustedPosition.y }}
       >
         {items.map((item, index) => {
           if (item.separator) {
@@ -197,7 +201,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
               <div
                 key={item.id}
                 role="separator"
-                className="mx-2 my-1.5 border-t border-border-secondary"
+                className="mx-2 my-1 border-t border-slate-200/80 dark:border-slate-700"
               />
             );
           }
@@ -206,6 +210,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
           const isFocused = focusedIndex === index;
           const hasSubmenu = !!item.children;
           const isSubmenuOpen = submenuOpenId === item.id;
+          const shortcut = item.shortcutId ? keyMap[item.shortcutId] : item.shortcut;
 
           return (
             <div key={item.id}>
@@ -219,12 +224,12 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
                 disabled={item.disabled}
                 onClick={() => handleItemClick(item)}
                 onMouseEnter={() => handleMouseEnter(index, item)}
-                className={`mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
+                className={`${menuRow} ${
                   item.disabled
                     ? "text-text-tertiary cursor-default"
                     : item.danger
                       ? `text-danger ${isFocused || isSubmenuOpen ? "bg-danger/10" : ""}`
-                      : `text-text-primary ${isFocused || isSubmenuOpen ? "bg-bg-hover text-accent" : "hover:bg-bg-hover"}`
+                      : isFocused || isSubmenuOpen ? menuActive : menuHover
                 }`}
               >
                 {/* Checkmark or icon column */}
@@ -232,7 +237,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
                   {item.checked != null ? (
                     item.checked ? <Check size={12} /> : null
                   ) : Icon ? (
-                    <Icon size={12} />
+                    <Icon size={14} />
                   ) : null}
                 </span>
 
@@ -242,9 +247,9 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
                   <ChevronRight size={12} className="text-text-tertiary shrink-0" />
                 )}
 
-                {item.shortcut && !hasSubmenu && (
-                  <span className="text-text-tertiary ml-4 shrink-0">
-                    {item.shortcut}
+                {shortcut && !hasSubmenu && (
+                  <span className="ml-5 shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
+                    {shortcut}
                   </span>
                 )}
               </button>
@@ -313,8 +318,8 @@ function Submenu({
       ref={submenuRef}
       role="menu"
       data-submenu-portal
-      className="fixed z-[101] bg-bg-primary border border-border-primary rounded-md shadow-lg py-1 min-w-[180px]"
-      style={{ left: position.left, top: position.top }}
+      className={`${menuSurface} z-[101] min-w-[180px] max-h-[calc(100vh-16px)] overflow-y-auto`}
+      style={{ ...menuFont, left: position.left, top: position.top }}
       onMouseEnter={onMouseEnter}
     >
       {items.map((item) => {
@@ -332,10 +337,10 @@ function Submenu({
                 onClose();
               }
             }}
-            className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors ${
+            className={`${menuRow} ${
               item.disabled
                 ? "text-text-tertiary cursor-default"
-                : "text-text-primary hover:bg-bg-hover"
+                : menuHover
             }`}
           >
             <span className="w-4 h-4 flex items-center justify-center shrink-0">

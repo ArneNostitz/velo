@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Email menu WebKit regression fixture</title></head>
+<body style="background:#eef0f5"><div id="root"></div>
+<script type="module">
+  import React from 'react';
+  import { createRoot } from 'react-dom/client';
+  import { EmailRenderer } from '/src/components/email/EmailRenderer.tsx';
+  import { ContextMenuPortal } from '/src/components/ui/ContextMenuPortal.tsx';
+  import { ContextMenu } from '/src/components/ui/ContextMenu.tsx';
+  import { useContextMenuStore } from '/src/stores/contextMenuStore.ts';
+  import { useShortcutStore } from '/src/stores/shortcutStore.ts';
+  import '/src/styles/globals.css';
+
+  // Synthetic content only; no account is loaded and no mail service is started.
+  const message = { accountId: 'fixture', threadId: 'fixture', messageId: 'fixture', subject: 'Test message' };
+  window.fixtureMenuStore = useContextMenuStore;
+  window.fixtureShortcutStore = useShortcutStore;
+  const h = React.createElement;
+  createRoot(document.getElementById('root')).render(h('main', { style: { padding: 48 } },
+    h('h1', { style: { fontSize: 24, marginBottom: 24 } }, 'Email menus — WebKit regression'),
+    h('section', {
+      style: { marginLeft: 230, padding: 24, background: '#fff', borderRadius: 16 },
+      onContextMenu: e => { e.preventDefault(); useContextMenuStore.getState().openMenu('message', { x:e.clientX, y:e.clientY }, message); },
+    }, h(EmailRenderer, {
+      html: '<p>Send the signed contract today.</p><p>Confirm the appointment for Tuesday.</p>', text: null,
+      onSelectionContextMenu: request => useContextMenuStore.getState().openMenu('textSelection', request.position, { ...message, ...request }),
+    })),
+    h(ContextMenu, { position: { x:48, y:150 }, onClose:()=>{}, items: [
+      { id:'reply', label:'Reply', shortcutId:'action.reply' },
+      { id:'archive', label:'Archive', shortcutId:'action.archive' },
+      { id:'sep', label:'', separator:true },
+      { id:'labels', label:'Apply label', children:[{ id:'label', label:'Follow up' }] },
+    ] }),
+    h(ContextMenuPortal),
+  ));
+</script></body></html>
