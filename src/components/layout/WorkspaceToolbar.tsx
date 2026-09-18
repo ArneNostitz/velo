@@ -22,7 +22,6 @@ export function WorkspaceToolbar({ onAddAccount }: WorkspaceToolbarProps) {
       <div className="shrink-0" data-tauri-drag-region>
         <WindowControls />
       </div>
-      <div className="toolbar-divider" aria-hidden="true" />
       <div className="w-52 shrink-0">
         <AccountSwitcher collapsed={false} onAddAccount={onAddAccount} />
       </div>
@@ -33,7 +32,6 @@ export function WorkspaceToolbar({ onAddAccount }: WorkspaceToolbarProps) {
         <Plus size={16} />
         Compose
       </button>
-      <div className="toolbar-divider" aria-hidden="true" />
       <div className="flex shrink-0 items-center gap-0.5">
         <button
           onClick={back}
