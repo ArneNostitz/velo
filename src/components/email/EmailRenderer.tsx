@@ -283,15 +283,11 @@ export function EmailRenderer({
       if (h > 0) iframe.style.height = h + "px";
     };
 
-    const showSelectionActions = (event: MouseEvent): boolean => {
-      // `doc.open()` may replace an iframe document in WebKit. The listener is
-      // rebound to that replacement document, so use its event target instead
-      // of the document captured before the write.
-      const selectionDocument = event.currentTarget;
-      if (!selectionDocument || typeof (selectionDocument as Document).getSelection !== "function") {
-        return false;
-      }
-      const selection = (selectionDocument as Document).getSelection();
+    const showSelectionActions = (event?: Event): boolean => {
+      // WebKit can replace the iframe document during doc.open()/close(). Read
+      // from the iframe at interaction time, never from a previously captured
+      // document or a browser-specific event target.
+      const selection = iframe.contentDocument?.getSelection();
       const selectedText = selection?.toString().replace(/\s+/g, " ").trim();
       if (!selectedText) return false;
 
@@ -300,13 +296,15 @@ export function EmailRenderer({
       const selectionRect = typeof range?.getBoundingClientRect === "function"
         ? range.getBoundingClientRect()
         : null;
+      const pointer = event && typeof (event as MouseEvent).clientX === "number"
+        ? event as MouseEvent
+        : null;
       selectionContextMenuRef.current?.({
         position: {
-          // Range geometry keeps the prompt next to a keyboard or touch
-          // selection too. JSDOM and hidden frames report zero-sized ranges,
-          // so retain the pointer as a dependable fallback.
-          x: frame.left + (selectionRect?.right || event.clientX),
-          y: frame.top + (selectionRect?.bottom || event.clientY),
+          // Selection-change events cover WebKit and keyboard selection. A
+          // pointer refines the fallback where a hidden range has no geometry.
+          x: frame.left + (selectionRect?.right || pointer?.clientX || 12),
+          y: frame.top + (selectionRect?.bottom || pointer?.clientY || 12),
         },
         text: selectedText,
       });
@@ -322,8 +320,10 @@ export function EmailRenderer({
       if (!activeDocument?.body) return;
       activeDocument.removeEventListener("contextmenu", handleSelectionContextMenu);
       activeDocument.removeEventListener("mouseup", showSelectionActions);
+      activeDocument.removeEventListener("selectionchange", showSelectionActions);
       activeDocument.addEventListener("contextmenu", handleSelectionContextMenu);
       activeDocument.addEventListener("mouseup", showSelectionActions);
+      activeDocument.addEventListener("selectionchange", showSelectionActions);
       highlightSearchTerms(activeDocument.body, highlightTerms ?? []);
       decorateEmailData(activeDocument);
       const actions = instrumentEmailActions(activeDocument, rendererId);
@@ -400,6 +400,7 @@ export function EmailRenderer({
       iframe.removeEventListener("load", bindDocument);
       doc.removeEventListener("contextmenu", handleSelectionContextMenu);
       doc.removeEventListener("mouseup", showSelectionActions);
+      doc.removeEventListener("selectionchange", showSelectionActions);
       observerRef.current?.disconnect();
       cancelAnimationFrame(rafRef.current);
       cancelAnimationFrame(bindRaf);
