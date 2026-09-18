@@ -188,7 +188,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
       <div
         ref={menuRef}
         role="menu"
-        className="fixed z-[100] bg-bg-primary border border-border-primary rounded-md shadow-lg py-1 min-w-[200px]"
+        className="glass-panel fixed z-[100] min-w-[220px] overflow-hidden rounded-xl border border-white/70 bg-bg-primary/95 py-1.5 shadow-[0_20px_55px_rgba(30,41,59,0.18)] dark:border-white/10"
         style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
       >
         {items.map((item, index) => {
@@ -197,7 +197,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
               <div
                 key={item.id}
                 role="separator"
-                className="my-1 border-t border-border-secondary"
+                className="mx-2 my-1.5 border-t border-border-secondary"
               />
             );
           }
@@ -219,12 +219,12 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
                 disabled={item.disabled}
                 onClick={() => handleItemClick(item)}
                 onMouseEnter={() => handleMouseEnter(index, item)}
-                className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                className={`mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
                   item.disabled
                     ? "text-text-tertiary cursor-default"
                     : item.danger
-                      ? `text-danger ${isFocused || isSubmenuOpen ? "bg-bg-hover" : ""}`
-                      : `text-text-primary ${isFocused || isSubmenuOpen ? "bg-bg-hover" : ""}`
+                      ? `text-danger ${isFocused || isSubmenuOpen ? "bg-danger/10" : ""}`
+                      : `text-text-primary ${isFocused || isSubmenuOpen ? "bg-bg-hover text-accent" : "hover:bg-bg-hover"}`
                 }`}
               >
                 {/* Checkmark or icon column */}

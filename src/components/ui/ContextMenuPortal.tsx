@@ -939,14 +939,14 @@ function TextSelectionMenu({
       ref={popoverRef}
       role="group"
       aria-label="Create task from selected text"
-      className="fixed z-[100] flex items-center overflow-hidden rounded-full border border-border-primary bg-bg-primary shadow-lg"
+      className="glass-panel fixed z-[100] flex items-center overflow-hidden rounded-full border border-white/70 bg-bg-primary/95 shadow-[0_16px_42px_rgba(30,41,59,0.18)] dark:border-white/10"
       style={{ left: position.x, top: position.y + 8 }}
     >
       <button
         type="button"
         disabled={!canMakeTask || !!creating}
         onClick={() => void makeTask()}
-        className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-default disabled:opacity-50"
+        className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-default disabled:opacity-50"
       >
         <ListTodo size={13} />
         {creating === "task" ? "Creating..." : "Make task"}
@@ -956,7 +956,7 @@ function TextSelectionMenu({
         type="button"
         disabled={!canMakeTask || !!creating}
         onClick={() => void makeAiTask()}
-        className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-default disabled:opacity-50"
+        className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-default disabled:opacity-50"
       >
         <Sparkles size={13} />
         {creating === "ai" ? "Building..." : "Make AI task"}

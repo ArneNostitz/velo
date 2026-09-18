@@ -196,6 +196,32 @@ describe("EmailRenderer", () => {
     });
   });
 
+  it("offers task actions when the iframe reports a selection change", () => {
+    const onSelectionContextMenu = vi.fn();
+    const { container } = render(
+      <EmailRenderer
+        html="<p>Confirm the appointment for Tuesday</p>"
+        text={null}
+        onSelectionContextMenu={onSelectionContextMenu}
+      />,
+    );
+    const iframe = container.querySelector("iframe")!;
+    const doc = iframe.contentDocument!;
+    const range = doc.createRange();
+    range.selectNodeContents(doc.querySelector("p")!.firstChild!);
+    const selection = doc.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    onSelectionContextMenu.mockClear();
+
+    doc.dispatchEvent(new Event("selectionchange"));
+
+    expect(onSelectionContextMenu).toHaveBeenCalledWith({
+      position: { x: 12, y: 12 },
+      text: "Confirm the appointment for Tuesday",
+    });
+  });
+
   it("keeps scripts disabled and leaves ordinary link destinations intact", () => {
     const { container } = render(<EmailRenderer html='<a target="_blank" href="https://example.com/path">Open</a>' text={null} />);
     const iframe = container.querySelector("iframe")!;
