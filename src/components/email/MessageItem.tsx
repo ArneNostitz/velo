@@ -35,9 +35,10 @@ interface MessageItemProps {
    */
   ownAddresses?: Set<string>;
   onContextMenu?: (e: React.MouseEvent) => void;
+  onSelectionContextMenu?: (request: { position: { x: number; y: number }; text: string }) => void;
 }
 
-export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(function MessageItem({ message, isLast, blockImages, senderAllowlisted, accountId, threadId, isSpam, focused, isSearchMatch, highlightTerms, ownAddresses, onContextMenu }, ref) {
+export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(function MessageItem({ message, isLast, blockImages, senderAllowlisted, accountId, threadId, isSpam, focused, isSearchMatch, highlightTerms, ownAddresses, onContextMenu, onSelectionContextMenu }, ref) {
   const [expanded, setExpanded] = useState(isLast || !!isSearchMatch);
   // Repaint when the 12/24-hour preference changes
   useTimeFormat();
@@ -256,6 +257,7 @@ export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(fun
               inlineAttachments={attachments.filter((a) => a.content_id)}
               scanResult={scanResult}
               highlightTerms={isSearchMatch ? highlightTerms : undefined}
+              onSelectionContextMenu={onSelectionContextMenu}
             />
           ) : (
             <div className="py-8 text-center text-text-tertiary text-sm">Loading...</div>

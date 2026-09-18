@@ -138,6 +138,39 @@ describe("EmailRenderer", () => {
     expect(container.querySelector("iframe")).toBeTruthy();
   });
 
+  it("opens the app context menu request for selected email text", () => {
+    const onSelectionContextMenu = vi.fn();
+    const { container } = render(
+      <EmailRenderer
+        html="<p>Follow up with the venue</p>"
+        text={null}
+        onSelectionContextMenu={onSelectionContextMenu}
+      />,
+    );
+    const iframe = container.querySelector("iframe")!;
+    const doc = iframe.contentDocument!;
+    const text = doc.querySelector("p")!.firstChild!;
+    const range = doc.createRange();
+    range.selectNodeContents(text);
+    const selection = doc.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 24,
+      clientY: 32,
+    });
+    doc.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onSelectionContextMenu).toHaveBeenCalledWith({
+      position: { x: 24, y: 32 },
+      text: "Follow up with the venue",
+    });
+  });
+
   it("keeps scripts disabled and leaves ordinary link destinations intact", () => {
     const { container } = render(<EmailRenderer html='<a target="_blank" href="https://example.com/path">Open</a>' text={null} />);
     const iframe = container.querySelector("iframe")!;

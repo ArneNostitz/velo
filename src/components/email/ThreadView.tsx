@@ -434,6 +434,17 @@ export function ThreadView({ thread }: ThreadViewProps) {
     });
   }, [openMenu]);
 
+  const handleSelectionContextMenu = useCallback((msg: DbMessage, request: {
+    position: { x: number; y: number };
+    text: string;
+  }) => {
+    openMenu("textSelection", request.position, {
+      accountId: msg.account_id,
+      threadId: msg.thread_id,
+      text: request.text,
+    });
+  }, [openMenu]);
+
   const handleExport = useCallback(async () => {
     if (messages.length === 0) return;
     try {
@@ -600,6 +611,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
                 allowlistedSenders={allowlistedSenders}
                 isSpam={isSpam}
                 onMessageContextMenu={handleMessageContextMenu}
+                onSelectionContextMenu={handleSelectionContextMenu}
                 searchMessageIds={searchMatch?.messageIds}
                 highlightTerms={bodySearchTerms}
                 focusedMessageId={messages[focusedMsgIdx]?.id}
@@ -620,6 +632,7 @@ export function ThreadView({ thread }: ThreadViewProps) {
                   isSearchMatch={searchMatch?.messageIds.has(msg.id)}
                   highlightTerms={bodySearchTerms}
                   onContextMenu={(e) => handleMessageContextMenu(e, msg)}
+                  onSelectionContextMenu={(request) => handleSelectionContextMenu(msg, request)}
                 />
               ))
             )}
