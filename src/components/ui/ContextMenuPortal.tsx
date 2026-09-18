@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 import { useThreadStore } from "@/stores/threadStore";
+import { useTaskStore } from "@/stores/taskStore";
 import { useAccountStore } from "@/stores/accountStore";
 import { getActiveLabel } from "@/router/navigate";
 import { useComposerStore } from "@/stores/composerStore";
@@ -38,6 +39,7 @@ import {
   Zap,
   Code,
   RefreshCw,
+  ListTodo,
 } from "lucide-react";
 import { triggerSync } from "@/services/gmail/syncManager";
 import { useUIStore } from "@/stores/uiStore";
@@ -47,6 +49,7 @@ import { recipientHeadersFromMessages } from "@/utils/resolveFromAddress";
 import { confirmDelete } from "@/utils/confirmDelete";
 import { createMailLink } from "@/utils/mailLink";
 import { notify, reportError } from "@/stores/toastStore";
+import { getIncompleteTaskCount, getTasksForThread, insertTask } from "@/services/db/tasks";
 
 function buildQuote(msg: { from_name: string | null; from_address: string | null; date: string | number; body_html: string | null; body_text: string | null }): string {
   const date = formatDateTime(msg.date);
@@ -109,6 +112,9 @@ export function ContextMenuPortal() {
       )}
       {menuType === "message" && (
         <MessageMenu position={position} data={data} onClose={closeMenu} />
+      )}
+      {menuType === "textSelection" && (
+        <TextSelectionMenu position={position} data={data} onClose={closeMenu} />
       )}
       {snoozeTarget && (
         <SnoozeDialog
@@ -819,6 +825,53 @@ function MessageMenu({
           },
         ]
       : []),
+  ];
+
+  return <ContextMenu items={items} position={position} onClose={onClose} />;
+}
+
+function TextSelectionMenu({
+  position,
+  data,
+  onClose,
+}: {
+  position: { x: number; y: number };
+  data: Record<string, unknown>;
+  onClose: () => void;
+}) {
+  const accountId = data["accountId"] as string | null;
+  const threadId = data["threadId"] as string | null;
+  const text = (data["text"] as string | undefined)?.trim() ?? "";
+  const canMakeTask = !!accountId && !!threadId && !!text;
+
+  const items: ContextMenuItem[] = [
+    {
+      id: "make-task",
+      label: "Make Task",
+      icon: ListTodo,
+      disabled: !canMakeTask,
+      action: async () => {
+        if (!accountId || !threadId || !text) return;
+        try {
+          await insertTask({
+            accountId,
+            title: text,
+            threadId,
+            threadAccountId: accountId,
+          });
+          const [count, threadTasks] = await Promise.all([
+            getIncompleteTaskCount(accountId),
+            getTasksForThread(accountId, threadId),
+          ]);
+          useTaskStore.getState().setIncompleteCount(count);
+          useTaskStore.getState().setThreadTasks(threadTasks);
+          window.dispatchEvent(new Event("snd-tasks-changed"));
+          notify("success", "Task created", text);
+        } catch (error) {
+          reportError("Could not create task", error);
+        }
+      },
+    },
   ];
 
   return <ContextMenu items={items} position={position} onClose={onClose} />;

@@ -76,6 +76,11 @@ interface EmailRendererProps {
   scanResult?: MessageScanResult | null;
   /** Free-text terms from the active search, only for a message that matched. */
   highlightTerms?: readonly string[];
+  /** Lets the surrounding message offer Velo actions for selected email text. */
+  onSelectionContextMenu?: (request: {
+    position: { x: number; y: number };
+    text: string;
+  }) => void;
 }
 
 export function EmailRenderer({
@@ -89,6 +94,7 @@ export function EmailRenderer({
   inlineAttachments,
   scanResult,
   highlightTerms,
+  onSelectionContextMenu,
 }: EmailRendererProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -107,6 +113,11 @@ export function EmailRenderer({
     accountId: string;
     calendars: DbCalendar[];
   } | null>(null);
+  const selectionContextMenuRef = useRef(onSelectionContextMenu);
+
+  useEffect(() => {
+    selectionContextMenuRef.current = onSelectionContextMenu;
+  }, [onSelectionContextMenu]);
 
   // Held in a ref so a scan arriving after render does not force the iframe
   // document to be rewritten (which would reset scroll position and images).
@@ -272,9 +283,26 @@ export function EmailRenderer({
       if (h > 0) iframe.style.height = h + "px";
     };
 
+    const handleSelectionContextMenu = (event: MouseEvent) => {
+      const selectedText = doc.getSelection()?.toString().replace(/\s+/g, " ").trim();
+      if (!selectedText) return;
+
+      event.preventDefault();
+      const frame = iframe.getBoundingClientRect();
+      selectionContextMenuRef.current?.({
+        position: {
+          x: frame.left + event.clientX,
+          y: frame.top + event.clientY,
+        },
+        text: selectedText,
+      });
+    };
+
     const bindDocument = () => {
       const activeDocument = iframe.contentDocument;
       if (!activeDocument?.body) return;
+      activeDocument.removeEventListener("contextmenu", handleSelectionContextMenu);
+      activeDocument.addEventListener("contextmenu", handleSelectionContextMenu);
       highlightSearchTerms(activeDocument.body, highlightTerms ?? []);
       decorateEmailData(activeDocument);
       const actions = instrumentEmailActions(activeDocument, rendererId);
@@ -349,6 +377,7 @@ export function EmailRenderer({
 
     return () => {
       iframe.removeEventListener("load", bindDocument);
+      doc.removeEventListener("contextmenu", handleSelectionContextMenu);
       observerRef.current?.disconnect();
       cancelAnimationFrame(rafRef.current);
       cancelAnimationFrame(bindRaf);

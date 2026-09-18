@@ -25,6 +25,7 @@ interface ChatMessageProps {
   isSearchMatch?: boolean;
   highlightTerms?: readonly string[];
   onContextMenu?: (e: React.MouseEvent) => void;
+  onSelectionContextMenu?: (request: { position: { x: number; y: number }; text: string }) => void;
 }
 
 /**
@@ -48,6 +49,7 @@ export const ChatMessage = memo(function ChatMessage({
   isSearchMatch,
   highlightTerms,
   onContextMenu,
+  onSelectionContextMenu,
 }: ChatMessageProps) {
   useTimeFormat();
   const [showFull, setShowFull] = useState(!!isSearchMatch);
@@ -162,6 +164,7 @@ export const ChatMessage = memo(function ChatMessage({
               messageId={message.id}
               inlineAttachments={attachments.filter((a) => a.content_id)}
               highlightTerms={isSearchMatch ? highlightTerms : undefined}
+              onSelectionContextMenu={onSelectionContextMenu}
             />
           ) : (
             <div className="py-4 text-center text-text-tertiary text-xs">Loading...</div>

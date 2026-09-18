@@ -11,6 +11,7 @@ interface ChatThreadProps {
   allowlistedSenders?: Set<string>;
   isSpam?: boolean;
   onMessageContextMenu?: (e: React.MouseEvent, message: DbMessage) => void;
+  onSelectionContextMenu?: (message: DbMessage, request: { position: { x: number; y: number }; text: string }) => void;
   /** Hides the collapse-all bar for nested lists that supply their own. */
   hideToolbar?: boolean;
   /**
@@ -43,6 +44,7 @@ export function ChatThread({
   allowlistedSenders,
   isSpam,
   onMessageContextMenu,
+  onSelectionContextMenu,
   hideToolbar,
   defaultCollapsed = false,
   searchMessageIds,
@@ -116,6 +118,9 @@ export function ChatThread({
             highlightTerms={highlightTerms}
             onContextMenu={
               onMessageContextMenu ? (e) => onMessageContextMenu(e, msg) : undefined
+            }
+            onSelectionContextMenu={
+              onSelectionContextMenu ? (request) => onSelectionContextMenu(msg, request) : undefined
             }
           />
           </div>
