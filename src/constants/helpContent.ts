@@ -1171,10 +1171,11 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         title: "AI task extraction",
         summary: "Press t to extract a task from the current email with AI.",
         description:
-          "When viewing an email thread, press t to have AI analyze the conversation and extract an actionable task. The AI identifies the task title, description, suggested due date, and priority from the email content. A dialog shows the extracted task with editable fields — adjust the title, description, priority, or due date before creating. The task is linked to the email thread so you can always jump back to the original context. Also available from the command palette as 'Create Task from Email (AI)'.",
+          "When viewing an email thread, press t to have AI analyze the conversation and extract an actionable task. You can also highlight a specific instruction in an email and choose Make AI task; the selected text becomes the AI's focus and is retained on the linked task. The AI identifies the task title, description, suggested due date, and priority from the email content.",
         tips: [
           { text: "Extract task from email", shortcut: "t" },
           { text: "Also available in the command palette (Ctrl+K → 'Create Task from Email')." },
+          { text: "Highlight an instruction in an email, then choose Make AI task to turn that exact request into a linked task." },
           { text: "Edit the extracted fields before creating the task." },
           { text: "The task links back to the original email thread." },
           { text: "Requires an active AI provider (Claude, GPT, or Gemini)." },

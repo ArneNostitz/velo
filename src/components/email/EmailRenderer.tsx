@@ -283,26 +283,41 @@ export function EmailRenderer({
       if (h > 0) iframe.style.height = h + "px";
     };
 
-    const handleSelectionContextMenu = (event: MouseEvent) => {
+    const showSelectionActions = (event: MouseEvent) => {
       const selectedText = doc.getSelection()?.toString().replace(/\s+/g, " ").trim();
       if (!selectedText) return;
 
-      event.preventDefault();
       const frame = iframe.getBoundingClientRect();
+      const range = doc.getSelection()?.rangeCount ? doc.getSelection()?.getRangeAt(0) : null;
+      const selectionRect = typeof range?.getBoundingClientRect === "function"
+        ? range.getBoundingClientRect()
+        : null;
       selectionContextMenuRef.current?.({
         position: {
-          x: frame.left + event.clientX,
-          y: frame.top + event.clientY,
+          // Range geometry keeps the prompt next to a keyboard or touch
+          // selection too. JSDOM and hidden frames report zero-sized ranges,
+          // so retain the pointer as a dependable fallback.
+          x: frame.left + (selectionRect?.right || event.clientX),
+          y: frame.top + (selectionRect?.bottom || event.clientY),
         },
         text: selectedText,
       });
+    };
+
+    const handleSelectionContextMenu = (event: MouseEvent) => {
+      const selectedText = doc.getSelection()?.toString().replace(/\s+/g, " ").trim();
+      if (!selectedText) return;
+      event.preventDefault();
+      showSelectionActions(event);
     };
 
     const bindDocument = () => {
       const activeDocument = iframe.contentDocument;
       if (!activeDocument?.body) return;
       activeDocument.removeEventListener("contextmenu", handleSelectionContextMenu);
+      activeDocument.removeEventListener("mouseup", showSelectionActions);
       activeDocument.addEventListener("contextmenu", handleSelectionContextMenu);
+      activeDocument.addEventListener("mouseup", showSelectionActions);
       highlightSearchTerms(activeDocument.body, highlightTerms ?? []);
       decorateEmailData(activeDocument);
       const actions = instrumentEmailActions(activeDocument, rendererId);
@@ -378,6 +393,7 @@ export function EmailRenderer({
     return () => {
       iframe.removeEventListener("load", bindDocument);
       doc.removeEventListener("contextmenu", handleSelectionContextMenu);
+      doc.removeEventListener("mouseup", showSelectionActions);
       observerRef.current?.disconnect();
       cancelAnimationFrame(rafRef.current);
       cancelAnimationFrame(bindRaf);

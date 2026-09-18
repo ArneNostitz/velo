@@ -18,8 +18,9 @@ export async function extractTask(
   threadId: string,
   accountId: string,
   messages: DbMessage[],
+  selectedText?: string,
 ): Promise<ExtractedTask> {
-  const raw = await aiExtract(threadId, accountId, messages);
+  const raw = await aiExtract(threadId, accountId, messages, selectedText);
 
   try {
     // Extract JSON from potential markdown code fences

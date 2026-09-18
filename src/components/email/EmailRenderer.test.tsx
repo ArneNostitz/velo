@@ -171,6 +171,31 @@ describe("EmailRenderer", () => {
     });
   });
 
+  it("offers task actions as soon as email text is selected", () => {
+    const onSelectionContextMenu = vi.fn();
+    const { container } = render(
+      <EmailRenderer
+        html="<p>Send the signed contract today</p>"
+        text={null}
+        onSelectionContextMenu={onSelectionContextMenu}
+      />,
+    );
+    const iframe = container.querySelector("iframe")!;
+    const doc = iframe.contentDocument!;
+    const range = doc.createRange();
+    range.selectNodeContents(doc.querySelector("p")!.firstChild!);
+    const selection = doc.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    doc.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 18, clientY: 26 }));
+
+    expect(onSelectionContextMenu).toHaveBeenCalledWith({
+      position: { x: 18, y: 26 },
+      text: "Send the signed contract today",
+    });
+  });
+
   it("keeps scripts disabled and leaves ordinary link destinations intact", () => {
     const { container } = render(<EmailRenderer html='<a target="_blank" href="https://example.com/path">Open</a>' text={null} />);
     const iframe = container.querySelector("iframe")!;

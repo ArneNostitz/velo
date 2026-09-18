@@ -56,6 +56,21 @@ describe("taskExtraction", () => {
     expect(result.priority).toBe("high");
   });
 
+  it("passes selected text to the AI as the task focus", async () => {
+    vi.mocked(extractTaskFromThread).mockResolvedValue(
+      '{"title": "Send contract", "description": "Use the selected request", "dueDate": null, "priority": "high"}',
+    );
+
+    await extractTask("t1", "acc1", [makeMessage()], "Send the signed contract today");
+
+    expect(extractTaskFromThread).toHaveBeenCalledWith(
+      "t1",
+      "acc1",
+      [expect.objectContaining({ id: "msg1" })],
+      "Send the signed contract today",
+    );
+  });
+
   it("handles JSON wrapped in markdown code fences", async () => {
     vi.mocked(extractTaskFromThread).mockResolvedValue(
       '```json\n{"title": "Review document", "description": null, "dueDate": null, "priority": "medium"}\n```',
