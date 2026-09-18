@@ -283,12 +283,20 @@ export function EmailRenderer({
       if (h > 0) iframe.style.height = h + "px";
     };
 
-    const showSelectionActions = (event: MouseEvent) => {
-      const selectedText = doc.getSelection()?.toString().replace(/\s+/g, " ").trim();
-      if (!selectedText) return;
+    const showSelectionActions = (event: MouseEvent): boolean => {
+      // `doc.open()` may replace an iframe document in WebKit. The listener is
+      // rebound to that replacement document, so use its event target instead
+      // of the document captured before the write.
+      const selectionDocument = event.currentTarget;
+      if (!selectionDocument || typeof (selectionDocument as Document).getSelection !== "function") {
+        return false;
+      }
+      const selection = (selectionDocument as Document).getSelection();
+      const selectedText = selection?.toString().replace(/\s+/g, " ").trim();
+      if (!selectedText) return false;
 
       const frame = iframe.getBoundingClientRect();
-      const range = doc.getSelection()?.rangeCount ? doc.getSelection()?.getRangeAt(0) : null;
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
       const selectionRect = typeof range?.getBoundingClientRect === "function"
         ? range.getBoundingClientRect()
         : null;
@@ -302,13 +310,11 @@ export function EmailRenderer({
         },
         text: selectedText,
       });
+      return true;
     };
 
     const handleSelectionContextMenu = (event: MouseEvent) => {
-      const selectedText = doc.getSelection()?.toString().replace(/\s+/g, " ").trim();
-      if (!selectedText) return;
-      event.preventDefault();
-      showSelectionActions(event);
+      if (showSelectionActions(event)) event.preventDefault();
     };
 
     const bindDocument = () => {
