@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { CalendarPlus, Copy, ExternalLink, MapPin, MessageSquare, Phone, UserPlus, X } from "lucide-react";
 import type { EmailDataAction } from "@/utils/emailDataActions";
+import { menuSurface, menuRow, menuHover, menuFont } from "@/components/ui/menuStyles";
 
 interface EmailDataActionMenuProps {
   action: EmailDataAction;
@@ -25,7 +26,7 @@ function ActionButton({ icon: Icon, label, onClick }: ActionButtonProps) {
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-text-primary hover:bg-bg-hover transition-colors"
+      className={`${menuRow} ${menuHover}`}
     >
       <Icon size={14} className="text-text-tertiary shrink-0" />
       {label}
@@ -79,8 +80,8 @@ export function EmailDataActionMenu({
       ref={panelRef}
       role="menu"
       aria-label={`Actions for ${action.label}`}
-      className="fixed z-[100] w-60 overflow-hidden rounded-lg border border-border-primary bg-bg-primary glass-panel shadow-xl"
-      style={safePosition}
+      className={`${menuSurface} w-60 overflow-hidden`}
+      style={{ ...menuFont, ...safePosition }}
     >
       <div className="flex items-start gap-2 border-b border-border-primary px-3 py-2">
         <p className="min-w-0 flex-1 whitespace-normal break-words text-xs font-medium text-text-primary">

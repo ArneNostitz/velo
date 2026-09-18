@@ -32,6 +32,13 @@ import {
   registerEmailNavigationHandler,
 } from "@/services/links/emailNavigation";
 import { highlightSearchTerms } from "@/utils/searchHighlight";
+import { EMAIL_FRAME_CSP, EMAIL_FRAME_SANDBOX } from "@/utils/emailFramePolicy";
+
+export interface EmailSelectionRequest {
+  position: { x: number; y: number };
+  text: string;
+  contextMenu?: boolean;
+}
 
 /**
  * Match a clicked anchor against the pre-computed scan results.
@@ -77,10 +84,7 @@ interface EmailRendererProps {
   /** Free-text terms from the active search, only for a message that matched. */
   highlightTerms?: readonly string[];
   /** Lets the surrounding message offer Velo actions for selected email text. */
-  onSelectionContextMenu?: (request: {
-    position: { x: number; y: number };
-    text: string;
-  }) => void;
+  onSelectionContextMenu?: (request: EmailSelectionRequest) => void;
 }
 
 export function EmailRenderer({
@@ -276,6 +280,7 @@ export function EmailRenderer({
     if (!doc) return;
 
     let bindRaf = 0;
+    let boundDocument: Document | null = null;
 
     const applyHeight = (activeDocument: Document) => {
       if (!activeDocument.body) return;
@@ -289,7 +294,7 @@ export function EmailRenderer({
       // document or a browser-specific event target.
       const selection = iframe.contentDocument?.getSelection();
       const selectedText = selection?.toString().replace(/\s+/g, " ").trim();
-      if (!selectedText) return false;
+      if (!selectedText || !selectionContextMenuRef.current) return false;
 
       const frame = iframe.getBoundingClientRect();
       const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
@@ -307,23 +312,52 @@ export function EmailRenderer({
           y: frame.top + (selectionRect?.bottom || pointer?.clientY || 12),
         },
         text: selectedText,
+        ...(event?.type === "contextmenu" ? { contextMenu: true } : {}),
       });
       return true;
     };
 
     const handleSelectionContextMenu = (event: MouseEvent) => {
-      if (showSelectionActions(event)) event.preventDefault();
+      if (showSelectionActions(event)) {
+        event.preventDefault();
+      } else {
+        // DOM events do not bubble out of an iframe. Forward body clicks to the
+        // same React message menu used by its header, in parent coordinates.
+        const rect = iframe.getBoundingClientRect();
+        const forwarded = new MouseEvent("contextmenu", {
+          bubbles: true, cancelable: true,
+          clientX: rect.left + event.clientX, clientY: rect.top + event.clientY,
+        });
+        if (!iframe.dispatchEvent(forwarded)) event.preventDefault();
+      }
+    };
+
+    const handlePointerDown = () => {
+      // Dismiss another message/list menu when entering the email document.
+      iframe.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    };
+    const unbindDocument = () => {
+      boundDocument?.removeEventListener("contextmenu", handleSelectionContextMenu);
+      boundDocument?.removeEventListener("mouseup", showSelectionActions);
+      boundDocument?.removeEventListener("selectionchange", showSelectionActions);
+      boundDocument?.removeEventListener("mousedown", handlePointerDown);
+      boundDocument?.removeEventListener("keydown", handleKeyDown);
     };
 
     const bindDocument = () => {
       const activeDocument = iframe.contentDocument;
       if (!activeDocument?.body) return;
-      activeDocument.removeEventListener("contextmenu", handleSelectionContextMenu);
-      activeDocument.removeEventListener("mouseup", showSelectionActions);
-      activeDocument.removeEventListener("selectionchange", showSelectionActions);
+      unbindDocument();
+      boundDocument = activeDocument;
       activeDocument.addEventListener("contextmenu", handleSelectionContextMenu);
       activeDocument.addEventListener("mouseup", showSelectionActions);
       activeDocument.addEventListener("selectionchange", showSelectionActions);
+      activeDocument.addEventListener("mousedown", handlePointerDown);
+      activeDocument.addEventListener("keydown", handleKeyDown);
       highlightSearchTerms(activeDocument.body, highlightTerms ?? []);
       decorateEmailData(activeDocument);
       const actions = instrumentEmailActions(activeDocument, rendererId);
@@ -354,6 +388,7 @@ export function EmailRenderer({
     doc.write(`<!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Security-Policy" content="${EMAIL_FRAME_CSP}">
   <style>
     body {
       margin: 0;
@@ -398,9 +433,7 @@ export function EmailRenderer({
 
     return () => {
       iframe.removeEventListener("load", bindDocument);
-      doc.removeEventListener("contextmenu", handleSelectionContextMenu);
-      doc.removeEventListener("mouseup", showSelectionActions);
-      doc.removeEventListener("selectionchange", showSelectionActions);
+      unbindDocument();
       observerRef.current?.disconnect();
       cancelAnimationFrame(rafRef.current);
       cancelAnimationFrame(bindRaf);
@@ -521,7 +554,7 @@ export function EmailRenderer({
       )}
       <iframe
         ref={iframeRef}
-        sandbox="allow-same-origin allow-top-navigation-by-user-activation"
+        sandbox={EMAIL_FRAME_SANDBOX}
         className={`w-full border-0 ${isDark && !isPlainText ? "rounded-md" : ""}`}
         style={{ overflow: "hidden" }}
         title="Email content"

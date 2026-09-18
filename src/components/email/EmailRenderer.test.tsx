@@ -168,6 +168,7 @@ describe("EmailRenderer", () => {
     expect(onSelectionContextMenu).toHaveBeenCalledWith({
       position: { x: 24, y: 32 },
       text: "Follow up with the venue",
+      contextMenu: true,
     });
   });
 
@@ -222,12 +223,28 @@ describe("EmailRenderer", () => {
     });
   });
 
-  it("keeps scripts disabled and leaves ordinary link destinations intact", () => {
+  it("blocks email scripts through CSP before message markup and preserves link destinations", () => {
     const { container } = render(<EmailRenderer html='<a target="_blank" href="https://example.com/path">Open</a>' text={null} />);
     const iframe = container.querySelector("iframe")!;
-    expect(iframe.getAttribute("sandbox")).toBe("allow-same-origin allow-top-navigation-by-user-activation");
+    expect(iframe.getAttribute("sandbox")).toBe("allow-same-origin allow-scripts allow-top-navigation-by-user-activation");
+    const policy = iframe.contentDocument!.head.firstElementChild!;
+    expect(policy.tagName).toBe("META");
+    expect(policy.getAttribute("content")).toContain("script-src 'none'");
     expect(iframe.contentDocument!.querySelector("script")).toBeNull();
     expect(iframe.contentDocument!.querySelector("a")!.getAttribute("href")).toBe("https://example.com/path");
+  });
+
+  it("forwards an unselected body context menu to the message with parent coordinates", () => {
+    const onContextMenu = vi.fn((event: React.MouseEvent) => event.preventDefault());
+    const { container } = render(<div onContextMenu={onContextMenu}>
+      <EmailRenderer html="<p>Message body</p>" text={null} />
+    </div>);
+    const iframe = container.querySelector("iframe")!;
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue({ left: 200, top: 100 } as DOMRect);
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 20, clientY: 30 });
+    iframe.contentDocument!.body.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(onContextMenu).toHaveBeenCalledWith(expect.objectContaining({ clientX: 220, clientY: 130 }));
   });
 
   it("positions the menu beside the full address inside the iframe", () => {

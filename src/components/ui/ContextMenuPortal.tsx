@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { menuSurface, menuRow, menuHover, menuFont } from "./menuStyles";
 import { useContextMenuStore } from "@/stores/contextMenuStore";
 import { useThreadStore } from "@/stores/threadStore";
 import { useTaskStore } from "@/stores/taskStore";
@@ -504,7 +505,7 @@ function ThreadMenu({
       id: "reply",
       label: "Reply",
       icon: Reply,
-      shortcut: "r",
+      shortcutId: "action.reply",
       disabled: isMulti,
       action: handleReply,
     },
@@ -512,7 +513,7 @@ function ThreadMenu({
       id: "reply-all",
       label: "Reply All",
       icon: ReplyAll,
-      shortcut: "a",
+      shortcutId: "action.replyAll",
       disabled: isMulti,
       action: handleReplyAll,
     },
@@ -520,7 +521,7 @@ function ThreadMenu({
       id: "forward",
       label: "Forward",
       icon: Forward,
-      shortcut: "f",
+      shortcutId: "action.forward",
       disabled: isMulti,
       action: handleForward,
     },
@@ -529,14 +530,14 @@ function ThreadMenu({
       id: "archive",
       label: "Archive",
       icon: Archive,
-      shortcut: "e",
+      shortcutId: "action.archive",
       action: handleArchive,
     },
     {
       id: "delete",
       label: isTrashView ? "Delete Permanently" : "Delete",
       icon: Trash2,
-      shortcut: "#",
+      shortcutId: "action.delete",
       danger: isTrashView,
       action: handleDelete,
     },
@@ -550,7 +551,7 @@ function ThreadMenu({
       id: "toggle-star",
       label: isStarred ? "Unstar" : "Star",
       icon: Star,
-      shortcut: "s",
+      shortcutId: "action.star",
       action: handleToggleStar,
     },
     { id: "sep-2", label: "", separator: true },
@@ -558,28 +559,27 @@ function ThreadMenu({
       id: "snooze",
       label: "Snooze...",
       icon: Clock,
-      shortcut: "h",
       action: handleSnooze,
     },
     {
       id: "toggle-pin",
       label: isPinned ? "Unpin" : "Pin",
       icon: Pin,
-      shortcut: "p",
+      shortcutId: "action.pin",
       action: handleTogglePin,
     },
     {
       id: "toggle-mute",
       label: isMuted ? "Unmute" : "Mute",
       icon: VolumeX,
-      shortcut: "m",
+      shortcutId: "action.mute",
       action: handleToggleMute,
     },
     {
       id: "spam",
       label: isSpamView ? "Not Spam" : "Report Spam",
       icon: Ban,
-      shortcut: "!",
+      shortcutId: "action.spam",
       action: handleSpam,
     },
     { id: "sep-3", label: "", separator: true },
@@ -595,7 +595,7 @@ function ThreadMenu({
       id: "move-to-folder",
       label: "Move to Folder",
       icon: FolderInput,
-      shortcut: "v",
+      shortcutId: "action.moveToFolder",
       action: () => {
         window.dispatchEvent(new CustomEvent("velo-move-to-folder", { detail: { threadIds: [...targetIds] } }));
       },
@@ -762,21 +762,21 @@ function MessageMenu({
       id: "reply",
       label: "Reply",
       icon: Reply,
-      shortcut: "r",
+      shortcutId: "action.reply",
       action: handleReply,
     },
     {
       id: "reply-all",
       label: "Reply All",
       icon: ReplyAll,
-      shortcut: "a",
+      shortcutId: "action.replyAll",
       action: handleReplyAll,
     },
     {
       id: "forward",
       label: "Forward",
       icon: Forward,
-      shortcut: "f",
+      shortcutId: "action.forward",
       action: handleForward,
     },
     { id: "sep-1", label: "", separator: true },
@@ -845,10 +845,12 @@ function TextSelectionMenu({
   const threadId = data["threadId"] as string | null;
   const text = (data["text"] as string | undefined)?.trim() ?? "";
   const canMakeTask = !!accountId && !!threadId && !!text;
+  const isContextMenu = data["contextMenu"] === true;
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [creating, setCreating] = useState<"task" | "ai" | null>(null);
 
   useEffect(() => {
+    if (isContextMenu) return;
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (!popoverRef.current?.contains(event.target as Node)) onClose();
     };
@@ -861,7 +863,7 @@ function TextSelectionMenu({
       document.removeEventListener("mousedown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape, true);
     };
-  }, [onClose]);
+  }, [onClose, isContextMenu]);
 
   useEffect(() => {
     const popover = popoverRef.current;
@@ -934,19 +936,33 @@ function TextSelectionMenu({
     }
   };
 
+  if (isContextMenu) {
+    return <ContextMenu position={position} onClose={onClose} items={[
+      { id: "copy-selection", label: "Copy", icon: Copy, action: () => {
+        void import("@tauri-apps/plugin-clipboard-manager")
+          .then(({ writeText }) => writeText(text))
+          .catch((error) => reportError("Could not copy", error));
+      } },
+      { id: "selection-divider", label: "", separator: true },
+      { id: "make-task", label: "Make task", icon: ListTodo, disabled: !canMakeTask || !!creating, action: () => { void makeTask(); } },
+      { id: "make-ai-task", label: "Make AI task", icon: Sparkles, disabled: !canMakeTask || !!creating, action: () => { void makeAiTask(); } },
+    ]} />;
+  }
+
   return (
     <div
       ref={popoverRef}
       role="group"
       aria-label="Create task from selected text"
-      className="glass-panel fixed z-[100] flex items-center overflow-hidden rounded-full border border-white/70 bg-bg-primary/95 shadow-[0_16px_42px_rgba(30,41,59,0.18)] dark:border-white/10"
-      style={{ left: position.x, top: position.y + 8 }}
+      className={`${menuSurface} flex items-center`}
+      style={{ ...menuFont, left: position.x, top: position.y + 8 }}
+      onMouseDown={(event) => event.preventDefault()}
     >
       <button
         type="button"
         disabled={!canMakeTask || !!creating}
         onClick={() => void makeTask()}
-        className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-default disabled:opacity-50"
+        className={`${menuRow} ${menuHover} whitespace-nowrap`}
       >
         <ListTodo size={13} />
         {creating === "task" ? "Creating..." : "Make task"}
@@ -956,7 +972,7 @@ function TextSelectionMenu({
         type="button"
         disabled={!canMakeTask || !!creating}
         onClick={() => void makeAiTask()}
-        className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-default disabled:opacity-50"
+        className={`${menuRow} ${menuHover} whitespace-nowrap text-accent`}
       >
         <Sparkles size={13} />
         {creating === "ai" ? "Building..." : "Make AI task"}

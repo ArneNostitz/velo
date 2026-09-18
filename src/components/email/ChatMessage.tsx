@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import { formatFullDate } from "@/utils/date";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { trimMessageBody, previewText } from "@/utils/messageTrim";
-import { EmailRenderer } from "./EmailRenderer";
+import { EmailRenderer, type EmailSelectionRequest } from "./EmailRenderer";
 import { InlineAttachmentPreview } from "./InlineAttachmentPreview";
 import { AttachmentList, useAttachmentViewer, getAttachmentsForMessage } from "./AttachmentList";
 import { SenderAvatar } from "./SenderAvatar";
@@ -25,7 +25,7 @@ interface ChatMessageProps {
   isSearchMatch?: boolean;
   highlightTerms?: readonly string[];
   onContextMenu?: (e: React.MouseEvent) => void;
-  onSelectionContextMenu?: (request: { position: { x: number; y: number }; text: string }) => void;
+  onSelectionContextMenu?: (request: EmailSelectionRequest) => void;
 }
 
 /**

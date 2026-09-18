@@ -1,7 +1,7 @@
 import { memo, useState, useRef, useEffect, useMemo, forwardRef } from "react";
 import { formatFullDate } from "@/utils/date";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
-import { EmailRenderer } from "./EmailRenderer";
+import { EmailRenderer, type EmailSelectionRequest } from "./EmailRenderer";
 import { InlineAttachmentPreview } from "./InlineAttachmentPreview";
 import { AttachmentList, useAttachmentViewer, getAttachmentsForMessage } from "./AttachmentList";
 import type { DbMessage } from "@/services/db/messages";
@@ -35,7 +35,7 @@ interface MessageItemProps {
    */
   ownAddresses?: Set<string>;
   onContextMenu?: (e: React.MouseEvent) => void;
-  onSelectionContextMenu?: (request: { position: { x: number; y: number }; text: string }) => void;
+  onSelectionContextMenu?: (request: EmailSelectionRequest) => void;
 }
 
 export const MessageItem = memo(forwardRef<HTMLDivElement, MessageItemProps>(function MessageItem({ message, isLast, blockImages, senderAllowlisted, accountId, threadId, isSpam, focused, isSearchMatch, highlightTerms, ownAddresses, onContextMenu, onSelectionContextMenu }, ref) {
